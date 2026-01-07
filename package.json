@@ -1,0 +1,373 @@
+{
+  "name": "forgeflow",
+  "displayName": "ForgeFlow",
+  "description": "ForgeFlow: Explorer replacement, Projects manager, PowerShell execution control plane, and Dashboard.",
+  "version": "0.1.0",
+  "publisher": "evotec",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other",
+    "Programming Languages",
+    "Source Control"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onView:forgeflow.files",
+    "onView:forgeflow.projects",
+    "onView:forgeflow.dashboard",
+    "onCommand:forgeflow.files.open",
+    "onCommand:forgeflow.files.run",
+    "onCommand:forgeflow.projects.open",
+    "onCommand:forgeflow.dashboard.open",
+    "onCommand:forgeflow.run",
+    "onCommand:forgeflow.modules.list"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "forgeflow",
+          "title": "ForgeFlow",
+          "icon": "resources/forgeflow.svg"
+        }
+      ]
+    },
+    "views": {
+      "forgeflow": [
+        {
+          "id": "forgeflow.files",
+          "name": "ForgeFlow: Files"
+        },
+        {
+          "id": "forgeflow.projects",
+          "name": "ForgeFlow: Projects"
+        }
+      ],
+      "panel": [
+        {
+          "id": "forgeflow.dashboard",
+          "name": "ForgeFlow: Dashboard",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "forgeflow.files.open",
+        "title": "ForgeFlow: Open"
+      },
+      {
+        "command": "forgeflow.files.revealInOs",
+        "title": "ForgeFlow: Reveal in OS"
+      },
+      {
+        "command": "forgeflow.files.run",
+        "title": "ForgeFlow: Run"
+      },
+      {
+        "command": "forgeflow.files.pinFavorite",
+        "title": "ForgeFlow: Pin to Favorites"
+      },
+      {
+        "command": "forgeflow.files.unpinFavorite",
+        "title": "ForgeFlow: Unpin from Favorites"
+      },
+      {
+        "command": "forgeflow.files.moveFavoriteUp",
+        "title": "ForgeFlow: Move Favorite Up"
+      },
+      {
+        "command": "forgeflow.files.moveFavoriteDown",
+        "title": "ForgeFlow: Move Favorite Down"
+      },
+      {
+        "command": "forgeflow.projects.open",
+        "title": "ForgeFlow: Open Project"
+      },
+      {
+        "command": "forgeflow.projects.refresh",
+        "title": "ForgeFlow: Refresh Projects"
+      },
+      {
+        "command": "forgeflow.projects.pinFavorite",
+        "title": "ForgeFlow: Pin Project to Favorites"
+      },
+      {
+        "command": "forgeflow.projects.unpinFavorite",
+        "title": "ForgeFlow: Unpin Project from Favorites"
+      },
+      {
+        "command": "forgeflow.projects.moveFavoriteUp",
+        "title": "ForgeFlow: Move Favorite Project Up"
+      },
+      {
+        "command": "forgeflow.projects.moveFavoriteDown",
+        "title": "ForgeFlow: Move Favorite Project Down"
+      },
+      {
+        "command": "forgeflow.projects.openEntryPoint",
+        "title": "ForgeFlow: Open Project Entry Point"
+      },
+      {
+        "command": "forgeflow.projects.pinItem",
+        "title": "ForgeFlow: Pin Project Item"
+      },
+      {
+        "command": "forgeflow.projects.unpinItem",
+        "title": "ForgeFlow: Unpin Project Item"
+      },
+      {
+        "command": "forgeflow.projects.movePinnedItemUp",
+        "title": "ForgeFlow: Move Pinned Item Up"
+      },
+      {
+        "command": "forgeflow.projects.movePinnedItemDown",
+        "title": "ForgeFlow: Move Pinned Item Down"
+      },
+      {
+        "command": "forgeflow.run",
+        "title": "ForgeFlow: Run"
+      },
+      {
+        "command": "forgeflow.run.chooseProfile",
+        "title": "ForgeFlow: Run (Choose Profile)"
+      },
+      {
+        "command": "forgeflow.run.integrated",
+        "title": "ForgeFlow: Run Integrated"
+      },
+      {
+        "command": "forgeflow.run.external",
+        "title": "ForgeFlow: Run External"
+      },
+      {
+        "command": "forgeflow.run.externalAdmin",
+        "title": "ForgeFlow: Run as Admin (External)"
+      },
+      {
+        "command": "forgeflow.dashboard.open",
+        "title": "ForgeFlow: Open Dashboard"
+      },
+      {
+        "command": "forgeflow.dashboard.refresh",
+        "title": "ForgeFlow: Refresh Dashboard"
+      },
+      {
+        "command": "forgeflow.dashboard.configureIdentity",
+        "title": "ForgeFlow: Configure Project Identity"
+      },
+      {
+        "command": "forgeflow.modules.list",
+        "title": "ForgeFlow: Modules: List"
+      },
+      {
+        "command": "forgeflow.modules.updateAll",
+        "title": "ForgeFlow: Modules: Update All"
+      },
+      {
+        "command": "forgeflow.modules.cleanup",
+        "title": "ForgeFlow: Modules: Cleanup"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "forgeflow.projects.refresh",
+          "when": "view == forgeflow.projects",
+          "group": "navigation"
+        },
+        {
+          "command": "forgeflow.dashboard.refresh",
+          "when": "view == forgeflow.dashboard",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "forgeflow.files.open",
+          "when": "view == forgeflow.files && viewItem == forgeflowFile",
+          "group": "inline"
+        },
+        {
+          "command": "forgeflow.files.revealInOs",
+          "when": "view == forgeflow.files && viewItem == forgeflowFile",
+          "group": "navigation"
+        },
+        {
+          "command": "forgeflow.files.run",
+          "when": "view == forgeflow.files && viewItem == forgeflowFile",
+          "group": "navigation"
+        },
+        {
+          "command": "forgeflow.files.pinFavorite",
+          "when": "view == forgeflow.files && viewItem == forgeflowFile",
+          "group": "navigation"
+        },
+        {
+          "command": "forgeflow.files.unpinFavorite",
+          "when": "view == forgeflow.files && viewItem == forgeflowFavorite",
+          "group": "navigation"
+        },
+        {
+          "command": "forgeflow.files.moveFavoriteUp",
+          "when": "view == forgeflow.files && viewItem == forgeflowFavorite",
+          "group": "navigation"
+        },
+        {
+          "command": "forgeflow.files.moveFavoriteDown",
+          "when": "view == forgeflow.files && viewItem == forgeflowFavorite",
+          "group": "navigation"
+        },
+        {
+          "command": "forgeflow.projects.open",
+          "when": "view == forgeflow.projects && viewItem == forgeflowProject",
+          "group": "inline"
+        },
+        {
+          "command": "forgeflow.projects.pinFavorite",
+          "when": "view == forgeflow.projects && viewItem == forgeflowProject",
+          "group": "navigation"
+        },
+        {
+          "command": "forgeflow.projects.unpinFavorite",
+          "when": "view == forgeflow.projects && viewItem == forgeflowProjectFavorite",
+          "group": "navigation"
+        },
+        {
+          "command": "forgeflow.projects.moveFavoriteUp",
+          "when": "view == forgeflow.projects && viewItem == forgeflowProjectFavorite",
+          "group": "navigation"
+        },
+        {
+          "command": "forgeflow.projects.moveFavoriteDown",
+          "when": "view == forgeflow.projects && viewItem == forgeflowProjectFavorite",
+          "group": "navigation"
+        },
+        {
+          "command": "forgeflow.projects.openEntryPoint",
+          "when": "view == forgeflow.projects && viewItem == forgeflowProjectEntry",
+          "group": "inline"
+        },
+        {
+          "command": "forgeflow.projects.pinItem",
+          "when": "view == forgeflow.projects && viewItem == forgeflowProjectEntry",
+          "group": "navigation"
+        },
+        {
+          "command": "forgeflow.projects.unpinItem",
+          "when": "view == forgeflow.projects && viewItem == forgeflowProjectPinned",
+          "group": "navigation"
+        },
+        {
+          "command": "forgeflow.projects.movePinnedItemUp",
+          "when": "view == forgeflow.projects && viewItem == forgeflowProjectPinned",
+          "group": "navigation"
+        },
+        {
+          "command": "forgeflow.projects.movePinnedItemDown",
+          "when": "view == forgeflow.projects && viewItem == forgeflowProjectPinned",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "ForgeFlow",
+      "properties": {
+        "forgeflow.files.favorites": {
+          "type": "array",
+          "description": "Deprecated. Favorites are stored in global state.",
+          "default": []
+        },
+        "forgeflow.projects.scanRoots": {
+          "type": "array",
+          "description": "Roots to scan for projects.",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "forgeflow.projects.scanMaxDepth": {
+          "type": "number",
+          "description": "Maximum directory depth when scanning for projects.",
+          "default": 4,
+          "minimum": 1
+        },
+        "forgeflow.projects.sortMode": {
+          "type": "string",
+          "description": "Project sort mode.",
+          "enum": [
+            "recentOpened",
+            "recentModified",
+            "alphabetical"
+          ],
+          "default": "recentOpened"
+        },
+        "forgeflow.powershell.profiles": {
+          "type": "array",
+          "description": "PowerShell profiles available for running scripts.",
+          "default": [],
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["windows-powershell", "pwsh", "pwsh-preview", "custom"]
+              },
+              "executablePath": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "label", "kind"]
+          }
+        },
+        "forgeflow.powershell.defaultProfileId": {
+          "type": "string",
+          "description": "Default PowerShell profile ID."
+        },
+        "forgeflow.run.defaultTarget": {
+          "type": "string",
+          "enum": ["integrated", "external", "externalAdmin"],
+          "default": "integrated"
+        },
+        "forgeflow.run.integrated.reuseTerminal": {
+          "type": "boolean",
+          "default": true
+        },
+        "forgeflow.run.integrated.perProjectTerminal": {
+          "type": "boolean",
+          "default": true
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p tsconfig.json",
+    "compile:test": "tsc -p tsconfig.test.json",
+    "watch": "tsc -watch -p tsconfig.json",
+    "lint": "eslint . --ext .ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run compile && npm run compile:test && mocha out/test/**/*.test.js",
+    "package": "vsce package",
+    "prepublishOnly": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^20.11.24",
+    "@types/vscode": "^1.90.0",
+    "@typescript-eslint/eslint-plugin": "^7.5.0",
+    "@typescript-eslint/parser": "^7.5.0",
+    "@vscode/vsce": "^2.24.0",
+    "eslint": "^8.57.0",
+    "mocha": "^10.3.0",
+    "typescript": "^5.4.5"
+  }
+}
