@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import type { FavoritesStore } from '../store/favoritesStore';
 import type { ProjectsStore } from '../store/projectsStore';
 import { getForgeFlowSettings } from '../util/config';
-import type { PowerShellProfile, RunRequest, RunTarget } from '../models/run';
+import type { PowerShellProfile, RunRequest } from '../models/run';
 import { ForgeFlowLogger } from '../util/log';
 import { buildAdminCommand, buildProcessCommand, buildTerminalCommand } from './commandBuilder';
 import { builtInProfiles } from './powershellProfiles';

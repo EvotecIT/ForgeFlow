@@ -415,27 +415,33 @@ function hasKey(value: unknown, key: string): value is Record<string, unknown> {
 }
 
 function isPathNode(value: unknown): value is PathNode | ProjectNodeWithPath {
-  return hasKey(value, 'path') && typeof value.path === 'string';
+  return hasKey(value, 'path') && typeof value['path'] === 'string';
 }
 
 function isProjectNode(value: unknown): value is ProjectNodeWithProject {
   if (!hasKey(value, 'project')) {
     return false;
   }
-  return isProject(value.project);
+  return isProject(value['project']);
 }
 
 function isProjectEntry(value: unknown): value is ProjectNodeWithEntry {
   if (!hasKey(value, 'entry')) {
     return false;
   }
-  return isEntryPoint(value.entry);
+  return isEntryPoint(value['entry']);
 }
 
 function isProject(value: unknown): value is Project {
-  return hasKey(value, 'id') && hasKey(value, 'path') && typeof value.id === 'string' && typeof value.path === 'string';
+  return hasKey(value, 'id')
+    && hasKey(value, 'path')
+    && typeof value['id'] === 'string'
+    && typeof value['path'] === 'string';
 }
 
 function isEntryPoint(value: unknown): value is ProjectEntryPoint {
-  return hasKey(value, 'path') && hasKey(value, 'label') && typeof value.path === 'string' && typeof value.label === 'string';
+  return hasKey(value, 'path')
+    && hasKey(value, 'label')
+    && typeof value['path'] === 'string'
+    && typeof value['label'] === 'string';
 }

@@ -82,7 +82,11 @@ export class ProjectsStore {
     if (index === -1) {
       return;
     }
-    projects[index] = { ...projects[index], pinnedItems };
+    const existing = projects[index];
+    if (!existing) {
+      return;
+    }
+    projects[index] = { ...existing, pinnedItems };
     await this.state.setGlobal(PROJECTS_KEY, projects);
   }
 
@@ -98,7 +102,11 @@ export class ProjectsStore {
     if (index === -1) {
       return;
     }
-    projects[index] = { ...projects[index], identity };
+    const existing = projects[index];
+    if (!existing) {
+      return;
+    }
+    projects[index] = { ...existing, identity };
     await this.state.setGlobal(PROJECTS_KEY, projects);
   }
 }

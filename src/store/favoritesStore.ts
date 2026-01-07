@@ -42,6 +42,9 @@ export class FavoritesStore {
       return;
     }
     const [item] = items.splice(index, 1);
+    if (!item) {
+      return;
+    }
     items.splice(targetIndex, 0, item);
     await this.state.setGlobal(FAVORITES_KEY, items);
   }
@@ -52,7 +55,11 @@ export class FavoritesStore {
     if (index === -1) {
       return;
     }
-    items[index] = { ...items[index], profileOverrideId: profileId };
+    const existing = items[index];
+    if (!existing) {
+      return;
+    }
+    items[index] = { ...existing, profileOverrideId: profileId };
     await this.state.setGlobal(FAVORITES_KEY, items);
   }
 }

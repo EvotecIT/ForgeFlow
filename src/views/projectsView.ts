@@ -210,7 +210,7 @@ class ProjectEntryGroupNode implements ProjectNode {
 class ProjectEntryNode implements ProjectNode, ProjectNodeWithEntry {
   public readonly id: string;
 
-  public constructor(private readonly project: Project, public readonly entry: ProjectEntryPoint) {
+  public constructor(project: Project, public readonly entry: ProjectEntryPoint) {
     this.id = treeId('project-entry', `${project.id}:${entry.path}`);
   }
 
