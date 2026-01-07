@@ -5,10 +5,11 @@ import { detectEntryPoints } from '../scan/entryPointDetector';
 import { detectProjectIdentity } from '../scan/identityDetector';
 import { ProjectScanner } from '../scan/projectScanner';
 import type { ProjectsStore } from '../store/projectsStore';
-import { getForgeFlowSettings, ProjectSortMode } from '../util/config';
+import { getForgeFlowSettings, ProjectSortMode, SortDirection } from '../util/config';
 import { readDirectory, statPath } from '../util/fs';
 import { treeId } from '../util/ids';
 import { baseName } from '../util/path';
+import { getLocalGitInfo } from '../dashboard/dataProviders';
 
 interface ProjectNode {
   readonly id: string;
@@ -34,6 +35,8 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
 
   private projects: Project[] = [];
   private favoriteIds: string[] = [];
+  private isScanning = false;
+  private pendingRefresh = false;
 
   public constructor(
     private readonly projectsStore: ProjectsStore,
@@ -44,12 +47,17 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
     const settings = getForgeFlowSettings();
     const roots = getScanRoots();
     const existing = this.projectsStore.list();
-    const projects = await this.scanner.scan(roots, settings.projectScanMaxDepth, existing);
-    const hydrated = await this.hydrateIdentities(projects);
-    await this.projectsStore.saveProjects(hydrated);
-    this.projects = hydrated;
+    this.projects = existing;
     this.favoriteIds = this.projectsStore.getFavoriteIds();
     this.onDidChangeTreeDataEmitter.fire(undefined);
+
+    if (this.isScanning) {
+      this.pendingRefresh = true;
+      return;
+    }
+
+    this.isScanning = true;
+    void this.runScan(roots, settings.projectScanMaxDepth, settings.projectSortMode);
   }
 
   public getTreeItem(element: ProjectNode): vscode.TreeItem {
@@ -62,15 +70,13 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
       if (roots.length === 0) {
         return [new ProjectHintNode('Select project roots to scan', 'forgeflow.projects.configureScanRoots')];
       }
+      if (this.isScanning) {
+        return [new ProjectHintNode('Scanning projects...', 'forgeflow.projects.refresh'), ...this.getRootGroups()];
+      }
       if (this.projects.length === 0) {
         return [new ProjectHintNode('No projects found. Refresh or adjust scan roots.', 'forgeflow.projects.refresh')];
       }
-      const favorites = this.getFavoriteProjects();
-      const others = this.getOtherProjects();
-      return [
-        new ProjectGroupNode('Favorite Projects', 'forgeflowGroup', favorites, true),
-        new ProjectGroupNode('Projects', 'forgeflowGroup', others, false)
-      ];
+      return this.getRootGroups();
     }
     return await element.getChildren();
   }
@@ -89,7 +95,17 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
   private getOtherProjects(): Project[] {
     const favorites = new Set(this.favoriteIds);
     const others = this.projects.filter((project) => !favorites.has(project.id));
-    return sortProjects(others, getForgeFlowSettings().projectSortMode);
+    const settings = getForgeFlowSettings();
+    return sortProjects(others, settings.projectSortMode, settings.projectSortDirection);
+  }
+
+  private getRootGroups(): ProjectNode[] {
+    const favorites = this.getFavoriteProjects();
+    const others = this.getOtherProjects();
+    return [
+      new ProjectGroupNode('Favorite Projects', 'forgeflowGroup', favorites, true),
+      new ProjectGroupNode('Projects', 'forgeflowGroup', others, false)
+    ];
   }
 
   private async hydrateIdentities(projects: Project[]): Promise<Project[]> {
@@ -109,6 +125,49 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
       results.push(updated);
     }
     return results;
+  }
+
+  private async hydrateGitCommits(projects: Project[]): Promise<Project[]> {
+    const results: Project[] = [];
+    for (const project of projects) {
+      if (project.type !== 'git') {
+        results.push(project);
+        continue;
+      }
+      const gitInfo = await getLocalGitInfo(project.path);
+      const lastCommit = gitInfo?.lastCommit ? Date.parse(gitInfo.lastCommit) : undefined;
+      results.push({ ...project, lastGitCommit: Number.isNaN(lastCommit ?? NaN) ? undefined : lastCommit });
+    }
+    return results;
+  }
+
+  private async runScan(roots: string[], maxDepth: number, sortMode: ProjectSortMode): Promise<void> {
+    try {
+      const existing = this.projectsStore.list();
+      const projects = await this.scanner.scan(roots, maxDepth, existing);
+      await this.projectsStore.saveProjects(projects);
+      this.projects = projects;
+      this.favoriteIds = this.projectsStore.getFavoriteIds();
+      this.onDidChangeTreeDataEmitter.fire(undefined);
+
+      void this.hydrateIdentities(projects).then(async (updated) => {
+        this.projects = updated;
+        this.onDidChangeTreeDataEmitter.fire(undefined);
+      });
+
+      if (sortMode === 'gitCommit') {
+        void this.hydrateGitCommits(projects).then(async (updated) => {
+          this.projects = updated;
+          this.onDidChangeTreeDataEmitter.fire(undefined);
+        });
+      }
+    } finally {
+      this.isScanning = false;
+      if (this.pendingRefresh) {
+        this.pendingRefresh = false;
+        await this.refresh();
+      }
+    }
   }
 }
 
@@ -369,30 +428,47 @@ async function readBrowseChildren(folderPath: string, project: Project): Promise
   return [...directories.sort(byName), ...files.sort(byName)];
 }
 
-function sortProjects(projects: Project[], mode: ProjectSortMode): Project[] {
+function sortProjects(projects: Project[], mode: ProjectSortMode, direction: SortDirection): Project[] {
   const sorted = [...projects];
   sorted.sort((a, b) => {
+    const dir = direction === 'asc' ? 1 : -1;
     if (mode === 'alphabetical') {
-      return a.name.localeCompare(b.name);
+      return dir * a.name.localeCompare(b.name);
     }
 
     if (mode === 'recentModified') {
       const diff = (b.lastModified ?? 0) - (a.lastModified ?? 0);
       if (diff !== 0) {
-        return diff;
+        return dir * diff;
       }
-      return a.name.localeCompare(b.name);
+      return dir * a.name.localeCompare(b.name);
+    }
+
+    if (mode === 'lastActive') {
+      const diff = (b.lastActivity ?? 0) - (a.lastActivity ?? 0);
+      if (diff !== 0) {
+        return dir * diff;
+      }
+      return dir * a.name.localeCompare(b.name);
+    }
+
+    if (mode === 'gitCommit') {
+      const diff = (b.lastGitCommit ?? 0) - (a.lastGitCommit ?? 0);
+      if (diff !== 0) {
+        return dir * diff;
+      }
+      return dir * a.name.localeCompare(b.name);
     }
 
     const openedDiff = (b.lastOpened ?? 0) - (a.lastOpened ?? 0);
     if (openedDiff !== 0) {
-      return openedDiff;
+      return dir * openedDiff;
     }
     const modifiedDiff = (b.lastModified ?? 0) - (a.lastModified ?? 0);
     if (modifiedDiff !== 0) {
-      return modifiedDiff;
+      return dir * modifiedDiff;
     }
-    return a.name.localeCompare(b.name);
+    return dir * a.name.localeCompare(b.name);
   });
   return sorted;
 }

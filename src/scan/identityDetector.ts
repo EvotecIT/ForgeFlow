@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
-import type { ProjectIdentity } from '../models/project';
+import type { ProjectIdentity, RepositoryProvider } from '../models/project';
 import { readDirectory, readFileText, statPath } from '../util/fs';
 
 export interface DetectedIdentity {
@@ -11,6 +11,13 @@ export interface DetectedIdentity {
 interface FileCandidate {
   path: string;
   depth: number;
+}
+
+interface RepoInfo {
+  provider: RepositoryProvider;
+  repoPath?: string;
+  url?: string;
+  githubRepo?: string;
 }
 
 const ignoredFolders = new Set([
@@ -29,20 +36,25 @@ const ignoredFolders = new Set([
 const preferredSegments = ['module', 'modules', 'src', 'source', 'sources'];
 
 export async function detectProjectIdentity(projectPath: string): Promise<DetectedIdentity> {
-  const [gitHubRepo, psInfo, csInfo, propsInfo] = await Promise.all([
-    detectGitHubRepo(projectPath),
+  const [gitInfo, psInfo, csInfo, propsInfo] = await Promise.all([
+    detectRepositoryInfo(projectPath),
     detectPowerShellModule(projectPath),
     detectCsproj(projectPath),
     detectMsBuildProps(projectPath)
   ]);
 
+  const repoInfo = psInfo?.repoInfo ?? csInfo?.repoInfo ?? propsInfo?.repoInfo ?? gitInfo;
+
   const identity: ProjectIdentity = {
-    githubRepo: psInfo?.githubRepo ?? csInfo?.githubRepo ?? propsInfo?.githubRepo ?? gitHubRepo,
+    repositoryUrl: repoInfo?.url,
+    repositoryProvider: repoInfo?.provider,
+    repositoryPath: repoInfo?.repoPath,
+    githubRepo: repoInfo?.githubRepo,
     powershellModule: psInfo?.moduleName,
     nugetPackage: csInfo?.packageId ?? propsInfo?.packageId
   };
 
-  if (!identity.githubRepo && !identity.powershellModule && !identity.nugetPackage) {
+  if (!identity.githubRepo && !identity.repositoryUrl && !identity.powershellModule && !identity.nugetPackage) {
     return {};
   }
 
@@ -52,7 +64,7 @@ export async function detectProjectIdentity(projectPath: string): Promise<Detect
   };
 }
 
-async function detectGitHubRepo(projectPath: string): Promise<string | undefined> {
+async function detectRepositoryInfo(projectPath: string): Promise<RepoInfo | undefined> {
   const configPath = await resolveGitConfigPath(projectPath);
   if (!configPath) {
     return undefined;
@@ -65,7 +77,7 @@ async function detectGitHubRepo(projectPath: string): Promise<string | undefined
   if (!remoteUrl) {
     return undefined;
   }
-  return parseGitHubRepo(remoteUrl);
+  return parseRepositoryInfo(remoteUrl);
 }
 
 async function resolveGitConfigPath(projectPath: string): Promise<string | undefined> {
@@ -114,24 +126,82 @@ function parseOriginRemoteUrl(text: string): string | undefined {
   return undefined;
 }
 
-function parseGitHubRepo(remoteUrl: string): string | undefined {
+function parseRepositoryInfo(remoteUrl: string): RepoInfo | undefined {
   const cleaned = remoteUrl.replace(/\.git$/, '').replace(/\/$/, '');
-  const sshMatch = /^git@github\.com:(.+)$/i.exec(cleaned);
-  if (sshMatch) {
-    const repoPath = sshMatch[1];
-    return repoPath ? trimRepoPath(repoPath) : undefined;
+
+  const sshGithub = /^git@github\.com:(.+)$/i.exec(cleaned);
+  if (sshGithub) {
+    return toRepoInfo('github', sshGithub[1], 'https://github.com');
   }
-  const sshUrlMatch = /^ssh:\/\/git@github\.com\/(.+)$/i.exec(cleaned);
-  if (sshUrlMatch) {
-    const repoPath = sshUrlMatch[1];
-    return repoPath ? trimRepoPath(repoPath) : undefined;
+  const sshGitlab = /^git@gitlab\.com:(.+)$/i.exec(cleaned);
+  if (sshGitlab) {
+    return toRepoInfo('gitlab', sshGitlab[1], 'https://gitlab.com');
   }
-  const httpsMatch = /^https?:\/\/github\.com\/(.+)$/i.exec(cleaned);
-  if (httpsMatch) {
-    const repoPath = httpsMatch[1];
-    return repoPath ? trimRepoPath(repoPath) : undefined;
+  const sshAzure = /^ssh:\/\/git@ssh\.dev\.azure\.com\/v3\/(.+)$/i.exec(cleaned);
+  if (sshAzure) {
+    return toAzureRepoInfo(sshAzure[1]);
   }
+
+  const httpsGithub = /^https?:\/\/github\.com\/(.+)$/i.exec(cleaned);
+  if (httpsGithub) {
+    return toRepoInfo('github', httpsGithub[1], 'https://github.com');
+  }
+  const httpsGitlab = /^https?:\/\/gitlab\.com\/(.+)$/i.exec(cleaned);
+  if (httpsGitlab) {
+    return toRepoInfo('gitlab', httpsGitlab[1], 'https://gitlab.com');
+  }
+  const httpsAzure = /^https?:\/\/dev\.azure\.com\/(.+)$/i.exec(cleaned);
+  if (httpsAzure) {
+    return toAzureRepoInfo(httpsAzure[1]);
+  }
+  const httpsAzureLegacy = /^https?:\/\/([^.]+)\.visualstudio\.com\/(.+)$/i.exec(cleaned);
+  if (httpsAzureLegacy) {
+    const org = httpsAzureLegacy[1];
+    const rest = httpsAzureLegacy[2];
+    if (org && rest) {
+      return toAzureRepoInfo(`${org}/${rest}`);
+    }
+  }
+
   return undefined;
+}
+
+function toRepoInfo(provider: RepositoryProvider, pathValue: string | undefined, baseUrl: string): RepoInfo | undefined {
+  if (!pathValue) {
+    return undefined;
+  }
+  const repoPath = trimRepoPath(pathValue);
+  if (!repoPath) {
+    return undefined;
+  }
+  const url = `${baseUrl}/${repoPath}`;
+  return {
+    provider,
+    repoPath,
+    url,
+    githubRepo: provider === 'github' ? repoPath : undefined
+  };
+}
+
+function toAzureRepoInfo(pathValue: string | undefined): RepoInfo | undefined {
+  if (!pathValue) {
+    return undefined;
+  }
+  const parts = pathValue.split('/').filter(Boolean);
+  const org = parts[0];
+  const project = parts[1];
+  const repoIndex = parts.findIndex((segment) => segment.toLowerCase() === '_git');
+  const repo = repoIndex >= 0 ? parts[repoIndex + 1] : parts[2];
+  if (!org || !project || !repo) {
+    return undefined;
+  }
+  const repoPath = `${org}/${project}/${repo}`;
+  const url = `https://dev.azure.com/${org}/${project}/_git/${repo}`;
+  return {
+    provider: 'azure',
+    repoPath,
+    url
+  };
 }
 
 function trimRepoPath(value: string): string | undefined {
@@ -144,7 +214,7 @@ function trimRepoPath(value: string): string | undefined {
   return `${owner}/${repo}`;
 }
 
-async function detectPowerShellModule(projectPath: string): Promise<{ moduleName?: string; moduleVersion?: string; githubRepo?: string } | undefined> {
+async function detectPowerShellModule(projectPath: string): Promise<{ moduleName?: string; moduleVersion?: string; repoInfo?: RepoInfo } | undefined> {
   const psd1Path = await findBestFile(projectPath, '.psd1', 4);
   if (!psd1Path) {
     return undefined;
@@ -158,15 +228,18 @@ async function detectPowerShellModule(projectPath: string): Promise<{ moduleName
   const projectUriMatch = /ProjectUri\s*=\s*['"]([^'"]+)['"]/i.exec(text);
   const repoMatch = /Repository\s*=\s*['"]([^'"]+)['"]/i.exec(text);
   const projectUriValue = projectUriMatch?.[1];
-  const projectUriRepo = projectUriValue ? parseGitHubRepo(projectUriValue) : undefined;
+  const repoValue = repoMatch?.[1];
+  const repoInfo = projectUriValue
+    ? parseRepositoryInfo(projectUriValue)
+    : (repoValue ? parseRepositoryInfo(repoValue) : undefined);
   return {
     moduleName,
     moduleVersion: versionMatch?.[1],
-    githubRepo: projectUriRepo ?? repoMatch?.[1]
+    repoInfo
   };
 }
 
-async function detectCsproj(projectPath: string): Promise<{ packageId?: string; githubRepo?: string } | undefined> {
+async function detectCsproj(projectPath: string): Promise<{ packageId?: string; repoInfo?: RepoInfo } | undefined> {
   const csprojPath = await findBestFile(projectPath, '.csproj', 4);
   if (!csprojPath) {
     return undefined;
@@ -181,11 +254,11 @@ async function detectCsproj(projectPath: string): Promise<{ packageId?: string; 
     ?? fallbackName;
   const repoUrl = readMsbuildValue(text, 'RepositoryUrl')
     ?? readMsbuildValue(text, 'PackageProjectUrl');
-  const githubRepo = repoUrl ? parseGitHubRepo(repoUrl) : undefined;
-  return { packageId, githubRepo };
+  const repoInfo = repoUrl ? parseRepositoryInfo(repoUrl) : undefined;
+  return { packageId, repoInfo };
 }
 
-async function detectMsBuildProps(projectPath: string): Promise<{ packageId?: string; githubRepo?: string } | undefined> {
+async function detectMsBuildProps(projectPath: string): Promise<{ packageId?: string; repoInfo?: RepoInfo } | undefined> {
   const propsPath = await findBestNamedFile(projectPath, 'Directory.Build.props', 4);
   if (!propsPath) {
     return undefined;
@@ -196,15 +269,15 @@ async function detectMsBuildProps(projectPath: string): Promise<{ packageId?: st
   }
   const packageId = readMsbuildValue(text, 'PackageId') ?? readMsbuildValue(text, 'AssemblyName');
   const repoUrl = readMsbuildValue(text, 'RepositoryUrl') ?? readMsbuildValue(text, 'PackageProjectUrl');
-  const githubRepo = repoUrl ? parseGitHubRepo(repoUrl) : undefined;
-  if (!packageId && !githubRepo) {
+  const repoInfo = repoUrl ? parseRepositoryInfo(repoUrl) : undefined;
+  if (!packageId && !repoInfo) {
     return undefined;
   }
-  return { packageId, githubRepo };
+  return { packageId, repoInfo };
 }
 
 function readMsbuildValue(text: string, property: string): string | undefined {
-  const regex = new RegExp(`<${property}>([^<]+)<\\/${property}>`, 'i');
+  const regex = new RegExp(`<${property}>([^<]+)<\/${property}>`, 'i');
   const match = regex.exec(text);
   const value = match?.[1]?.trim();
   if (!value || value.includes('$(')) {
@@ -242,7 +315,7 @@ async function findBestNamedFile(root: string, fileName: string, maxDepth: numbe
 }
 
 function scoreCandidate(candidate: FileCandidate, rootName: string): number {
-  const normalized = candidate.path.toLowerCase();
+  const normalized = candidate.path.toLowerCase().replace(/\\/g, '/');
   let score = candidate.depth * 10;
   if (normalized.includes(`/${rootName}.`)) {
     score -= 6;

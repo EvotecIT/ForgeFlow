@@ -17,9 +17,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       enableScripts: true
     };
 
-    webviewView.webview.onDidReceiveMessage(async (message: { type?: string }) => {
+    webviewView.webview.onDidReceiveMessage(async (message: { type?: string; url?: string }) => {
       if (message.type === 'refresh') {
         await this.refresh();
+      }
+      if (message.type === 'openUrl' && message.url) {
+        await vscode.env.openExternal(vscode.Uri.parse(message.url));
       }
     });
 

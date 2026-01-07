@@ -25,7 +25,8 @@
     "onCommand:forgeflow.run",
     "onCommand:forgeflow.modules.list",
     "onCommand:forgeflow.projects.configureScanRoots",
-    "onCommand:forgeflow.projects.setSortMode"
+    "onCommand:forgeflow.projects.setSortMode",
+    "onCommand:forgeflow.projects.setSortDirection"
   ],
   "contributes": {
     "viewsContainers": {
@@ -109,6 +110,11 @@
       {
         "command": "forgeflow.projects.setSortMode",
         "title": "ForgeFlow: Set Project Sort Mode",
+        "icon": "$(sort-precedence)"
+      },
+      {
+        "command": "forgeflow.projects.setSortDirection",
+        "title": "ForgeFlow: Set Project Sort Direction",
         "icon": "$(sort-precedence)"
       },
       {
@@ -216,6 +222,11 @@
         },
         {
           "command": "forgeflow.projects.setSortMode",
+          "when": "view == forgeflow.projects",
+          "group": "navigation"
+        },
+        {
+          "command": "forgeflow.projects.setSortDirection",
           "when": "view == forgeflow.projects",
           "group": "navigation"
         },
@@ -433,9 +444,41 @@
           "enum": [
             "recentOpened",
             "recentModified",
-            "alphabetical"
+            "alphabetical",
+            "lastActive",
+            "gitCommit"
           ],
           "default": "recentOpened"
+        },
+        "forgeflow.projects.sortDirection": {
+          "type": "string",
+          "description": "Project sort direction.",
+          "enum": [
+            "desc",
+            "asc"
+          ],
+          "default": "desc"
+        },
+        "forgeflow.projects.identityScanDepth": {
+          "type": "number",
+          "description": "Maximum folder depth for identity scanning (psd1/csproj/Directory.Build.props).",
+          "default": 4,
+          "minimum": 1,
+          "maximum": 10
+        },
+        "forgeflow.projects.identityPreferredFolders": {
+          "type": "array",
+          "description": "Preferred folder names when choosing identity files.",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "module",
+            "modules",
+            "src",
+            "source",
+            "sources"
+          ]
         },
         "forgeflow.powershell.profiles": {
           "type": "array",

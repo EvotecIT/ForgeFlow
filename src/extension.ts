@@ -21,6 +21,8 @@ import { statPath } from './util/fs';
 import type { RunTarget } from './models/run';
 import { builtInProfiles } from './run/powershellProfiles';
 import { detectProjectIdentity } from './scan/identityDetector';
+import type { ProjectSortMode, SortDirection } from './util/config';
+import { getForgeFlowSettings } from './util/config';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const logger = new ForgeFlowLogger();
@@ -102,6 +104,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand('forgeflow.projects.setSortMode', async () => {
       await configureSortMode(projectsProvider);
+    }),
+    vscode.commands.registerCommand('forgeflow.projects.setSortDirection', async () => {
+      await configureSortDirection(projectsProvider);
     }),
     vscode.commands.registerCommand('forgeflow.projects.pinFavorite', async (target?: unknown) => {
       const project = extractProject(target);
@@ -233,6 +238,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (event.affectsConfiguration('forgeflow.projects')) {
         await projectsProvider.refresh();
       }
+    }),
+    vscode.workspace.onDidOpenTextDocument(async (document) => {
+      await touchProjectActivity(document, projectsStore, projectsProvider);
+    }),
+    vscode.workspace.onDidSaveTextDocument(async (document) => {
+      await touchProjectActivity(document, projectsStore, projectsProvider);
     })
   );
 
@@ -265,6 +276,7 @@ async function pinFavorite(targetPath: string, store: FavoritesStore): Promise<v
 
 async function openProject(project: Project, store: ProjectsStore): Promise<void> {
   await store.updateLastOpened(project.id, Date.now());
+  await store.updateLastActivity(project.id, Date.now());
   await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(project.path), false);
 }
 
@@ -419,10 +431,12 @@ async function configureScanRoots(provider: ProjectsViewProvider): Promise<void>
 }
 
 async function configureSortMode(provider: ProjectsViewProvider): Promise<void> {
-  const options: Array<{ label: string; value: 'recentOpened' | 'recentModified' | 'alphabetical' }> = [
+  const options: Array<{ label: string; value: ProjectSortMode }> = [
     { label: 'Recent Opened', value: 'recentOpened' },
     { label: 'Recent Modified', value: 'recentModified' },
-    { label: 'Alphabetical', value: 'alphabetical' }
+    { label: 'Alphabetical', value: 'alphabetical' },
+    { label: 'Last Active', value: 'lastActive' },
+    { label: 'Git Commit Time', value: 'gitCommit' }
   ];
   const pick = await vscode.window.showQuickPick(options, { placeHolder: 'Select project sort mode' });
   if (!pick) {
@@ -430,6 +444,20 @@ async function configureSortMode(provider: ProjectsViewProvider): Promise<void> 
   }
   const config = vscode.workspace.getConfiguration('forgeflow');
   await config.update('projects.sortMode', pick.value, vscode.ConfigurationTarget.Global);
+  await provider.refresh();
+}
+
+async function configureSortDirection(provider: ProjectsViewProvider): Promise<void> {
+  const options: Array<{ label: string; value: SortDirection }> = [
+    { label: 'Descending', value: 'desc' },
+    { label: 'Ascending', value: 'asc' }
+  ];
+  const pick = await vscode.window.showQuickPick(options, { placeHolder: 'Select sort direction' });
+  if (!pick) {
+    return;
+  }
+  const config = vscode.workspace.getConfiguration('forgeflow');
+  await config.update('projects.sortDirection', pick.value, vscode.ConfigurationTarget.Global);
   await provider.refresh();
 }
 
@@ -503,6 +531,25 @@ function isEntryPoint(value: unknown): value is ProjectEntryPoint {
     && hasKey(value, 'label')
     && typeof value['path'] === 'string'
     && typeof value['label'] === 'string';
+}
+
+async function touchProjectActivity(
+  document: vscode.TextDocument,
+  store: ProjectsStore,
+  provider: ProjectsViewProvider
+): Promise<void> {
+  if (document.uri.scheme !== 'file') {
+    return;
+  }
+  const project = findProjectByPath(store.list(), document.uri.fsPath);
+  if (!project) {
+    return;
+  }
+  await store.updateLastActivity(project.id, Date.now());
+  const settings = getForgeFlowSettings();
+  if (settings.projectSortMode === 'lastActive') {
+    await provider.refresh();
+  }
 }
 
 function normalizeFsPath(value: string): string {

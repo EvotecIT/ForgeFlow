@@ -13,8 +13,12 @@ import {
 import { detectProjectIdentity } from '../scan/identityDetector';
 
 export interface DashboardRow {
+  repoUrl?: string;
+  provider: string;
+  visibility: string;
   repo: string;
   activity: string;
+  activityTimestamp: number;
   issues: string;
   prs: string;
   stars: string;
@@ -22,10 +26,6 @@ export interface DashboardRow {
   released: string;
   highlight: boolean;
   archived: boolean;
-}
-
-interface DashboardRowWithSort extends DashboardRow {
-  activityTimestamp: number;
 }
 
 export class DashboardService {
@@ -38,7 +38,7 @@ export class DashboardService {
     const projects = this.projectsStore.list();
     const settings = getForgeFlowSettings();
     const token = await this.getGitHubToken();
-    const rows: DashboardRowWithSort[] = [];
+    const rows: DashboardRow[] = [];
 
     for (const project of projects) {
       const detectedInfo = await detectProjectIdentity(project.path);
@@ -64,13 +64,21 @@ export class DashboardService {
       const version = psGallery?.version ?? nuget?.version ?? detectedInfo.moduleVersion ?? 'n/a';
       const released = psGallery?.released ?? nuget?.released ?? 'n/a';
       const archived = gitHub?.archived ?? false;
-      const repoLabel = identity.githubRepo ? (archived ? `${identity.githubRepo} (archived)` : identity.githubRepo) : project.name;
+      const repoUrl = resolveRepoUrl(identity);
+      const provider = resolveProvider(identity);
+      const visibility = gitHub ? (gitHub.private ? 'private' : 'public') : 'unknown';
+      const repoLabel = identity.githubRepo
+        ? (archived ? `${identity.githubRepo} (archived)` : identity.githubRepo)
+        : (identity.repositoryPath ?? project.name);
 
       if (archived && settings.dashboardHideArchived) {
         continue;
       }
 
       rows.push({
+        repoUrl,
+        provider,
+        visibility,
         repo: repoLabel,
         activity,
         activityTimestamp: Number.isNaN(activityTimestamp) ? 0 : activityTimestamp,
@@ -90,7 +98,7 @@ export class DashboardService {
       }
       return b.activityTimestamp - a.activityTimestamp;
     });
-    return rows.map(({ activityTimestamp, ...rest }) => rest);
+    return rows;
   }
 
   public getTrackedProjects(): Project[] {
@@ -135,4 +143,46 @@ function formatRelative(isoDate: string): string {
   }
   const diffYears = Math.floor(diffMonths / 12);
   return diffYears === 1 ? '1 year ago' : `${diffYears} years ago`;
+}
+
+function resolveProvider(identity: { repositoryProvider?: string; githubRepo?: string; repositoryUrl?: string }): string {
+  if (identity.repositoryProvider) {
+    return identity.repositoryProvider;
+  }
+  if (identity.githubRepo) {
+    return 'github';
+  }
+  if (identity.repositoryUrl) {
+    if (identity.repositoryUrl.includes('gitlab')) {
+      return 'gitlab';
+    }
+    if (identity.repositoryUrl.includes('azure')) {
+      return 'azure';
+    }
+  }
+  return 'unknown';
+}
+
+function resolveRepoUrl(identity: { repositoryUrl?: string; repositoryProvider?: string; repositoryPath?: string; githubRepo?: string }): string | undefined {
+  if (identity.repositoryUrl) {
+    return identity.repositoryUrl;
+  }
+  if (identity.githubRepo) {
+    return `https://github.com/${identity.githubRepo}`;
+  }
+  if (identity.repositoryPath && identity.repositoryProvider) {
+    if (identity.repositoryProvider === 'gitlab') {
+      return `https://gitlab.com/${identity.repositoryPath}`;
+    }
+    if (identity.repositoryProvider === 'azure') {
+      const parts = identity.repositoryPath.split('/');
+      if (parts.length >= 3) {
+        const [org, project, repo] = parts;
+        if (org && project && repo) {
+          return `https://dev.azure.com/${org}/${project}/_git/${repo}`;
+        }
+      }
+    }
+  }
+  return undefined;
 }

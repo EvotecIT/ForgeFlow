@@ -8,9 +8,12 @@ All settings live under the `forgeflow` namespace.
   - Use **ForgeFlow: Configure Project Scan Roots** to pick folders via UI.
 - `forgeflow.projects.scanMaxDepth` (number)
   - Maximum folder depth when scanning.
-- `forgeflow.projects.sortMode` ("recentOpened" | "recentModified" | "alphabetical")
+- `forgeflow.projects.sortMode` ("recentOpened" | "recentModified" | "alphabetical" | "lastActive" | "gitCommit")
   - Sort behavior for non-favorite projects.
   - Use **ForgeFlow: Set Project Sort Mode** to change via UI.
+- `forgeflow.projects.sortDirection` ("desc" | "asc")
+  - Sort direction for project lists.
+  - Use **ForgeFlow: Set Project Sort Direction** to change via UI.
 
 ## PowerShell
 - `forgeflow.powershell.profiles` (array)

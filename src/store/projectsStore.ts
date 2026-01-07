@@ -7,6 +7,7 @@ const WORKSPACE_OVERRIDES_KEY = 'forgeflow.projects.workspaceOverrides.v1';
 
 interface ProjectWorkspaceOverride {
   lastOpened?: number;
+  lastActivity?: number;
   preferredRunProfileId?: string;
 }
 
@@ -19,6 +20,7 @@ export class ProjectsStore {
     return projects.map((project) => ({
       ...project,
       lastOpened: overrides[project.id]?.lastOpened ?? project.lastOpened,
+      lastActivity: overrides[project.id]?.lastActivity ?? project.lastActivity,
       preferredRunProfileId: overrides[project.id]?.preferredRunProfileId ?? project.preferredRunProfileId
     }));
   }
@@ -73,6 +75,12 @@ export class ProjectsStore {
   public async updateLastOpened(projectId: string, timestamp: number): Promise<void> {
     const overrides = this.state.getWorkspace<Record<string, ProjectWorkspaceOverride>>(WORKSPACE_OVERRIDES_KEY, {});
     overrides[projectId] = { ...overrides[projectId], lastOpened: timestamp };
+    await this.state.setWorkspace(WORKSPACE_OVERRIDES_KEY, overrides);
+  }
+
+  public async updateLastActivity(projectId: string, timestamp: number): Promise<void> {
+    const overrides = this.state.getWorkspace<Record<string, ProjectWorkspaceOverride>>(WORKSPACE_OVERRIDES_KEY, {});
+    overrides[projectId] = { ...overrides[projectId], lastActivity: timestamp };
     await this.state.setWorkspace(WORKSPACE_OVERRIDES_KEY, overrides);
   }
 
