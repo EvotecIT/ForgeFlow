@@ -63,6 +63,9 @@ class WorkspaceRootNode implements FilesNode {
 
   public async getChildren(): Promise<FilesNode[]> {
     const folders = vscode.workspace.workspaceFolders ?? [];
+    if (folders.length === 0) {
+      return [new HintNode('Open a folder to populate Workspace')];
+    }
     return folders.map((folder) => new WorkspaceFolderNode(folder.uri.fsPath, folder.name));
   }
 
@@ -93,17 +96,20 @@ class FavoriteItemNode implements FilesNode, PathNode {
 
   public getTreeItem(): vscode.TreeItem {
     const label = baseName(this.favorite.path);
-    const collapsible = this.favorite.kind === 'folder'
+    const isFolder = this.favorite.kind === 'folder';
+    const collapsible = isFolder
       ? vscode.TreeItemCollapsibleState.Collapsed
       : vscode.TreeItemCollapsibleState.None;
     const item = new vscode.TreeItem(label, collapsible);
     item.resourceUri = vscode.Uri.file(this.favorite.path);
     item.contextValue = 'forgeflowFavorite';
-    item.command = {
-      command: 'forgeflow.files.open',
-      title: 'Open',
-      arguments: [this.favorite.path]
-    };
+    if (!isFolder) {
+      item.command = {
+        command: 'forgeflow.files.open',
+        title: 'Open',
+        arguments: [this.favorite.path]
+      };
+    }
     return item;
   }
 }
@@ -153,11 +159,32 @@ class WorkspaceEntryNode implements FilesNode, PathNode {
     const item = new vscode.TreeItem(label, collapsible);
     item.resourceUri = vscode.Uri.file(this.path);
     item.contextValue = 'forgeflowFile';
-    item.command = {
-      command: 'forgeflow.files.open',
-      title: 'Open',
-      arguments: [this.path]
-    };
+    if (this.entryType !== vscode.FileType.Directory) {
+      item.command = {
+        command: 'forgeflow.files.open',
+        title: 'Open',
+        arguments: [this.path]
+      };
+    }
+    return item;
+  }
+}
+
+class HintNode implements FilesNode {
+  public readonly id: string;
+
+  public constructor(private readonly message: string) {
+    this.id = treeId('files', `hint-${message}`);
+  }
+
+  public async getChildren(): Promise<FilesNode[]> {
+    return [];
+  }
+
+  public getTreeItem(): vscode.TreeItem {
+    const item = new vscode.TreeItem(this.message, vscode.TreeItemCollapsibleState.None);
+    item.iconPath = new vscode.ThemeIcon('info');
+    item.contextValue = 'forgeflowHint';
     return item;
   }
 }

@@ -12,6 +12,7 @@ export interface ForgeFlowSettings {
   runDefaultTarget: RunTarget;
   runIntegratedReuseTerminal: boolean;
   runIntegratedPerProjectTerminal: boolean;
+  dashboardHideArchived: boolean;
 }
 
 export function getForgeFlowSettings(): ForgeFlowSettings {
@@ -24,6 +25,7 @@ export function getForgeFlowSettings(): ForgeFlowSettings {
     defaultProfileId: config.get<string>('powershell.defaultProfileId'),
     runDefaultTarget: config.get<RunTarget>('run.defaultTarget', 'integrated'),
     runIntegratedReuseTerminal: config.get<boolean>('run.integrated.reuseTerminal', true),
-    runIntegratedPerProjectTerminal: config.get<boolean>('run.integrated.perProjectTerminal', true)
+    runIntegratedPerProjectTerminal: config.get<boolean>('run.integrated.perProjectTerminal', true),
+    dashboardHideArchived: config.get<boolean>('dashboard.hideArchived', false)
   };
 }

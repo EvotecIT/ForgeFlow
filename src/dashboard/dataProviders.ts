@@ -8,6 +8,7 @@ export interface GitHubRepoInfo {
   stars: number;
   issues: number;
   pushedAt?: string;
+  archived?: boolean;
 }
 
 export interface GitHubPrInfo {
@@ -44,13 +45,15 @@ export async function fetchGitHubRepo(repo: string, token?: string): Promise<Git
       stargazers_count?: number;
       open_issues_count?: number;
       pushed_at?: string;
+      archived?: boolean;
     };
 
     return {
       repo,
       stars: data.stargazers_count ?? 0,
       issues: data.open_issues_count ?? 0,
-      pushedAt: data.pushed_at
+      pushedAt: data.pushed_at,
+      archived: data.archived ?? false
     };
   } catch {
     return undefined;

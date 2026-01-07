@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import type { Project } from '../models/project';
 import type { ProjectsStore } from '../store/projectsStore';
 import { ForgeFlowLogger } from '../util/log';
+import { getForgeFlowSettings } from '../util/config';
 import {
   fetchGitHubOpenPrs,
   fetchGitHubRepo,
@@ -9,6 +10,7 @@ import {
   fetchPowerShellGallery,
   getLocalGitInfo
 } from './dataProviders';
+import { detectProjectIdentity } from '../scan/identityDetector';
 
 export interface DashboardRow {
   repo: string;
@@ -19,6 +21,7 @@ export interface DashboardRow {
   version: string;
   released: string;
   highlight: boolean;
+  archived: boolean;
 }
 
 interface DashboardRowWithSort extends DashboardRow {
@@ -32,13 +35,15 @@ export class DashboardService {
   ) {}
 
   public async buildRows(): Promise<DashboardRow[]> {
-    const projects = this.projectsStore.list().filter((project) => project.identity);
+    const projects = this.projectsStore.list();
+    const settings = getForgeFlowSettings();
     const token = await this.getGitHubToken();
     const rows: DashboardRowWithSort[] = [];
 
     for (const project of projects) {
-      const identity = project.identity;
-      if (!identity) {
+      const detectedInfo = await detectProjectIdentity(project.path);
+      const identity = project.identity ?? detectedInfo.identity;
+      if (!identity || (!identity.githubRepo && !identity.powershellModule && !identity.nugetPackage)) {
         continue;
       }
 
@@ -56,9 +61,14 @@ export class DashboardService {
       const issues = gitHub ? String(gitHub.issues) : 'n/a';
       const prCount = prs ? String(prs.openPrs) : 'n/a';
       const stars = gitHub ? String(gitHub.stars) : 'n/a';
-      const version = psGallery?.version ?? nuget?.version ?? 'n/a';
+      const version = psGallery?.version ?? nuget?.version ?? detectedInfo.moduleVersion ?? 'n/a';
       const released = psGallery?.released ?? nuget?.released ?? 'n/a';
-      const repoLabel = identity.githubRepo ?? project.name;
+      const archived = gitHub?.archived ?? false;
+      const repoLabel = identity.githubRepo ? (archived ? `${identity.githubRepo} (archived)` : identity.githubRepo) : project.name;
+
+      if (archived && settings.dashboardHideArchived) {
+        continue;
+      }
 
       rows.push({
         repo: repoLabel,
@@ -69,11 +79,17 @@ export class DashboardService {
         stars,
         version,
         released,
-        highlight: issues !== '0' || prCount !== '0'
+        archived,
+        highlight: !archived && (issues !== '0' || prCount !== '0')
       });
     }
 
-    rows.sort((a, b) => b.activityTimestamp - a.activityTimestamp);
+    rows.sort((a, b) => {
+      if (a.archived !== b.archived) {
+        return a.archived ? 1 : -1;
+      }
+      return b.activityTimestamp - a.activityTimestamp;
+    });
     return rows.map(({ activityTimestamp, ...rest }) => rest);
   }
 

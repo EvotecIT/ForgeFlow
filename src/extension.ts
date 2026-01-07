@@ -20,6 +20,7 @@ import type { Project, ProjectEntryPoint } from './models/project';
 import { statPath } from './util/fs';
 import type { RunTarget } from './models/run';
 import { builtInProfiles } from './run/powershellProfiles';
+import { detectProjectIdentity } from './scan/identityDetector';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const logger = new ForgeFlowLogger();
@@ -95,6 +96,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand('forgeflow.projects.refresh', async () => {
       await projectsProvider.refresh();
+    }),
+    vscode.commands.registerCommand('forgeflow.projects.configureScanRoots', async () => {
+      await configureScanRoots(projectsProvider);
+    }),
+    vscode.commands.registerCommand('forgeflow.projects.setSortMode', async () => {
+      await configureSortMode(projectsProvider);
     }),
     vscode.commands.registerCommand('forgeflow.projects.pinFavorite', async (target?: unknown) => {
       const project = extractProject(target);
@@ -197,6 +204,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await runPath(filePath, runService, projectsStore, 'externalAdmin');
     }),
     vscode.commands.registerCommand('forgeflow.dashboard.open', async () => {
+      await vscode.commands.executeCommand('workbench.view.extension.forgeflow-panel');
       await vscode.commands.executeCommand('workbench.action.openView', 'forgeflow.dashboard');
     }),
     vscode.commands.registerCommand('forgeflow.dashboard.refresh', async () => {
@@ -213,6 +221,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand('forgeflow.modules.cleanup', async () => {
       vscode.window.showInformationMessage('ForgeFlow: PowerForge engine is not installed yet.');
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeWorkspaceFolders(async () => {
+      filesProvider.refresh();
+      await projectsProvider.refresh();
+    }),
+    vscode.workspace.onDidChangeConfiguration(async (event) => {
+      if (event.affectsConfiguration('forgeflow.projects')) {
+        await projectsProvider.refresh();
+      }
     })
   );
 
@@ -255,7 +275,8 @@ async function runPath(
   target: RunTarget | undefined,
   profileId?: string
 ): Promise<void> {
-  const filePath = inputPath ?? vscode.window.activeTextEditor?.document.uri.fsPath;
+  const filePathRaw = inputPath ?? vscode.window.activeTextEditor?.document.uri.fsPath;
+  const filePath = filePathRaw ? normalizeFsPath(filePathRaw) : undefined;
   if (!filePath) {
     vscode.window.showWarningMessage('ForgeFlow: No file selected to run.');
     return;
@@ -267,7 +288,8 @@ async function runPath(
   }
 
   const project = findProjectByPath(projectsStore.list(), filePath);
-  const workingDirectory = project?.path ?? path.dirname(filePath);
+  const projectPath = project ? normalizeFsPath(project.path) : undefined;
+  const workingDirectory = await resolveWorkingDirectory(filePath, projectPath);
   await runService.run({
     filePath,
     workingDirectory,
@@ -279,7 +301,7 @@ async function runPath(
 
 function findProjectByPath(projects: Project[], filePath: string): Project | undefined {
   const resolved = path.resolve(filePath);
-  return projects.find((project) => isWithin(project.path, resolved));
+  return projects.find((project) => isWithin(normalizeFsPath(project.path), resolved));
 }
 
 function isWithin(parent: string, child: string): boolean {
@@ -338,9 +360,12 @@ async function configureProjectIdentity(
     return;
   }
 
+  const detected = await detectProjectIdentity(pick.project.path);
+  const detectedIdentity = detected.identity;
+
   const githubRepo = await vscode.window.showInputBox({
     prompt: 'GitHub repo (owner/name). Leave blank to skip.',
-    value: pick.project.identity?.githubRepo ?? ''
+    value: pick.project.identity?.githubRepo ?? detectedIdentity?.githubRepo ?? ''
   });
 
   if (githubRepo === undefined) {
@@ -349,7 +374,7 @@ async function configureProjectIdentity(
 
   const powershellModule = await vscode.window.showInputBox({
     prompt: 'PowerShell Gallery module name. Leave blank to skip.',
-    value: pick.project.identity?.powershellModule ?? ''
+    value: pick.project.identity?.powershellModule ?? detectedIdentity?.powershellModule ?? ''
   });
 
   if (powershellModule === undefined) {
@@ -358,7 +383,7 @@ async function configureProjectIdentity(
 
   const nugetPackage = await vscode.window.showInputBox({
     prompt: 'NuGet package name. Leave blank to skip.',
-    value: pick.project.identity?.nugetPackage ?? ''
+    value: pick.project.identity?.nugetPackage ?? detectedIdentity?.nugetPackage ?? ''
   });
 
   if (nugetPackage === undefined) {
@@ -372,6 +397,40 @@ async function configureProjectIdentity(
   });
 
   await dashboardProvider.refresh();
+}
+
+async function configureScanRoots(provider: ProjectsViewProvider): Promise<void> {
+  const selection = await vscode.window.showOpenDialog({
+    canSelectFiles: false,
+    canSelectFolders: true,
+    canSelectMany: true,
+    openLabel: 'Select Project Roots'
+  });
+
+  if (!selection) {
+    return;
+  }
+
+  const roots = selection.map((uri) => uri.fsPath);
+  const config = vscode.workspace.getConfiguration('forgeflow');
+  await config.update('projects.scanRoots', roots, vscode.ConfigurationTarget.Global);
+  await provider.refresh();
+  vscode.window.showInformationMessage(`ForgeFlow: ${roots.length} project root(s) configured.`);
+}
+
+async function configureSortMode(provider: ProjectsViewProvider): Promise<void> {
+  const options: Array<{ label: string; value: 'recentOpened' | 'recentModified' | 'alphabetical' }> = [
+    { label: 'Recent Opened', value: 'recentOpened' },
+    { label: 'Recent Modified', value: 'recentModified' },
+    { label: 'Alphabetical', value: 'alphabetical' }
+  ];
+  const pick = await vscode.window.showQuickPick(options, { placeHolder: 'Select project sort mode' });
+  if (!pick) {
+    return;
+  }
+  const config = vscode.workspace.getConfiguration('forgeflow');
+  await config.update('projects.sortMode', pick.value, vscode.ConfigurationTarget.Global);
+  await provider.refresh();
 }
 
 function extractPath(target: unknown): string | undefined {
@@ -444,4 +503,26 @@ function isEntryPoint(value: unknown): value is ProjectEntryPoint {
     && hasKey(value, 'label')
     && typeof value['path'] === 'string'
     && typeof value['label'] === 'string';
+}
+
+function normalizeFsPath(value: string): string {
+  if (process.platform === 'win32') {
+    const match = /^\/([a-zA-Z]:)(\/.*)/.exec(value);
+    if (match) {
+      return `${match[1]}${match[2]}`.replace(/\//g, '\\');
+    }
+    return value.replace(/\//g, '\\');
+  }
+  return value;
+}
+
+async function resolveWorkingDirectory(filePath: string, projectPath?: string): Promise<string | undefined> {
+  const candidates = [projectPath, path.dirname(filePath)].filter((value): value is string => Boolean(value));
+  for (const candidate of candidates) {
+    const stat = await statPath(candidate);
+    if (stat?.type === vscode.FileType.Directory) {
+      return candidate;
+    }
+  }
+  return undefined;
 }

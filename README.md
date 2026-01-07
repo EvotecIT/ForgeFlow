@@ -21,6 +21,11 @@ ForgeFlow is a long-term foundation extension that replaces the built-in Explore
 - ForgeFlow: Run Integrated / External / Run as Admin (External)
 - ForgeFlow: Open Dashboard / Refresh Dashboard
 - ForgeFlow: Configure Project Identity
+- ForgeFlow: Configure Project Scan Roots
+- ForgeFlow: Set Project Sort Mode
+
+## Dashboard Options
+- `forgeflow.dashboard.hideArchived` to hide archived repos from the table.
 
 ## Configuration
 See `docs/configuration.md` for all settings.

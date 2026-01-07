@@ -5,8 +5,9 @@ export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webvie
   const nonce = randomNonce();
   const rowsHtml = rows.map((row) => {
     const highlightClass = row.highlight ? 'warn' : '';
+    const archivedClass = row.archived ? 'archived' : '';
     return `
-      <tr class="${highlightClass}">
+      <tr class="${[highlightClass, archivedClass].filter(Boolean).join(' ')}">
         <td>${escapeHtml(row.activity)}</td>
         <td>${escapeHtml(row.issues)}</td>
         <td>${escapeHtml(row.prs)}</td>
@@ -78,6 +79,9 @@ export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webvie
     tr.warn {
       background: var(--ff-warn);
       color: var(--ff-warn-text);
+    }
+    tr.archived {
+      opacity: 0.6;
     }
   </style>
 </head>

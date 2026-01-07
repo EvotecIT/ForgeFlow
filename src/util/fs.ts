@@ -25,6 +25,15 @@ export async function readDirectory(path: string): Promise<[string, vscode.FileT
   }
 }
 
+export async function readFileText(path: string): Promise<string | undefined> {
+  try {
+    const data = await vscode.workspace.fs.readFile(vscode.Uri.file(path));
+    return Buffer.from(data).toString('utf8');
+  } catch {
+    return undefined;
+  }
+}
+
 export function isDirectory(stat: vscode.FileStat | undefined): boolean {
   return stat !== undefined && (stat.type & vscode.FileType.Directory) !== 0;
 }

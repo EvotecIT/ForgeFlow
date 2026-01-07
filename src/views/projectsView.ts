@@ -2,6 +2,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import type { Project, ProjectEntryPoint } from '../models/project';
 import { detectEntryPoints } from '../scan/entryPointDetector';
+import { detectProjectIdentity } from '../scan/identityDetector';
 import { ProjectScanner } from '../scan/projectScanner';
 import type { ProjectsStore } from '../store/projectsStore';
 import { getForgeFlowSettings, ProjectSortMode } from '../util/config';
@@ -41,13 +42,12 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
 
   public async refresh(): Promise<void> {
     const settings = getForgeFlowSettings();
-    const roots = settings.projectScanRoots.length > 0
-      ? settings.projectScanRoots
-      : (vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri.fsPath);
+    const roots = getScanRoots();
     const existing = this.projectsStore.list();
     const projects = await this.scanner.scan(roots, settings.projectScanMaxDepth, existing);
-    await this.projectsStore.saveProjects(projects);
-    this.projects = projects;
+    const hydrated = await this.hydrateIdentities(projects);
+    await this.projectsStore.saveProjects(hydrated);
+    this.projects = hydrated;
     this.favoriteIds = this.projectsStore.getFavoriteIds();
     this.onDidChangeTreeDataEmitter.fire(undefined);
   }
@@ -58,6 +58,13 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
 
   public async getChildren(element?: ProjectNode): Promise<ProjectNode[]> {
     if (!element) {
+      const roots = getScanRoots();
+      if (roots.length === 0) {
+        return [new ProjectHintNode('Select project roots to scan', 'forgeflow.projects.configureScanRoots')];
+      }
+      if (this.projects.length === 0) {
+        return [new ProjectHintNode('No projects found. Refresh or adjust scan roots.', 'forgeflow.projects.refresh')];
+      }
       const favorites = this.getFavoriteProjects();
       const others = this.getOtherProjects();
       return [
@@ -83,6 +90,45 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
     const favorites = new Set(this.favoriteIds);
     const others = this.projects.filter((project) => !favorites.has(project.id));
     return sortProjects(others, getForgeFlowSettings().projectSortMode);
+  }
+
+  private async hydrateIdentities(projects: Project[]): Promise<Project[]> {
+    const results: Project[] = [];
+    for (const project of projects) {
+      if (project.identity) {
+        results.push(project);
+        continue;
+      }
+      const detected = await detectProjectIdentity(project.path);
+      if (!detected.identity) {
+        results.push(project);
+        continue;
+      }
+      const updated = { ...project, identity: detected.identity };
+      await this.projectsStore.updateProject(updated);
+      results.push(updated);
+    }
+    return results;
+  }
+}
+
+class ProjectHintNode implements ProjectNode {
+  public readonly id: string;
+
+  public constructor(private readonly message: string, private readonly commandId: string) {
+    this.id = treeId('projects-hint', message);
+  }
+
+  public async getChildren(): Promise<ProjectNode[]> {
+    return [];
+  }
+
+  public getTreeItem(): vscode.TreeItem {
+    const item = new vscode.TreeItem(this.message, vscode.TreeItemCollapsibleState.None);
+    item.iconPath = new vscode.ThemeIcon('info');
+    item.contextValue = 'forgeflowHint';
+    item.command = { command: this.commandId, title: this.message };
+    return item;
   }
 }
 
@@ -129,11 +175,6 @@ class ProjectItemNode implements ProjectNode, ProjectNodeWithProject {
     const item = new vscode.TreeItem(this.project.name, vscode.TreeItemCollapsibleState.Collapsed);
     item.resourceUri = vscode.Uri.file(this.project.path);
     item.contextValue = this.isFavorite ? 'forgeflowProjectFavorite' : 'forgeflowProject';
-    item.command = {
-      command: 'forgeflow.projects.open',
-      title: 'Open Project',
-      arguments: [this.project]
-    };
     item.description = this.project.type;
     return item;
   }
@@ -147,7 +188,12 @@ class ProjectPinnedGroupNode implements ProjectNode {
   }
 
   public async getChildren(): Promise<ProjectNode[]> {
-    return this.project.pinnedItems.map((itemPath) => new ProjectPinnedItemNode(this.project, itemPath));
+    const children = await Promise.all(this.project.pinnedItems.map(async (itemPath) => {
+      const stat = await statPath(itemPath);
+      const type = stat?.type ?? vscode.FileType.Unknown;
+      return new ProjectPinnedItemNode(this.project, itemPath, type);
+    }));
+    return children;
   }
 
   public getTreeItem(): vscode.TreeItem {
@@ -161,13 +207,16 @@ class ProjectPinnedGroupNode implements ProjectNode {
 class ProjectPinnedItemNode implements ProjectNode, ProjectNodeWithPath {
   public readonly id: string;
 
-  public constructor(private readonly project: Project, public readonly path: string) {
+  public constructor(
+    private readonly project: Project,
+    public readonly path: string,
+    private readonly entryType: vscode.FileType
+  ) {
     this.id = treeId('project-pinned', path);
   }
 
   public async getChildren(): Promise<ProjectNode[]> {
-    const stat = await statPath(this.path);
-    if (!stat || stat.type !== vscode.FileType.Directory) {
+    if (this.entryType !== vscode.FileType.Directory) {
       return [];
     }
     return await readBrowseChildren(this.path, this.project);
@@ -175,14 +224,19 @@ class ProjectPinnedItemNode implements ProjectNode, ProjectNodeWithPath {
 
   public getTreeItem(): vscode.TreeItem {
     const label = baseName(this.path);
-    const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Collapsed);
+    const collapsible = this.entryType === vscode.FileType.Directory
+      ? vscode.TreeItemCollapsibleState.Collapsed
+      : vscode.TreeItemCollapsibleState.None;
+    const item = new vscode.TreeItem(label, collapsible);
     item.resourceUri = vscode.Uri.file(this.path);
     item.contextValue = 'forgeflowProjectPinned';
-    item.command = {
-      command: 'forgeflow.files.open',
-      title: 'Open',
-      arguments: [this.path]
-    };
+    if (this.entryType !== vscode.FileType.Directory) {
+      item.command = {
+        command: 'forgeflow.files.open',
+        title: 'Open',
+        arguments: [this.path]
+      };
+    }
     return item;
   }
 }
@@ -277,11 +331,13 @@ class ProjectBrowseNode implements ProjectNode, ProjectNodeWithPath {
     const item = new vscode.TreeItem(label, collapsible);
     item.resourceUri = vscode.Uri.file(this.path);
     item.contextValue = 'forgeflowProjectBrowseItem';
-    item.command = {
-      command: 'forgeflow.files.open',
-      title: 'Open',
-      arguments: [this.path]
-    };
+    if (this.entryType !== vscode.FileType.Directory) {
+      item.command = {
+        command: 'forgeflow.files.open',
+        title: 'Open',
+        arguments: [this.path]
+      };
+    }
     return item;
   }
 }
@@ -339,4 +395,12 @@ function sortProjects(projects: Project[], mode: ProjectSortMode): Project[] {
     return a.name.localeCompare(b.name);
   });
   return sorted;
+}
+
+function getScanRoots(): string[] {
+  const settings = getForgeFlowSettings();
+  if (settings.projectScanRoots.length > 0) {
+    return settings.projectScanRoots;
+  }
+  return (vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri.fsPath);
 }

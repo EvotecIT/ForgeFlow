@@ -23,7 +23,9 @@
     "onCommand:forgeflow.projects.open",
     "onCommand:forgeflow.dashboard.open",
     "onCommand:forgeflow.run",
-    "onCommand:forgeflow.modules.list"
+    "onCommand:forgeflow.modules.list",
+    "onCommand:forgeflow.projects.configureScanRoots",
+    "onCommand:forgeflow.projects.setSortMode"
   ],
   "contributes": {
     "viewsContainers": {
@@ -31,7 +33,14 @@
         {
           "id": "forgeflow",
           "title": "ForgeFlow",
-          "icon": "resources/forgeflow.svg"
+          "icon": "resources/forgeflow-activity.svg"
+        }
+      ],
+      "panel": [
+        {
+          "id": "forgeflow-panel",
+          "title": "ForgeFlow",
+          "icon": "resources/forgeflow-panel.svg"
         }
       ]
     },
@@ -46,7 +55,7 @@
           "name": "ForgeFlow: Projects"
         }
       ],
-      "panel": [
+      "forgeflow-panel": [
         {
           "id": "forgeflow.dashboard",
           "name": "ForgeFlow: Dashboard",
@@ -89,7 +98,18 @@
       },
       {
         "command": "forgeflow.projects.refresh",
-        "title": "ForgeFlow: Refresh Projects"
+        "title": "ForgeFlow: Refresh Projects",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "forgeflow.projects.configureScanRoots",
+        "title": "ForgeFlow: Configure Project Scan Roots",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "forgeflow.projects.setSortMode",
+        "title": "ForgeFlow: Set Project Sort Mode",
+        "icon": "$(sort-precedence)"
       },
       {
         "command": "forgeflow.projects.pinFavorite",
@@ -129,11 +149,21 @@
       },
       {
         "command": "forgeflow.run",
-        "title": "ForgeFlow: Run"
+        "title": "Run",
+        "category": "ForgeFlow",
+        "icon": {
+          "light": "resources/icons/run-light.svg",
+          "dark": "resources/icons/run-dark.svg"
+        }
       },
       {
         "command": "forgeflow.run.chooseProfile",
-        "title": "ForgeFlow: Run (Choose Profile)"
+        "title": "Run (Choose Profile)",
+        "category": "ForgeFlow",
+        "icon": {
+          "light": "resources/icons/profile-light.svg",
+          "dark": "resources/icons/profile-dark.svg"
+        }
       },
       {
         "command": "forgeflow.run.integrated",
@@ -180,6 +210,16 @@
           "group": "navigation"
         },
         {
+          "command": "forgeflow.projects.configureScanRoots",
+          "when": "view == forgeflow.projects",
+          "group": "navigation"
+        },
+        {
+          "command": "forgeflow.projects.setSortMode",
+          "when": "view == forgeflow.projects",
+          "group": "navigation"
+        },
+        {
           "command": "forgeflow.dashboard.refresh",
           "when": "view == forgeflow.dashboard",
           "group": "navigation"
@@ -187,9 +227,45 @@
       ],
       "view/item/context": [
         {
+          "command": "forgeflow.run",
+          "when": "view == forgeflow.files && viewItem == forgeflowFile && resourceExtname == .ps1",
+          "group": "inline@1",
+          "icon": {
+            "light": "resources/icons/run-light.svg",
+            "dark": "resources/icons/run-dark.svg"
+          }
+        },
+        {
+          "command": "forgeflow.run",
+          "when": "view == forgeflow.files && viewItem == forgeflowFavorite && resourceExtname == .ps1",
+          "group": "inline@1",
+          "icon": {
+            "light": "resources/icons/run-light.svg",
+            "dark": "resources/icons/run-dark.svg"
+          }
+        },
+        {
+          "command": "forgeflow.run.chooseProfile",
+          "when": "view == forgeflow.files && viewItem == forgeflowFile && resourceExtname == .ps1",
+          "group": "inline@2",
+          "icon": {
+            "light": "resources/icons/profile-light.svg",
+            "dark": "resources/icons/profile-dark.svg"
+          }
+        },
+        {
+          "command": "forgeflow.run.chooseProfile",
+          "when": "view == forgeflow.files && viewItem == forgeflowFavorite && resourceExtname == .ps1",
+          "group": "inline@2",
+          "icon": {
+            "light": "resources/icons/profile-light.svg",
+            "dark": "resources/icons/profile-dark.svg"
+          }
+        },
+        {
           "command": "forgeflow.files.open",
           "when": "view == forgeflow.files && viewItem == forgeflowFile",
-          "group": "inline"
+          "group": "navigation"
         },
         {
           "command": "forgeflow.files.revealInOs",
@@ -224,7 +300,43 @@
         {
           "command": "forgeflow.projects.open",
           "when": "view == forgeflow.projects && viewItem == forgeflowProject",
-          "group": "inline"
+          "group": "navigation"
+        },
+        {
+          "command": "forgeflow.run",
+          "when": "view == forgeflow.projects && viewItem == forgeflowProjectEntry && resourceExtname == .ps1",
+          "group": "inline@1",
+          "icon": {
+            "light": "resources/icons/run-light.svg",
+            "dark": "resources/icons/run-dark.svg"
+          }
+        },
+        {
+          "command": "forgeflow.run",
+          "when": "view == forgeflow.projects && viewItem == forgeflowProjectPinned && resourceExtname == .ps1",
+          "group": "inline@1",
+          "icon": {
+            "light": "resources/icons/run-light.svg",
+            "dark": "resources/icons/run-dark.svg"
+          }
+        },
+        {
+          "command": "forgeflow.run.chooseProfile",
+          "when": "view == forgeflow.projects && viewItem == forgeflowProjectEntry && resourceExtname == .ps1",
+          "group": "inline@2",
+          "icon": {
+            "light": "resources/icons/profile-light.svg",
+            "dark": "resources/icons/profile-dark.svg"
+          }
+        },
+        {
+          "command": "forgeflow.run.chooseProfile",
+          "when": "view == forgeflow.projects && viewItem == forgeflowProjectPinned && resourceExtname == .ps1",
+          "group": "inline@2",
+          "icon": {
+            "light": "resources/icons/profile-light.svg",
+            "dark": "resources/icons/profile-dark.svg"
+          }
         },
         {
           "command": "forgeflow.projects.pinFavorite",
@@ -249,7 +361,7 @@
         {
           "command": "forgeflow.projects.openEntryPoint",
           "when": "view == forgeflow.projects && viewItem == forgeflowProjectEntry",
-          "group": "inline"
+          "group": "navigation"
         },
         {
           "command": "forgeflow.projects.pinItem",
@@ -270,6 +382,26 @@
           "command": "forgeflow.projects.movePinnedItemDown",
           "when": "view == forgeflow.projects && viewItem == forgeflowProjectPinned",
           "group": "navigation"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "forgeflow.run",
+          "when": "resourceExtname == .ps1",
+          "group": "navigation",
+          "icon": {
+            "light": "resources/icons/run-light.svg",
+            "dark": "resources/icons/run-dark.svg"
+          }
+        },
+        {
+          "command": "forgeflow.run.chooseProfile",
+          "when": "resourceExtname == .ps1",
+          "group": "navigation",
+          "icon": {
+            "light": "resources/icons/profile-light.svg",
+            "dark": "resources/icons/profile-dark.svg"
+          }
         }
       ]
     },
@@ -345,6 +477,11 @@
         "forgeflow.run.integrated.perProjectTerminal": {
           "type": "boolean",
           "default": true
+        },
+        "forgeflow.dashboard.hideArchived": {
+          "type": "boolean",
+          "description": "Hide archived repositories from the dashboard.",
+          "default": false
         }
       }
     }
