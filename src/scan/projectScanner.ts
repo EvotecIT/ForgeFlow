@@ -30,6 +30,8 @@ export class ProjectScanner {
         results.push({
           ...project,
           lastOpened: previous?.lastOpened,
+          lastModified: previous?.lastModified ?? project.lastModified,
+          lastGitCommit: previous?.lastGitCommit,
           pinnedItems: previous?.pinnedItems ?? [],
           preferredRunProfileId: previous?.preferredRunProfileId,
           identity: previous?.identity,

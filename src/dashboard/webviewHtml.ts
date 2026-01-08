@@ -4,12 +4,15 @@ import type * as vscode from 'vscode';
 export interface DashboardRenderState {
   loading?: boolean;
   message?: string;
+  updatedAt?: number;
+  filter?: string;
+  authSummary?: string;
 }
 
 export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webview, state?: DashboardRenderState): string {
   const nonce = randomNonce();
   const rowsHtml = rows.length > 0
-    ? rows.map((row) => renderRow(row)).join('')
+    ? rows.map((row) => renderRow(row, state?.updatedAt)).join('')
     : renderEmptyState(state);
 
   return `<!DOCTYPE html>
@@ -43,6 +46,25 @@ export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webvie
       justify-content: space-between;
       align-items: center;
       margin-bottom: 8px;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .status {
+      font-size: 12px;
+      color: var(--ff-muted);
+      margin-right: 8px;
     }
     h2 {
       margin: 0;
@@ -57,6 +79,36 @@ export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webvie
       padding: 4px 8px;
       font-size: 12px;
       cursor: pointer;
+    }
+    button.clear {
+      background: transparent;
+      border: 1px solid var(--ff-border);
+      color: var(--ff-fg);
+      padding: 4px 8px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    button.focus {
+      background: transparent;
+      border: 1px solid var(--ff-border);
+      color: var(--ff-fg);
+      padding: 4px 8px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    input.filter {
+      background: var(--vscode-input-background);
+      color: var(--vscode-input-foreground);
+      border: 1px solid var(--ff-border);
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 12px;
+      min-width: 200px;
+    }
+    .count {
+      font-size: 11px;
+      color: var(--ff-muted);
+      margin-left: 4px;
     }
     table {
       width: 100%;
@@ -116,6 +168,10 @@ export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webvie
     .badge.unknown { color: var(--ff-muted); }
     .badge.private { color: #fca5a5; border-color: #ef4444; }
     .badge.public { color: #86efac; border-color: #22c55e; }
+    .badge.status { margin-left: 6px; }
+    .badge.status.limited { color: #facc15; border-color: #eab308; }
+    .badge.status.unauthorized { color: #fca5a5; border-color: #f87171; }
+    .badge.status.error { color: #f87171; border-color: #ef4444; }
     .repo-link {
       color: var(--vscode-textLink-foreground);
       text-decoration: none;
@@ -123,6 +179,23 @@ export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webvie
     }
     .repo-link:hover {
       text-decoration: underline;
+    }
+    .actions {
+      display: inline-flex;
+      gap: 6px;
+    }
+    .action-button {
+      border: 1px solid var(--ff-border);
+      border-radius: 6px;
+      padding: 2px 6px;
+      font-size: 11px;
+      text-decoration: none;
+      color: var(--ff-fg);
+      background: color-mix(in srgb, var(--ff-fg) 6%, transparent);
+      cursor: pointer;
+    }
+    .action-button:hover {
+      background: color-mix(in srgb, var(--ff-accent) 18%, transparent);
     }
     .mono {
       color: var(--ff-muted);
@@ -147,13 +220,28 @@ export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webvie
 </head>
 <body>
   <header>
-    <h2>ForgeFlow: Dashboard</h2>
-    <button class="refresh" id="refresh">Refresh</button>
+    <div class="title">
+      <h2>ForgeFlow: Dashboard</h2>
+      ${state?.updatedAt ? `<span class="status">Updated ${escapeHtml(formatTimestamp(state.updatedAt))}</span>` : ''}
+      ${state?.loading ? '<span class="status">Refreshing…</span>' : ''}
+      ${state?.authSummary ? `<span class="status">${escapeHtml(state.authSummary)}</span>` : ''}
+    </div>
+    <div class="controls">
+      <input class="filter" id="filter" type="text" placeholder="Filter projects…" value="${escapeHtml(state?.filter ?? '')}" />
+      <button class="clear" id="clear">Clear</button>
+      <button class="focus" id="focus">Focus</button>
+      <span class="count" id="count"></span>
+      <button class="refresh" id="refresh">Refresh</button>
+    </div>
   </header>
   <table>
     <thead>
       <tr>
+        <th data-key="repo" data-type="string">repo</th>
+        <th data-key="local" data-type="string">local</th>
+        <th>actions</th>
         <th data-key="activityTs" data-type="number">activity</th>
+        <th data-key="refreshedTs" data-type="number">refreshed</th>
         <th data-key="issues" data-type="number">issues</th>
         <th data-key="prs" data-type="number">PR</th>
         <th data-key="stars" data-type="number">stars</th>
@@ -161,12 +249,13 @@ export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webvie
         <th data-key="releasedTs" data-type="number">released</th>
         <th data-key="provider" data-type="string">host</th>
         <th data-key="visibility" data-type="string">visibility</th>
-        <th data-key="repo" data-type="string">repo</th>
-        <th data-key="open" data-type="string">open</th>
       </tr>
     </thead>
     <tbody>
       ${rowsHtml}
+      <tr id="filter-empty" hidden>
+        <td colspan="12" class="empty">No projects match the filter.</td>
+      </tr>
     </tbody>
   </table>
 
@@ -194,11 +283,44 @@ export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webvie
         }
       });
     });
+    document.querySelectorAll('.reveal-local').forEach((link) => {
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        const path = link.getAttribute('data-path');
+        if (path) {
+          vscode.postMessage({ type: 'revealInOs', path });
+        }
+      });
+    });
+    document.querySelectorAll('.copy-local').forEach((link) => {
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        const path = link.getAttribute('data-path');
+        if (path) {
+          vscode.postMessage({ type: 'copyPath', path });
+        }
+      });
+    });
+    document.querySelectorAll('.copy-relative').forEach((link) => {
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        const rel = link.getAttribute('data-relative');
+        if (rel) {
+          vscode.postMessage({ type: 'copyRelativePath', path: rel });
+        }
+      });
+    });
 
     const headers = document.querySelectorAll('th[data-key]');
     const tbody = document.querySelector('tbody');
+    const filterInput = document.getElementById('filter');
+    const clearButton = document.getElementById('clear');
+    const focusButton = document.getElementById('focus');
+    const countLabel = document.getElementById('count');
+    const emptyRow = document.getElementById('filter-empty');
     let sortKey = 'activityTs';
     let sortDir = 'desc';
+    let lastFilter = '';
 
     function updateHeaders() {
       headers.forEach((th) => {
@@ -231,6 +353,35 @@ export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webvie
       rows.forEach((row) => tbody.appendChild(row));
     }
 
+    function updateCount(visible, total) {
+      if (countLabel) {
+        countLabel.textContent = total > 0 ? String(visible) + '/' + String(total) : '';
+      }
+    }
+
+    function applyFilter() {
+      const filter = (filterInput && 'value' in filterInput) ? String(filterInput.value || '').toLowerCase().trim() : '';
+      const rows = Array.from(document.querySelectorAll('tr[data-row="data"]'));
+      let visible = 0;
+      rows.forEach((row) => {
+        const haystack = (row.dataset.search || '').toLowerCase();
+        const isMatch = !filter || haystack.includes(filter);
+        row.hidden = !isMatch;
+        if (isMatch) {
+          visible += 1;
+        }
+      });
+      if (emptyRow) {
+        emptyRow.hidden = visible !== 0 || rows.length === 0;
+      }
+      updateCount(visible, rows.length);
+      if (filter !== lastFilter) {
+        lastFilter = filter;
+        vscode.postMessage({ type: 'setFilter', filter });
+      }
+      vscode.setState({ filter, sortKey, sortDir });
+    }
+
     headers.forEach((th) => {
       th.addEventListener('click', () => {
         const key = th.dataset.key;
@@ -245,31 +396,106 @@ export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webvie
         }
         updateHeaders();
         sortRows();
+        applyFilter();
       });
     });
 
+    const saved = vscode.getState() || {};
+    if (saved.sortKey) {
+      sortKey = String(saved.sortKey);
+    }
+    if (saved.sortDir === 'asc' || saved.sortDir === 'desc') {
+      sortDir = saved.sortDir;
+    }
     updateHeaders();
+    sortRows();
+    if (filterInput && 'value' in filterInput) {
+      const initialFilter = String(filterInput.value || '') || String(saved.filter || '');
+      filterInput.value = initialFilter;
+    }
+    if (clearButton) {
+      clearButton.addEventListener('click', () => {
+        if (filterInput && 'value' in filterInput) {
+          filterInput.value = '';
+        }
+        applyFilter();
+      });
+    }
+    if (focusButton) {
+      focusButton.addEventListener('click', () => {
+        if (filterInput && 'focus' in filterInput) {
+          filterInput.focus();
+          if ('select' in filterInput) {
+            filterInput.select();
+          }
+        }
+      });
+    }
+    if (filterInput) {
+      filterInput.addEventListener('input', () => {
+        applyFilter();
+      });
+    }
+    window.addEventListener('message', (event) => {
+      const message = event.data || {};
+      if (message.type === 'focusFilter' && filterInput && 'focus' in filterInput) {
+        filterInput.focus();
+        if ('select' in filterInput) {
+          filterInput.select();
+        }
+      }
+      if (message.type === 'applyFilter' && filterInput && 'value' in filterInput) {
+        filterInput.value = String(message.filter || '');
+        applyFilter();
+      }
+    });
+    applyFilter();
   </script>
 </body>
 </html>`;
 }
 
-function renderRow(row: DashboardRow): string {
+function renderRow(row: DashboardRow, updatedAt?: number): string {
   const issues = numericValue(row.issues);
   const prs = numericValue(row.prs);
   const stars = numericValue(row.stars);
   const releasedTs = dateValue(row.released);
+  const refreshedTs = updatedAt ?? 0;
+  const refreshedText = refreshedTs ? formatAge(refreshedTs) : 'n/a';
   const providerClass = normalizeProvider(row.provider);
   const visibilityClass = normalizeVisibility(row.visibility);
+  const statusClass = normalizeStatus(row.providerStatus);
+  const statusLabel = formatStatusLabel(row.providerStatus);
   const highlightClass = row.highlight ? 'warn' : '';
   const archivedClass = row.archived ? 'archived' : '';
   const rowClasses = [highlightClass, archivedClass].filter(Boolean).join(' ');
   const repoCell = row.repoUrl
     ? `<a class="repo-link" data-url="${escapeHtml(row.repoUrl)}">${escapeHtml(row.repo)}</a>`
     : `<span>${escapeHtml(row.repo)}</span>`;
-  const openCell = row.projectPath
-    ? `<a class="repo-link open-local" data-path="${escapeHtml(row.projectPath)}">open</a>`
+  const localCell = row.localPath
+    ? `<span class="mono" title="${escapeHtml(row.projectPath ?? row.localPath)}">${escapeHtml(row.localPath)}</span>`
     : `<span class="mono">n/a</span>`;
+  const actionsCell = row.projectPath
+    ? `<span class="actions">
+        <a class="action-button open-local" data-path="${escapeHtml(row.projectPath)}" title="Open">Open</a>
+        <a class="action-button reveal-local" data-path="${escapeHtml(row.projectPath)}" title="Reveal in OS">Reveal</a>
+        <a class="action-button copy-local" data-path="${escapeHtml(row.projectPath)}" title="Copy Path">Copy</a>
+        <a class="action-button copy-relative" data-relative="${escapeHtml(row.localPath ?? row.projectPath)}" title="Copy Relative Path">Rel</a>
+      </span>`
+    : `<span class="mono">n/a</span>`;
+
+  const statusBadge = statusLabel
+    ? `<span class="badge status ${statusClass}">${escapeHtml(statusLabel)}</span>`
+    : '';
+  const searchText = [
+    row.repo,
+    row.repoUrl,
+    row.projectPath,
+    row.localPath,
+    row.provider,
+    row.visibility,
+    row.providerStatus
+  ].filter(Boolean).join(' ');
 
   return `
     <tr class="${rowClasses}" data-row="data"
@@ -279,19 +505,24 @@ function renderRow(row: DashboardRow): string {
       data-stars="${stars}"
       data-version="${escapeHtml(row.version)}"
       data-releasedTs="${releasedTs}"
+      data-refreshedTs="${refreshedTs}"
       data-provider="${escapeHtml(row.provider)}"
       data-visibility="${escapeHtml(row.visibility)}"
-      data-repo="${escapeHtml(row.repo)}">
+      data-repo="${escapeHtml(row.repo)}"
+      data-local="${escapeHtml(row.localPath ?? '')}"
+      data-search="${escapeHtml(searchText)}">
+      <td>${repoCell}</td>
+      <td>${localCell}</td>
+      <td>${actionsCell}</td>
       <td>${escapeHtml(row.activity)}</td>
+      <td>${escapeHtml(refreshedText)}</td>
       <td>${escapeHtml(row.issues)}</td>
       <td>${escapeHtml(row.prs)}</td>
       <td>${escapeHtml(row.stars)}</td>
       <td>${escapeHtml(row.version)}</td>
       <td>${escapeHtml(row.released)}</td>
-      <td><span class="badge ${providerClass}">${escapeHtml(row.provider)}</span></td>
+      <td><span class="badge ${providerClass}">${escapeHtml(row.provider)}</span>${statusBadge}</td>
       <td><span class="badge ${visibilityClass}">${escapeHtml(row.visibility)}</span></td>
-      <td>${repoCell}</td>
-      <td>${openCell}</td>
     </tr>
   `;
 }
@@ -299,9 +530,9 @@ function renderRow(row: DashboardRow): string {
 function renderEmptyState(state?: DashboardRenderState): string {
   if (state?.loading) {
     const message = state.message ?? 'Loading dashboard data...';
-    return `<tr><td colspan="10" class="empty"><span class="loading"><span class="spinner"></span>${escapeHtml(message)}</span></td></tr>`;
+    return `<tr><td colspan="12" class="empty"><span class="loading"><span class="spinner"></span>${escapeHtml(message)}</span></td></tr>`;
   }
-  return '<tr><td colspan="10" class="empty">No tracked projects configured.</td></tr>';
+  return '<tr><td colspan="12" class="empty">No tracked projects configured.</td></tr>';
 }
 
 function numericValue(value: string): number {
@@ -339,6 +570,26 @@ function normalizeVisibility(value: string): string {
   return 'unknown';
 }
 
+function normalizeStatus(value: string): string {
+  if (!value) {
+    return 'unknown';
+  }
+  return value.toLowerCase();
+}
+
+function formatStatusLabel(value: string): string {
+  switch (value) {
+    case 'limited':
+      return 'LIMITED';
+    case 'unauthorized':
+      return 'AUTH';
+    case 'error':
+      return 'ERROR';
+    default:
+      return '';
+  }
+}
+
 function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (char) => {
     switch (char) {
@@ -365,4 +616,33 @@ function randomNonce(): string {
     value += chars[Math.floor(Math.random() * chars.length)];
   }
   return value;
+}
+
+function formatTimestamp(value: number): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+  return date.toLocaleString();
+}
+
+function formatAge(value: number): string {
+  const deltaMs = Date.now() - value;
+  if (!Number.isFinite(deltaMs) || deltaMs < 0) {
+    return 'n/a';
+  }
+  const seconds = Math.floor(deltaMs / 1000);
+  if (seconds < 60) {
+    return `${seconds}s ago`;
+  }
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
 }

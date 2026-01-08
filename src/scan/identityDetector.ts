@@ -41,11 +41,12 @@ const ignoredFolders = new Set([
 
 export async function detectProjectIdentity(projectPath: string, options?: IdentityScanOptions): Promise<DetectedIdentity> {
   const scanOptions = options ?? getIdentityScanOptions();
-  const [gitInfo, psInfo, csInfo, propsInfo] = await Promise.all([
+  const [gitInfo, psInfo, csInfo, propsInfo, vscodeInfo] = await Promise.all([
     detectRepositoryInfo(projectPath),
     detectPowerShellModule(projectPath, scanOptions),
     detectCsproj(projectPath, scanOptions),
-    detectMsBuildProps(projectPath, scanOptions)
+    detectMsBuildProps(projectPath, scanOptions),
+    detectVsCodeExtension(projectPath, scanOptions)
   ]);
 
   const repoInfo = psInfo?.repoInfo ?? csInfo?.repoInfo ?? propsInfo?.repoInfo ?? gitInfo;
@@ -56,10 +57,12 @@ export async function detectProjectIdentity(projectPath: string, options?: Ident
     repositoryPath: repoInfo?.repoPath,
     githubRepo: repoInfo?.githubRepo,
     powershellModule: psInfo?.moduleName,
-    nugetPackage: csInfo?.packageId ?? propsInfo?.packageId
+    nugetPackage: csInfo?.packageId ?? propsInfo?.packageId,
+    vscodeExtensionId: vscodeInfo?.extensionId,
+    vscodeExtensionVersion: vscodeInfo?.version
   };
 
-  if (!identity.githubRepo && !identity.repositoryUrl && !identity.powershellModule && !identity.nugetPackage) {
+  if (!identity.githubRepo && !identity.repositoryUrl && !identity.powershellModule && !identity.nugetPackage && !identity.vscodeExtensionId) {
     return {};
   }
 
@@ -321,6 +324,71 @@ async function detectMsBuildProps(projectPath: string, options: IdentityScanOpti
     return undefined;
   }
   return { packageId, repoInfo };
+}
+
+async function detectVsCodeExtension(projectPath: string, options: IdentityScanOptions): Promise<{ extensionId?: string; version?: string } | undefined> {
+  const candidates = await findNamedFiles(projectPath, 'package.json', options.maxDepth);
+  if (candidates.length === 0) {
+    return undefined;
+  }
+  const rootName = path.basename(projectPath).toLowerCase();
+  const preferredFolders = normalizePreferredFolders(options.preferredFolders);
+  const scored = candidates.map((candidate) => ({
+    path: candidate.path,
+    score: scoreCandidate(candidate, rootName, preferredFolders)
+  }));
+  scored.sort((a, b) => a.score - b.score);
+
+  for (const candidate of scored) {
+    const info = await readVsCodeManifest(candidate.path);
+    if (info) {
+      return info;
+    }
+  }
+
+  return undefined;
+}
+
+async function readVsCodeManifest(manifestPath: string): Promise<{ extensionId?: string; version?: string } | undefined> {
+  const text = await readFileText(manifestPath);
+  if (!text) {
+    return undefined;
+  }
+  try {
+    const data = JSON.parse(text) as unknown;
+    if (!isRecord(data)) {
+      return undefined;
+    }
+    const publisher = readString(data, 'publisher');
+    const name = readString(data, 'name');
+    const version = readString(data, 'version');
+    const engines = readRecord(data, 'engines');
+    const vscodeEngine = engines ? readString(engines, 'vscode') : undefined;
+    const contributes = readRecord(data, 'contributes');
+    if (!publisher || !name || !version) {
+      return undefined;
+    }
+    if (!vscodeEngine && !contributes) {
+      return undefined;
+    }
+    return { extensionId: `${publisher}.${name}`, version };
+  } catch {
+    return undefined;
+  }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function readString(value: Record<string, unknown>, key: string): string | undefined {
+  const raw = value[key];
+  return typeof raw === 'string' ? raw : undefined;
+}
+
+function readRecord(value: Record<string, unknown>, key: string): Record<string, unknown> | undefined {
+  const raw = value[key];
+  return isRecord(raw) ? raw : undefined;
 }
 
 function readMsbuildValue(text: string, property: string): string | undefined {

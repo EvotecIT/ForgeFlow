@@ -4,6 +4,7 @@ import type { Project, ProjectIdentity } from '../models/project';
 const PROJECTS_KEY = 'forgeflow.projects.items.v1';
 const FAVORITES_KEY = 'forgeflow.projects.favorites.v1';
 const WORKSPACE_OVERRIDES_KEY = 'forgeflow.projects.workspaceOverrides.v1';
+const FILTER_KEY = 'forgeflow.projects.filter.v1';
 
 interface ProjectWorkspaceOverride {
   lastOpened?: number;
@@ -31,6 +32,14 @@ export class ProjectsStore {
 
   public getFavoriteIds(): string[] {
     return this.state.getGlobal<string[]>(FAVORITES_KEY, []);
+  }
+
+  public getFilter(): string {
+    return this.state.getWorkspace<string>(FILTER_KEY, '');
+  }
+
+  public async setFilter(value: string): Promise<void> {
+    await this.state.setWorkspace(FILTER_KEY, value);
   }
 
   public async addFavorite(projectId: string): Promise<void> {

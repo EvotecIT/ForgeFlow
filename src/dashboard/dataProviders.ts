@@ -10,10 +10,24 @@ export interface GitHubRepoInfo {
   pushedAt?: string;
   archived?: boolean;
   private?: boolean;
+  rateLimited?: boolean;
+  unauthorized?: boolean;
+  requestFailed?: boolean;
 }
 
 export interface GitHubPrInfo {
   openPrs: number;
+  rateLimited?: boolean;
+  unauthorized?: boolean;
+  requestFailed?: boolean;
+}
+
+export interface GitHubReleaseInfo {
+  tag?: string;
+  publishedAt?: string;
+  rateLimited?: boolean;
+  unauthorized?: boolean;
+  requestFailed?: boolean;
 }
 
 export interface GitLabRepoInfo {
@@ -23,10 +37,16 @@ export interface GitLabRepoInfo {
   lastActivity?: string;
   archived?: boolean;
   visibility?: string;
+  rateLimited?: boolean;
+  unauthorized?: boolean;
+  requestFailed?: boolean;
 }
 
 export interface GitLabMrInfo {
   openMrs: number;
+  rateLimited?: boolean;
+  unauthorized?: boolean;
+  requestFailed?: boolean;
 }
 
 export interface AzureRepoInfo {
@@ -34,14 +54,23 @@ export interface AzureRepoInfo {
   repoId: string;
   visibility?: string;
   isDisabled?: boolean;
+  rateLimited?: boolean;
+  unauthorized?: boolean;
+  requestFailed?: boolean;
 }
 
 export interface AzurePrInfo {
   openPrs: number;
+  rateLimited?: boolean;
+  unauthorized?: boolean;
+  requestFailed?: boolean;
 }
 
 export interface AzureCommitInfo {
   lastCommit?: string;
+  rateLimited?: boolean;
+  unauthorized?: boolean;
+  requestFailed?: boolean;
 }
 
 export interface PowerShellGalleryInfo {
@@ -67,7 +96,16 @@ export async function fetchGitHubRepo(repo: string, token?: string): Promise<Git
     });
 
     if (!response.ok) {
-      return undefined;
+      const rateLimited = response.status === 429 || (response.status === 403 && response.headers.get('x-ratelimit-remaining') === '0');
+      const unauthorized = response.status === 401 || response.status === 403;
+      return {
+        repo,
+        stars: 0,
+        issues: 0,
+        rateLimited,
+        unauthorized,
+        requestFailed: true
+      };
     }
 
     const data = (await response.json()) as {
@@ -99,11 +137,39 @@ export async function fetchGitHubOpenPrs(repo: string, token?: string): Promise<
     });
 
     if (!response.ok) {
-      return undefined;
+      const rateLimited = response.status === 429 || (response.status === 403 && response.headers.get('x-ratelimit-remaining') === '0');
+      const unauthorized = response.status === 401 || response.status === 403;
+      return { openPrs: 0, rateLimited, unauthorized, requestFailed: true };
     }
 
     const data = (await response.json()) as { total_count?: number };
     return { openPrs: data.total_count ?? 0 };
+  } catch {
+    return undefined;
+  }
+}
+
+export async function fetchGitHubLatestRelease(repo: string, token?: string): Promise<GitHubReleaseInfo | undefined> {
+  try {
+    const response = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined
+    });
+
+    if (!response.ok) {
+      const rateLimited = response.status === 429 || (response.status === 403 && response.headers.get('x-ratelimit-remaining') === '0');
+      const unauthorized = response.status === 401 || response.status === 403;
+      return { rateLimited, unauthorized, requestFailed: true };
+    }
+
+    const data = (await response.json()) as {
+      tag_name?: string;
+      published_at?: string;
+    };
+
+    return {
+      tag: data.tag_name,
+      publishedAt: data.published_at
+    };
   } catch {
     return undefined;
   }
@@ -116,7 +182,16 @@ export async function fetchGitLabProject(repoPath: string, token?: string): Prom
       headers: token ? { 'PRIVATE-TOKEN': token } : undefined
     });
     if (!response.ok) {
-      return undefined;
+      const rateLimited = response.status === 429;
+      const unauthorized = response.status === 401 || response.status === 403;
+      return {
+        repoPath,
+        stars: 0,
+        issues: 0,
+        rateLimited,
+        unauthorized,
+        requestFailed: true
+      };
     }
     const data = (await response.json()) as {
       star_count?: number;
@@ -145,7 +220,9 @@ export async function fetchGitLabOpenMrs(repoPath: string, token?: string): Prom
       headers: token ? { 'PRIVATE-TOKEN': token } : undefined
     });
     if (!response.ok) {
-      return undefined;
+      const rateLimited = response.status === 429;
+      const unauthorized = response.status === 401 || response.status === 403;
+      return { openMrs: 0, rateLimited, unauthorized, requestFailed: true };
     }
     const totalHeader = response.headers.get('x-total');
     const total = totalHeader ? Number(totalHeader) : undefined;
@@ -172,7 +249,15 @@ export async function fetchAzureRepo(repoPath: string, token?: string): Promise<
       headers: token ? { Authorization: `Basic ${Buffer.from(`:${token}`).toString('base64')}` } : undefined
     });
     if (!response.ok) {
-      return undefined;
+      const rateLimited = response.status === 429;
+      const unauthorized = response.status === 401 || response.status === 403;
+      return {
+        repoPath,
+        repoId: '',
+        rateLimited,
+        unauthorized,
+        requestFailed: true
+      };
     }
     const data = (await response.json()) as {
       id?: string;
@@ -207,7 +292,9 @@ export async function fetchAzureOpenPrs(repoPath: string, repoId: string, token?
       headers: token ? { Authorization: `Basic ${Buffer.from(`:${token}`).toString('base64')}` } : undefined
     });
     if (!response.ok) {
-      return undefined;
+      const rateLimited = response.status === 429;
+      const unauthorized = response.status === 401 || response.status === 403;
+      return { openPrs: 0, rateLimited, unauthorized, requestFailed: true };
     }
     const data = (await response.json()) as { count?: number };
     return { openPrs: data.count ?? 0 };
@@ -229,7 +316,9 @@ export async function fetchAzureLatestCommit(repoPath: string, repoId: string, t
       headers: token ? { Authorization: `Basic ${Buffer.from(`:${token}`).toString('base64')}` } : undefined
     });
     if (!response.ok) {
-      return undefined;
+      const rateLimited = response.status === 429;
+      const unauthorized = response.status === 401 || response.status === 403;
+      return { rateLimited, unauthorized, requestFailed: true };
     }
     const data = (await response.json()) as { value?: Array<{ committer?: { date?: string }; author?: { date?: string } }> };
     const commit = data.value?.[0];

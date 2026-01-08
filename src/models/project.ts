@@ -8,6 +8,8 @@ export interface ProjectIdentity {
   githubRepo?: string;
   powershellModule?: string;
   nugetPackage?: string;
+  vscodeExtensionId?: string;
+  vscodeExtensionVersion?: string;
 }
 
 export interface Project {
