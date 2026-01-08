@@ -7,6 +7,7 @@ ForgeFlow is a long-term foundation extension that replaces the built-in Explore
 - **ForgeFlow: Projects** — project discovery, pinned items, entry points, and browse
 - **PowerShell execution profiles** — integrated, external, and elevated (Windows)
 - **ForgeFlow: Dashboard** — repo-level snapshot of activity and package metadata
+- **ForgeFlow: Git** — branch hygiene (gone/merged/no-upstream/stale) for a selected repo
 - **PowerForge-ready** — typed interfaces and disabled commands, no engine logic yet
 - **No telemetry**
 
@@ -19,12 +20,22 @@ ForgeFlow is a long-term foundation extension that replaces the built-in Explore
 - ForgeFlow: Run
 - ForgeFlow: Run (Choose Profile)
 - ForgeFlow: Run Integrated / External / Run as Admin (External)
+- ForgeFlow: Open in Browser / Open in Browser (Choose)
+- ForgeFlow: Open in Default App
+- ForgeFlow: Open in Visual Studio (Windows, .sln)
+- ForgeFlow: Open to the Side / Rename / Delete / New File / New Folder
 - ForgeFlow: Open Dashboard / Refresh Dashboard
 - ForgeFlow: Configure Dashboard Tokens
+- ForgeFlow: Git: Refresh / Select Project / Prune Remotes / Delete Merged or Gone Branches
 - ForgeFlow: Configure Project Identity
 - ForgeFlow: Configure Project Scan Roots
 - ForgeFlow: Set Project Sort Mode
 - ForgeFlow: Set Project Sort Direction
+- ForgeFlow: Git: Set Branch Sort Mode / Direction / Filter
+- ForgeFlow: Git: Prune Remotes (All Projects)
+- ForgeFlow: Git: Delete Merged/Gone Branches (All Projects)
+- ForgeFlow: Git: Configure Project Overrides / Clean Project
+- ForgeFlow: Git: Preview Clean Project
 
 ## Dashboard Options
 - `forgeflow.dashboard.hideArchived` to hide archived repos from the table.
@@ -39,6 +50,35 @@ ForgeFlow uses VS Code's GitHub authentication when available. For GitLab and Az
 
 ## Configuration
 See `docs/configuration.md` for all settings.
+
+## Install in VS Code Insiders (live usage)
+1) `npm run compile`
+2) `npm run package`
+3) Install the VSIX into Insiders:
+   - Command line: `code-insiders --install-extension forgeflow-0.1.0.vsix`
+   - Or Extensions view → “…” → **Install from VSIX…**
+4) Reload window.
+
+Tip: re-run step 2 + 3 after changes (use `--force` to overwrite).
+
+## Dev link install (no VSIX rebuild)
+This creates a symlink/junction from your repo into the VS Code extensions folder so Insiders loads ForgeFlow directly.
+
+Windows (Insiders):
+1) `npm run compile`
+2) `npm run dev:install:insiders`
+3) Reload window
+
+macOS/Linux (Insiders):
+1) `npm run compile`
+2) `./scripts/dev-install.sh`
+3) Reload window
+
+Re-run `npm run compile` after changes, then reload VS Code.
+
+## Shortcuts
+- `Alt+B` → Open current file in browser (extensions configurable via `forgeflow.browser.fileExtensions`)
+- `Shift+Alt+B` → Choose browser
 
 ## Notes
 - Windows-only elevation is supported via external PowerShell. On non-Windows platforms, elevation is disabled.
