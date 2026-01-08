@@ -20,6 +20,7 @@ import { detectProjectIdentity } from '../scan/identityDetector';
 
 export interface DashboardRow {
   repoUrl?: string;
+  projectPath?: string;
   provider: string;
   visibility: string;
   repo: string;
@@ -110,6 +111,7 @@ export class DashboardService {
 
       rows.push({
         repoUrl,
+        projectPath: project.path,
         provider,
         visibility,
         repo: repoLabel,

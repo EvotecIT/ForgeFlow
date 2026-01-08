@@ -162,6 +162,7 @@ export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webvie
         <th data-key="provider" data-type="string">host</th>
         <th data-key="visibility" data-type="string">visibility</th>
         <th data-key="repo" data-type="string">repo</th>
+        <th data-key="open" data-type="string">open</th>
       </tr>
     </thead>
     <tbody>
@@ -181,6 +182,15 @@ export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webvie
         const url = link.getAttribute('data-url');
         if (url) {
           vscode.postMessage({ type: 'openUrl', url });
+        }
+      });
+    });
+    document.querySelectorAll('.open-local').forEach((link) => {
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        const path = link.getAttribute('data-path');
+        if (path) {
+          vscode.postMessage({ type: 'openProject', path });
         }
       });
     });
@@ -257,6 +267,9 @@ function renderRow(row: DashboardRow): string {
   const repoCell = row.repoUrl
     ? `<a class="repo-link" data-url="${escapeHtml(row.repoUrl)}">${escapeHtml(row.repo)}</a>`
     : `<span>${escapeHtml(row.repo)}</span>`;
+  const openCell = row.projectPath
+    ? `<a class="repo-link open-local" data-path="${escapeHtml(row.projectPath)}">open</a>`
+    : `<span class="mono">n/a</span>`;
 
   return `
     <tr class="${rowClasses}" data-row="data"
@@ -278,6 +291,7 @@ function renderRow(row: DashboardRow): string {
       <td><span class="badge ${providerClass}">${escapeHtml(row.provider)}</span></td>
       <td><span class="badge ${visibilityClass}">${escapeHtml(row.visibility)}</span></td>
       <td>${repoCell}</td>
+      <td>${openCell}</td>
     </tr>
   `;
 }
@@ -285,9 +299,9 @@ function renderRow(row: DashboardRow): string {
 function renderEmptyState(state?: DashboardRenderState): string {
   if (state?.loading) {
     const message = state.message ?? 'Loading dashboard data...';
-    return `<tr><td colspan="9" class="empty"><span class="loading"><span class="spinner"></span>${escapeHtml(message)}</span></td></tr>`;
+    return `<tr><td colspan="10" class="empty"><span class="loading"><span class="spinner"></span>${escapeHtml(message)}</span></td></tr>`;
   }
-  return '<tr><td colspan="9" class="empty">No tracked projects configured.</td></tr>';
+  return '<tr><td colspan="10" class="empty">No tracked projects configured.</td></tr>';
 }
 
 function numericValue(value: string): number {

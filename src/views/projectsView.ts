@@ -102,9 +102,10 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
   private getRootGroups(): ProjectNode[] {
     const favorites = this.getFavoriteProjects();
     const others = this.getOtherProjects();
+    const sortDescription = buildSortDescription(others);
     return [
       new ProjectGroupNode('Favorite Projects', 'forgeflowGroup', favorites, true),
-      new ProjectGroupNode('Projects', 'forgeflowGroup', others, false)
+      new ProjectGroupNode('Projects', 'forgeflowGroup', others, false, sortDescription)
     ];
   }
 
@@ -141,7 +142,10 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
       }
       const gitInfo = await getLocalGitInfo(project.path);
       const lastCommit = gitInfo?.lastCommit ? Date.parse(gitInfo.lastCommit) : undefined;
-      results.push({ ...project, lastGitCommit: Number.isNaN(lastCommit ?? NaN) ? undefined : lastCommit });
+      const lastGitCommit = Number.isNaN(lastCommit ?? NaN) ? undefined : lastCommit;
+      const updated = { ...project, lastGitCommit };
+      await this.projectsStore.updateProject(updated);
+      results.push(updated);
     }
     return results;
   }
@@ -203,7 +207,8 @@ class ProjectGroupNode implements ProjectNode {
     private readonly label: string,
     private readonly contextValue: string,
     private readonly projects: Project[],
-    private readonly isFavoriteGroup: boolean
+    private readonly isFavoriteGroup: boolean,
+    private readonly description?: string
   ) {
     this.id = treeId('projects-group', label);
   }
@@ -216,6 +221,9 @@ class ProjectGroupNode implements ProjectNode {
     const item = new vscode.TreeItem(this.label, vscode.TreeItemCollapsibleState.Expanded);
     item.contextValue = this.contextValue;
     item.iconPath = new vscode.ThemeIcon(this.isFavoriteGroup ? 'star-full' : 'folder-library');
+    if (this.description) {
+      item.description = this.description;
+    }
     return item;
   }
 }
@@ -484,6 +492,37 @@ function getScanRoots(): string[] {
     return settings.projectScanRoots;
   }
   return (vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri.fsPath);
+}
+
+function buildSortDescription(projects: Project[]): string {
+  const settings = getForgeFlowSettings();
+  const modeLabel = getSortModeLabel(settings.projectSortMode);
+  const directionLabel = settings.projectSortDirection === 'asc' ? 'ascending' : 'descending';
+  let suffix = '';
+  if (settings.projectSortMode === 'gitCommit') {
+    const missing = projects.some((project) => project.type === 'git' && project.lastGitCommit === undefined);
+    if (missing) {
+      suffix = ' (loading git commit data...)';
+    }
+  }
+  return `Sorted by ${modeLabel} (${directionLabel})${suffix}`;
+}
+
+function getSortModeLabel(mode: ProjectSortMode): string {
+  switch (mode) {
+    case 'recentOpened':
+      return 'recently opened';
+    case 'recentModified':
+      return 'recently modified';
+    case 'alphabetical':
+      return 'alphabetical';
+    case 'lastActive':
+      return 'last active';
+    case 'gitCommit':
+      return 'git commit time';
+    default:
+      return 'custom';
+  }
 }
 
 function needsRepositoryIdentity(identity: ProjectIdentity | undefined): boolean {

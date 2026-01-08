@@ -491,13 +491,17 @@ async function configureScanRoots(provider: ProjectsViewProvider): Promise<void>
 }
 
 async function configureSortMode(provider: ProjectsViewProvider): Promise<void> {
-  const options: Array<{ label: string; value: ProjectSortMode }> = [
+  const settings = getForgeFlowSettings();
+  const options: Array<{ label: string; value: ProjectSortMode; picked?: boolean }> = [
     { label: 'Recent Opened', value: 'recentOpened' },
     { label: 'Recent Modified', value: 'recentModified' },
     { label: 'Alphabetical', value: 'alphabetical' },
     { label: 'Last Active', value: 'lastActive' },
     { label: 'Git Commit Time', value: 'gitCommit' }
-  ];
+  ].map((option) => ({
+    ...option,
+    picked: option.value === settings.projectSortMode
+  }));
   const pick = await vscode.window.showQuickPick(options, { placeHolder: 'Select project sort mode' });
   if (!pick) {
     return;
@@ -508,10 +512,14 @@ async function configureSortMode(provider: ProjectsViewProvider): Promise<void> 
 }
 
 async function configureSortDirection(provider: ProjectsViewProvider): Promise<void> {
-  const options: Array<{ label: string; value: SortDirection }> = [
+  const settings = getForgeFlowSettings();
+  const options: Array<{ label: string; value: SortDirection; picked?: boolean }> = [
     { label: 'Descending', value: 'desc' },
     { label: 'Ascending', value: 'asc' }
-  ];
+  ].map((option) => ({
+    ...option,
+    picked: option.value === settings.projectSortDirection
+  }));
   const pick = await vscode.window.showQuickPick(options, { placeHolder: 'Select sort direction' });
   if (!pick) {
     return;
