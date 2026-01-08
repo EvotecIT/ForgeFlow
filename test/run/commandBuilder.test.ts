@@ -24,6 +24,12 @@ describe('PowerShell command builder', () => {
     }
   });
 
+  it('builds process command with -NoExit when keepOpen is true', () => {
+    const request: RunRequest = { filePath: '/tmp/test.ps1' };
+    const command = buildProcessCommand(request, profile, true);
+    assert.ok(command.args.includes('-NoExit'));
+  });
+
   it('builds terminal command with Set-Location when cwd provided', () => {
     const request: RunRequest = { filePath: '/tmp/test.ps1', workingDirectory: '/tmp' };
     const command = buildTerminalCommand(request);
@@ -36,5 +42,14 @@ describe('PowerShell command builder', () => {
     const command = buildAdminCommand(request, profile);
     assert.equal(command.executable, 'powershell.exe');
     assert.ok(command.args.includes('-Command'));
+  });
+
+  it('builds admin command with -NoExit when keepOpen is true', () => {
+    const request: RunRequest = { filePath: 'C:\\Temp\\Run.ps1', workingDirectory: 'C:\\Temp' };
+    const command = buildAdminCommand(request, profile, true);
+    const scriptArgIndex = command.args.findIndex((arg) => arg === '-Command');
+    assert.ok(scriptArgIndex >= 0);
+    const script = command.args[scriptArgIndex + 1];
+    assert.ok(script.includes('-NoExit'));
   });
 });

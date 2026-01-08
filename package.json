@@ -22,6 +22,7 @@
     "onCommand:forgeflow.files.run",
     "onCommand:forgeflow.projects.open",
     "onCommand:forgeflow.dashboard.open",
+    "onCommand:forgeflow.dashboard.configureTokens",
     "onCommand:forgeflow.run",
     "onCommand:forgeflow.modules.list",
     "onCommand:forgeflow.projects.configureScanRoots",
@@ -173,15 +174,27 @@
       },
       {
         "command": "forgeflow.run.integrated",
-        "title": "ForgeFlow: Run Integrated"
+        "title": "ForgeFlow: Run Integrated",
+        "icon": {
+          "light": "resources/icons/run-terminal-light.svg",
+          "dark": "resources/icons/run-terminal-dark.svg"
+        }
       },
       {
         "command": "forgeflow.run.external",
-        "title": "ForgeFlow: Run External"
+        "title": "ForgeFlow: Run External",
+        "icon": {
+          "light": "resources/icons/run-external-light.svg",
+          "dark": "resources/icons/run-external-dark.svg"
+        }
       },
       {
         "command": "forgeflow.run.externalAdmin",
-        "title": "ForgeFlow: Run as Admin (External)"
+        "title": "ForgeFlow: Run as Admin (External)",
+        "icon": {
+          "light": "resources/icons/run-admin-light.svg",
+          "dark": "resources/icons/run-admin-dark.svg"
+        }
       },
       {
         "command": "forgeflow.dashboard.open",
@@ -190,6 +203,11 @@
       {
         "command": "forgeflow.dashboard.refresh",
         "title": "ForgeFlow: Refresh Dashboard"
+      },
+      {
+        "command": "forgeflow.dashboard.configureTokens",
+        "title": "ForgeFlow: Configure Dashboard Tokens",
+        "icon": "$(key)"
       },
       {
         "command": "forgeflow.dashboard.configureIdentity",
@@ -234,6 +252,11 @@
           "command": "forgeflow.dashboard.refresh",
           "when": "view == forgeflow.dashboard",
           "group": "navigation"
+        },
+        {
+          "command": "forgeflow.dashboard.configureTokens",
+          "when": "view == forgeflow.dashboard",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
@@ -247,12 +270,66 @@
           }
         },
         {
+          "command": "forgeflow.run.integrated",
+          "when": "view == forgeflow.files && viewItem == forgeflowFile && resourceExtname == .ps1",
+          "group": "navigation@1",
+          "icon": {
+            "light": "resources/icons/run-terminal-light.svg",
+            "dark": "resources/icons/run-terminal-dark.svg"
+          }
+        },
+        {
+          "command": "forgeflow.run.external",
+          "when": "view == forgeflow.files && viewItem == forgeflowFile && resourceExtname == .ps1",
+          "group": "navigation@2",
+          "icon": {
+            "light": "resources/icons/run-external-light.svg",
+            "dark": "resources/icons/run-external-dark.svg"
+          }
+        },
+        {
+          "command": "forgeflow.run.externalAdmin",
+          "when": "view == forgeflow.files && viewItem == forgeflowFile && resourceExtname == .ps1 && isWindows",
+          "group": "navigation@3",
+          "icon": {
+            "light": "resources/icons/run-admin-light.svg",
+            "dark": "resources/icons/run-admin-dark.svg"
+          }
+        },
+        {
           "command": "forgeflow.run",
           "when": "view == forgeflow.files && viewItem == forgeflowFavorite && resourceExtname == .ps1",
           "group": "inline@1",
           "icon": {
             "light": "resources/icons/run-light.svg",
             "dark": "resources/icons/run-dark.svg"
+          }
+        },
+        {
+          "command": "forgeflow.run.integrated",
+          "when": "view == forgeflow.files && viewItem == forgeflowFavorite && resourceExtname == .ps1",
+          "group": "navigation@1",
+          "icon": {
+            "light": "resources/icons/run-terminal-light.svg",
+            "dark": "resources/icons/run-terminal-dark.svg"
+          }
+        },
+        {
+          "command": "forgeflow.run.external",
+          "when": "view == forgeflow.files && viewItem == forgeflowFavorite && resourceExtname == .ps1",
+          "group": "navigation@2",
+          "icon": {
+            "light": "resources/icons/run-external-light.svg",
+            "dark": "resources/icons/run-external-dark.svg"
+          }
+        },
+        {
+          "command": "forgeflow.run.externalAdmin",
+          "when": "view == forgeflow.files && viewItem == forgeflowFavorite && resourceExtname == .ps1 && isWindows",
+          "group": "navigation@3",
+          "icon": {
+            "light": "resources/icons/run-admin-light.svg",
+            "dark": "resources/icons/run-admin-dark.svg"
           }
         },
         {
@@ -323,12 +400,66 @@
           }
         },
         {
+          "command": "forgeflow.run.integrated",
+          "when": "view == forgeflow.projects && viewItem == forgeflowProjectEntry && resourceExtname == .ps1",
+          "group": "navigation@1",
+          "icon": {
+            "light": "resources/icons/run-terminal-light.svg",
+            "dark": "resources/icons/run-terminal-dark.svg"
+          }
+        },
+        {
+          "command": "forgeflow.run.external",
+          "when": "view == forgeflow.projects && viewItem == forgeflowProjectEntry && resourceExtname == .ps1",
+          "group": "navigation@2",
+          "icon": {
+            "light": "resources/icons/run-external-light.svg",
+            "dark": "resources/icons/run-external-dark.svg"
+          }
+        },
+        {
+          "command": "forgeflow.run.externalAdmin",
+          "when": "view == forgeflow.projects && viewItem == forgeflowProjectEntry && resourceExtname == .ps1 && isWindows",
+          "group": "navigation@3",
+          "icon": {
+            "light": "resources/icons/run-admin-light.svg",
+            "dark": "resources/icons/run-admin-dark.svg"
+          }
+        },
+        {
           "command": "forgeflow.run",
           "when": "view == forgeflow.projects && viewItem == forgeflowProjectPinned && resourceExtname == .ps1",
           "group": "inline@1",
           "icon": {
             "light": "resources/icons/run-light.svg",
             "dark": "resources/icons/run-dark.svg"
+          }
+        },
+        {
+          "command": "forgeflow.run.integrated",
+          "when": "view == forgeflow.projects && viewItem == forgeflowProjectPinned && resourceExtname == .ps1",
+          "group": "navigation@1",
+          "icon": {
+            "light": "resources/icons/run-terminal-light.svg",
+            "dark": "resources/icons/run-terminal-dark.svg"
+          }
+        },
+        {
+          "command": "forgeflow.run.external",
+          "when": "view == forgeflow.projects && viewItem == forgeflowProjectPinned && resourceExtname == .ps1",
+          "group": "navigation@2",
+          "icon": {
+            "light": "resources/icons/run-external-light.svg",
+            "dark": "resources/icons/run-external-dark.svg"
+          }
+        },
+        {
+          "command": "forgeflow.run.externalAdmin",
+          "when": "view == forgeflow.projects && viewItem == forgeflowProjectPinned && resourceExtname == .ps1 && isWindows",
+          "group": "navigation@3",
+          "icon": {
+            "light": "resources/icons/run-admin-light.svg",
+            "dark": "resources/icons/run-admin-dark.svg"
           }
         },
         {
@@ -403,6 +534,33 @@
           "icon": {
             "light": "resources/icons/run-light.svg",
             "dark": "resources/icons/run-dark.svg"
+          }
+        },
+        {
+          "command": "forgeflow.run.integrated",
+          "when": "resourceExtname == .ps1",
+          "group": "navigation",
+          "icon": {
+            "light": "resources/icons/run-terminal-light.svg",
+            "dark": "resources/icons/run-terminal-dark.svg"
+          }
+        },
+        {
+          "command": "forgeflow.run.external",
+          "when": "resourceExtname == .ps1",
+          "group": "navigation",
+          "icon": {
+            "light": "resources/icons/run-external-light.svg",
+            "dark": "resources/icons/run-external-dark.svg"
+          }
+        },
+        {
+          "command": "forgeflow.run.externalAdmin",
+          "when": "resourceExtname == .ps1 && isWindows",
+          "group": "navigation",
+          "icon": {
+            "light": "resources/icons/run-admin-light.svg",
+            "dark": "resources/icons/run-admin-dark.svg"
           }
         },
         {
@@ -519,6 +677,16 @@
         },
         "forgeflow.run.integrated.perProjectTerminal": {
           "type": "boolean",
+          "default": true
+        },
+        "forgeflow.run.external.keepOpen": {
+          "type": "boolean",
+          "description": "Keep external PowerShell window open after the script finishes.",
+          "default": true
+        },
+        "forgeflow.run.externalAdmin.keepOpen": {
+          "type": "boolean",
+          "description": "Keep elevated external PowerShell window open after the script finishes.",
           "default": true
         },
         "forgeflow.dashboard.hideArchived": {

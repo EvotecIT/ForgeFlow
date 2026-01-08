@@ -20,6 +20,7 @@ ForgeFlow is a long-term foundation extension that replaces the built-in Explore
 - ForgeFlow: Run (Choose Profile)
 - ForgeFlow: Run Integrated / External / Run as Admin (External)
 - ForgeFlow: Open Dashboard / Refresh Dashboard
+- ForgeFlow: Configure Dashboard Tokens
 - ForgeFlow: Configure Project Identity
 - ForgeFlow: Configure Project Scan Roots
 - ForgeFlow: Set Project Sort Mode
@@ -27,6 +28,14 @@ ForgeFlow is a long-term foundation extension that replaces the built-in Explore
 
 ## Dashboard Options
 - `forgeflow.dashboard.hideArchived` to hide archived repos from the table.
+
+## Dashboard Tokens
+ForgeFlow uses VS Code's GitHub authentication when available. For GitLab and Azure DevOps (and as a GitHub fallback), configure tokens via:
+- **ForgeFlow: Configure Dashboard Tokens**
+
+## Identity Scan Options
+- `forgeflow.projects.identityScanDepth` controls how deep we look for psd1/csproj/Directory.Build.props.
+- `forgeflow.projects.identityPreferredFolders` sets preferred folder names for ranking.
 
 ## Configuration
 See `docs/configuration.md` for all settings.
