@@ -1,11 +1,16 @@
 import type { DashboardRow } from './dashboardService';
 import type * as vscode from 'vscode';
 
-export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webview): string {
+export interface DashboardRenderState {
+  loading?: boolean;
+  message?: string;
+}
+
+export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webview, state?: DashboardRenderState): string {
   const nonce = randomNonce();
   const rowsHtml = rows.length > 0
     ? rows.map((row) => renderRow(row)).join('')
-    : '<tr><td colspan="9" class="empty">No tracked projects configured.</td></tr>';
+    : renderEmptyState(state);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -121,6 +126,22 @@ export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webvie
     }
     .mono {
       color: var(--ff-muted);
+    }
+    .loading {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .spinner {
+      width: 12px;
+      height: 12px;
+      border: 2px solid color-mix(in srgb, var(--ff-fg) 20%, transparent);
+      border-top-color: var(--vscode-textLink-foreground);
+      border-radius: 999px;
+      animation: spin 0.9s linear infinite;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
     }
   </style>
 </head>
@@ -259,6 +280,14 @@ function renderRow(row: DashboardRow): string {
       <td>${repoCell}</td>
     </tr>
   `;
+}
+
+function renderEmptyState(state?: DashboardRenderState): string {
+  if (state?.loading) {
+    const message = state.message ?? 'Loading dashboard data...';
+    return `<tr><td colspan="9" class="empty"><span class="loading"><span class="spinner"></span>${escapeHtml(message)}</span></td></tr>`;
+  }
+  return '<tr><td colspan="9" class="empty">No tracked projects configured.</td></tr>';
 }
 
 function numericValue(value: string): number {

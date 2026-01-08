@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
-import type { Project, ProjectEntryPoint } from '../models/project';
+import type { Project, ProjectEntryPoint, ProjectIdentity } from '../models/project';
 import { detectEntryPoints } from '../scan/entryPointDetector';
 import { detectProjectIdentity } from '../scan/identityDetector';
 import { ProjectScanner } from '../scan/projectScanner';
@@ -111,16 +111,21 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
   private async hydrateIdentities(projects: Project[]): Promise<Project[]> {
     const results: Project[] = [];
     for (const project of projects) {
-      if (project.identity) {
+      const needsRepo = needsRepositoryIdentity(project.identity);
+      if (project.identity && !needsRepo) {
         results.push(project);
         continue;
       }
-      const detected = await detectProjectIdentity(project.path);
+      const detected = await detectProjectIdentity(project.path, {
+        maxDepth: getForgeFlowSettings().identityScanDepth,
+        preferredFolders: getForgeFlowSettings().identityPreferredFolders
+      });
       if (!detected.identity) {
         results.push(project);
         continue;
       }
-      const updated = { ...project, identity: detected.identity };
+      const merged = mergeIdentity(project.identity, detected.identity);
+      const updated = { ...project, identity: merged };
       await this.projectsStore.updateProject(updated);
       results.push(updated);
     }
@@ -479,4 +484,25 @@ function getScanRoots(): string[] {
     return settings.projectScanRoots;
   }
   return (vscode.workspace.workspaceFolders ?? []).map((folder) => folder.uri.fsPath);
+}
+
+function needsRepositoryIdentity(identity: ProjectIdentity | undefined): boolean {
+  if (!identity) {
+    return true;
+  }
+  return !identity.repositoryUrl && !identity.repositoryProvider && !identity.repositoryPath && !identity.githubRepo;
+}
+
+function mergeIdentity(existing: ProjectIdentity | undefined, detected: ProjectIdentity): ProjectIdentity {
+  if (!existing) {
+    return detected;
+  }
+  return {
+    repositoryUrl: existing.repositoryUrl ?? detected.repositoryUrl,
+    repositoryProvider: existing.repositoryProvider ?? detected.repositoryProvider,
+    repositoryPath: existing.repositoryPath ?? detected.repositoryPath,
+    githubRepo: existing.githubRepo ?? detected.githubRepo,
+    powershellModule: existing.powershellModule ?? detected.powershellModule,
+    nugetPackage: existing.nugetPackage ?? detected.nugetPackage
+  };
 }

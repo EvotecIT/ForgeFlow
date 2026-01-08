@@ -42,11 +42,11 @@ export class RunService {
     }
 
     if (target === 'external') {
-      await this.runExternal(request, profile);
+      await this.runExternal(request, profile, settings.runExternalKeepOpen);
       return;
     }
 
-    await this.runExternalAdmin(request, profile);
+    await this.runExternalAdmin(request, profile, settings.runExternalAdminKeepOpen);
   }
 
   private resolveProfile(
@@ -103,8 +103,8 @@ export class RunService {
     this.logger.info(`Run integrated: ${request.filePath}`);
   }
 
-  private async runExternal(request: RunRequest, profile: PowerShellProfile): Promise<void> {
-    const command = buildProcessCommand(request, profile);
+  private async runExternal(request: RunRequest, profile: PowerShellProfile, keepOpen: boolean): Promise<void> {
+    const command = buildProcessCommand(request, profile, keepOpen);
     this.logger.info(`Run external: ${command.executable} ${command.args.join(' ')}`);
     const child = spawn(command.executable, command.args, {
       cwd: command.cwd,
@@ -117,12 +117,12 @@ export class RunService {
     });
   }
 
-  private async runExternalAdmin(request: RunRequest, profile: PowerShellProfile): Promise<void> {
+  private async runExternalAdmin(request: RunRequest, profile: PowerShellProfile, keepOpen: boolean): Promise<void> {
     if (process.platform !== 'win32') {
       vscode.window.showWarningMessage('ForgeFlow: Elevated external runs are only supported on Windows.');
       return;
     }
-    const command = buildAdminCommand(request, profile);
+    const command = buildAdminCommand(request, profile, keepOpen);
     this.logger.info(`Run external admin: ${command.executable} ${command.args.join(' ')}`);
     const child = spawn(command.executable, command.args, {
       cwd: command.cwd,

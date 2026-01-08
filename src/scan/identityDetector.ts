@@ -2,10 +2,16 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import type { ProjectIdentity, RepositoryProvider } from '../models/project';
 import { readDirectory, readFileText, statPath } from '../util/fs';
+import { getForgeFlowSettings } from '../util/config';
 
 export interface DetectedIdentity {
   identity?: ProjectIdentity;
   moduleVersion?: string;
+}
+
+export interface IdentityScanOptions {
+  maxDepth: number;
+  preferredFolders: string[];
 }
 
 interface FileCandidate {
@@ -33,14 +39,13 @@ const ignoredFolders = new Set([
   'packages'
 ]);
 
-const preferredSegments = ['module', 'modules', 'src', 'source', 'sources'];
-
-export async function detectProjectIdentity(projectPath: string): Promise<DetectedIdentity> {
+export async function detectProjectIdentity(projectPath: string, options?: IdentityScanOptions): Promise<DetectedIdentity> {
+  const scanOptions = options ?? getIdentityScanOptions();
   const [gitInfo, psInfo, csInfo, propsInfo] = await Promise.all([
     detectRepositoryInfo(projectPath),
-    detectPowerShellModule(projectPath),
-    detectCsproj(projectPath),
-    detectMsBuildProps(projectPath)
+    detectPowerShellModule(projectPath, scanOptions),
+    detectCsproj(projectPath, scanOptions),
+    detectMsBuildProps(projectPath, scanOptions)
   ]);
 
   const repoInfo = psInfo?.repoInfo ?? csInfo?.repoInfo ?? propsInfo?.repoInfo ?? gitInfo;
@@ -107,23 +112,38 @@ async function resolveGitConfigPath(projectPath: string): Promise<string | undef
 }
 
 function parseOriginRemoteUrl(text: string): string | undefined {
+  const remotes = parseRemoteUrls(text);
+  if (remotes['origin'] && remotes['origin'].length > 0) {
+    return remotes['origin'][0];
+  }
+  const firstRemote = Object.values(remotes).find((urls) => urls.length > 0);
+  return firstRemote ? firstRemote[0] : undefined;
+}
+
+function parseRemoteUrls(text: string): Record<string, string[]> {
   const lines = text.split(/\r?\n/);
-  let inOrigin = false;
+  let currentRemote: string | undefined;
+  const remotes: Record<string, string[]> = {};
   for (const line of lines) {
     const trimmed = line.trim();
     if (trimmed.startsWith('[')) {
-      inOrigin = /^\[remote\s+"origin"\]/i.test(trimmed);
+      const match = /^\[remote\s+"([^"]+)"\]/i.exec(trimmed);
+      currentRemote = match?.[1];
       continue;
     }
-    if (inOrigin) {
-      const match = /^url\s*=\s*(.+)$/i.exec(trimmed);
-      if (match) {
-        const url = match[1];
-        return url ? url.trim() : undefined;
+    if (!currentRemote) {
+      continue;
+    }
+    const match = /^url\s*=\s*(.+)$/i.exec(trimmed);
+    if (match) {
+      const url = match[1]?.trim();
+      if (url) {
+        const bucket = remotes[currentRemote] ?? (remotes[currentRemote] = []);
+        bucket.push(url);
       }
     }
   }
-  return undefined;
+  return remotes;
 }
 
 function parseRepositoryInfo(remoteUrl: string): RepoInfo | undefined {
@@ -141,26 +161,39 @@ function parseRepositoryInfo(remoteUrl: string): RepoInfo | undefined {
   if (sshAzure) {
     return toAzureRepoInfo(sshAzure[1]);
   }
+  const sshAzureScp = /^git@ssh\.dev\.azure\.com:(.+)$/i.exec(cleaned);
+  if (sshAzureScp) {
+    return toAzureRepoInfo(sshAzureScp[1]);
+  }
 
-  const httpsGithub = /^https?:\/\/github\.com\/(.+)$/i.exec(cleaned);
-  if (httpsGithub) {
-    return toRepoInfo('github', httpsGithub[1], 'https://github.com');
-  }
-  const httpsGitlab = /^https?:\/\/gitlab\.com\/(.+)$/i.exec(cleaned);
-  if (httpsGitlab) {
-    return toRepoInfo('gitlab', httpsGitlab[1], 'https://gitlab.com');
-  }
-  const httpsAzure = /^https?:\/\/dev\.azure\.com\/(.+)$/i.exec(cleaned);
-  if (httpsAzure) {
-    return toAzureRepoInfo(httpsAzure[1]);
-  }
-  const httpsAzureLegacy = /^https?:\/\/([^.]+)\.visualstudio\.com\/(.+)$/i.exec(cleaned);
-  if (httpsAzureLegacy) {
-    const org = httpsAzureLegacy[1];
-    const rest = httpsAzureLegacy[2];
-    if (org && rest) {
-      return toAzureRepoInfo(`${org}/${rest}`);
+  if (cleaned.includes('://')) {
+    const urlInfo = parseUrlRepository(cleaned);
+    if (urlInfo) {
+      return urlInfo;
     }
+  }
+
+  return undefined;
+}
+
+function parseUrlRepository(remoteUrl: string): RepoInfo | undefined {
+  try {
+    const url = new URL(remoteUrl);
+    const host = url.hostname.toLowerCase();
+    const pathParts = url.pathname.split('/').filter(Boolean);
+
+    if (host === 'github.com') {
+      return toRepoInfo('github', pathParts.slice(0, 2).join('/'), 'https://github.com');
+    }
+    if (host === 'gitlab.com') {
+      return toRepoInfo('gitlab', pathParts.slice(0, 2).join('/'), 'https://gitlab.com');
+    }
+    if (host === 'dev.azure.com' || host === 'ssh.dev.azure.com' || host.endsWith('.visualstudio.com')) {
+      const orgFromHost = host.endsWith('.visualstudio.com') ? host.split('.')[0] : undefined;
+      return toAzureRepoInfoFromParts(orgFromHost, pathParts);
+    }
+  } catch {
+    return undefined;
   }
 
   return undefined;
@@ -188,13 +221,27 @@ function toAzureRepoInfo(pathValue: string | undefined): RepoInfo | undefined {
     return undefined;
   }
   const parts = pathValue.split('/').filter(Boolean);
-  const org = parts[0];
-  const project = parts[1];
-  const repoIndex = parts.findIndex((segment) => segment.toLowerCase() === '_git');
-  const repo = repoIndex >= 0 ? parts[repoIndex + 1] : parts[2];
+  return toAzureRepoInfoFromParts(undefined, parts);
+}
+
+function toAzureRepoInfoFromParts(orgFromHost: string | undefined, parts: string[]): RepoInfo | undefined {
+  let normalized = [...parts];
+  if (normalized[0]?.toLowerCase() === 'v3') {
+    normalized = normalized.slice(1);
+  }
+  if (normalized[0]?.toLowerCase() === 'defaultcollection') {
+    normalized = normalized.slice(1);
+  }
+
+  const repoIndex = normalized.findIndex((segment) => segment.toLowerCase() === '_git');
+  const org = orgFromHost ?? normalized[0];
+  const project = repoIndex >= 0 ? normalized[repoIndex - 1] : normalized[1];
+  const repo = repoIndex >= 0 ? normalized[repoIndex + 1] : normalized[2];
+
   if (!org || !project || !repo) {
     return undefined;
   }
+
   const repoPath = `${org}/${project}/${repo}`;
   const url = `https://dev.azure.com/${org}/${project}/_git/${repo}`;
   return {
@@ -214,8 +261,8 @@ function trimRepoPath(value: string): string | undefined {
   return `${owner}/${repo}`;
 }
 
-async function detectPowerShellModule(projectPath: string): Promise<{ moduleName?: string; moduleVersion?: string; repoInfo?: RepoInfo } | undefined> {
-  const psd1Path = await findBestFile(projectPath, '.psd1', 4);
+async function detectPowerShellModule(projectPath: string, options: IdentityScanOptions): Promise<{ moduleName?: string; moduleVersion?: string; repoInfo?: RepoInfo } | undefined> {
+  const psd1Path = await findBestFile(projectPath, '.psd1', options);
   if (!psd1Path) {
     return undefined;
   }
@@ -239,8 +286,8 @@ async function detectPowerShellModule(projectPath: string): Promise<{ moduleName
   };
 }
 
-async function detectCsproj(projectPath: string): Promise<{ packageId?: string; repoInfo?: RepoInfo } | undefined> {
-  const csprojPath = await findBestFile(projectPath, '.csproj', 4);
+async function detectCsproj(projectPath: string, options: IdentityScanOptions): Promise<{ packageId?: string; repoInfo?: RepoInfo } | undefined> {
+  const csprojPath = await findBestFile(projectPath, '.csproj', options);
   if (!csprojPath) {
     return undefined;
   }
@@ -258,8 +305,8 @@ async function detectCsproj(projectPath: string): Promise<{ packageId?: string; 
   return { packageId, repoInfo };
 }
 
-async function detectMsBuildProps(projectPath: string): Promise<{ packageId?: string; repoInfo?: RepoInfo } | undefined> {
-  const propsPath = await findBestNamedFile(projectPath, 'Directory.Build.props', 4);
+async function detectMsBuildProps(projectPath: string, options: IdentityScanOptions): Promise<{ packageId?: string; repoInfo?: RepoInfo } | undefined> {
+  const propsPath = await findBestNamedFile(projectPath, 'Directory.Build.props', options);
   if (!propsPath) {
     return undefined;
   }
@@ -286,41 +333,43 @@ function readMsbuildValue(text: string, property: string): string | undefined {
   return value;
 }
 
-async function findBestFile(root: string, extension: string, maxDepth: number): Promise<string | undefined> {
-  const candidates = await findFiles(root, extension, maxDepth);
+async function findBestFile(root: string, extension: string, options: IdentityScanOptions): Promise<string | undefined> {
+  const candidates = await findFiles(root, extension, options.maxDepth);
   if (candidates.length === 0) {
     return undefined;
   }
   const rootName = path.basename(root).toLowerCase();
+  const preferredFolders = normalizePreferredFolders(options.preferredFolders);
   const scored = candidates.map((candidate) => ({
     path: candidate.path,
-    score: scoreCandidate(candidate, rootName)
+    score: scoreCandidate(candidate, rootName, preferredFolders)
   }));
   scored.sort((a, b) => a.score - b.score);
   return scored[0]?.path;
 }
 
-async function findBestNamedFile(root: string, fileName: string, maxDepth: number): Promise<string | undefined> {
-  const candidates = await findNamedFiles(root, fileName, maxDepth);
+async function findBestNamedFile(root: string, fileName: string, options: IdentityScanOptions): Promise<string | undefined> {
+  const candidates = await findNamedFiles(root, fileName, options.maxDepth);
   if (candidates.length === 0) {
     return undefined;
   }
   const rootName = path.basename(root).toLowerCase();
+  const preferredFolders = normalizePreferredFolders(options.preferredFolders);
   const scored = candidates.map((candidate) => ({
     path: candidate.path,
-    score: scoreCandidate(candidate, rootName)
+    score: scoreCandidate(candidate, rootName, preferredFolders)
   }));
   scored.sort((a, b) => a.score - b.score);
   return scored[0]?.path;
 }
 
-function scoreCandidate(candidate: FileCandidate, rootName: string): number {
+function scoreCandidate(candidate: FileCandidate, rootName: string, preferredFolders: string[]): number {
   const normalized = candidate.path.toLowerCase().replace(/\\/g, '/');
   let score = candidate.depth * 10;
   if (normalized.includes(`/${rootName}.`)) {
     score -= 6;
   }
-  for (const segment of preferredSegments) {
+  for (const segment of preferredFolders) {
     if (normalized.includes(`/${segment}/`)) {
       score -= 3;
       break;
@@ -386,4 +435,18 @@ async function findNamedFiles(root: string, fileName: string, maxDepth: number):
     }
   }
   return results;
+}
+
+function getIdentityScanOptions(): IdentityScanOptions {
+  const settings = getForgeFlowSettings();
+  return {
+    maxDepth: settings.identityScanDepth,
+    preferredFolders: settings.identityPreferredFolders
+  };
+}
+
+function normalizePreferredFolders(folders: string[]): string[] {
+  return folders
+    .map((folder) => folder.trim().toLowerCase())
+    .filter((folder) => folder.length > 0);
 }

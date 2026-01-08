@@ -33,13 +33,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     if (!this.view) {
       return;
     }
+    this.view.webview.html = renderDashboardHtml([], this.view.webview, { loading: true });
     try {
       const rows = await this.dashboardService.buildRows();
       this.view.webview.html = renderDashboardHtml(rows, this.view.webview);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`Dashboard refresh failed: ${message}`);
-      this.view.webview.html = renderDashboardHtml([], this.view.webview);
+      this.view.webview.html = renderDashboardHtml([], this.view.webview, { message: 'Dashboard refresh failed.' });
     }
   }
 }

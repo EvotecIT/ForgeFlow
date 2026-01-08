@@ -15,9 +15,12 @@ export function quotePowerShellLiteral(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
-export function buildProcessCommand(request: RunRequest, profile: PowerShellProfile): ProcessCommand {
+export function buildProcessCommand(request: RunRequest, profile: PowerShellProfile, keepOpen = false): ProcessCommand {
   const executable = resolveExecutable(profile);
   const args: string[] = ['-NoProfile'];
+  if (keepOpen) {
+    args.push('-NoExit');
+  }
   if (process.platform === 'win32') {
     args.push('-ExecutionPolicy', 'Bypass');
   }
@@ -38,10 +41,10 @@ export function buildTerminalCommand(request: RunRequest): TerminalCommand {
   return { commandLine: parts.join('; ') };
 }
 
-export function buildAdminCommand(request: RunRequest, profile: PowerShellProfile): ProcessCommand {
+export function buildAdminCommand(request: RunRequest, profile: PowerShellProfile, keepOpen = false): ProcessCommand {
   const executable = 'powershell.exe';
   const targetExe = resolveExecutable(profile);
-  const targetArgs = buildProcessCommand(request, profile).args;
+  const targetArgs = buildProcessCommand(request, profile, keepOpen).args;
   const argList = targetArgs.map((arg) => quotePowerShellLiteral(arg)).join(', ');
   const parts: string[] = [
     `Start-Process -FilePath ${quotePowerShellLiteral(targetExe)}`,

@@ -4,12 +4,18 @@ import type { ProjectsStore } from '../store/projectsStore';
 import { ForgeFlowLogger } from '../util/log';
 import { getForgeFlowSettings } from '../util/config';
 import {
+  fetchAzureOpenPrs,
+  fetchAzureRepo,
+  fetchAzureLatestCommit,
   fetchGitHubOpenPrs,
   fetchGitHubRepo,
+  fetchGitLabOpenMrs,
+  fetchGitLabProject,
   fetchNuGetPackage,
   fetchPowerShellGallery,
   getLocalGitInfo
 } from './dataProviders';
+import type { DashboardTokenStore } from './tokenStore';
 import { detectProjectIdentity } from '../scan/identityDetector';
 
 export interface DashboardRow {
@@ -31,49 +37,76 @@ export interface DashboardRow {
 export class DashboardService {
   public constructor(
     private readonly projectsStore: ProjectsStore,
-    private readonly logger: ForgeFlowLogger
+    private readonly logger: ForgeFlowLogger,
+    private readonly tokenStore: DashboardTokenStore
   ) {}
 
   public async buildRows(): Promise<DashboardRow[]> {
     const projects = this.projectsStore.list();
     const settings = getForgeFlowSettings();
     const token = await this.getGitHubToken();
+    const gitLabToken = await this.tokenStore.getGitLabToken();
+    const azureToken = await this.tokenStore.getAzureDevOpsToken();
     const rows: DashboardRow[] = [];
 
     for (const project of projects) {
-      const detectedInfo = await detectProjectIdentity(project.path);
-      const identity = project.identity ?? detectedInfo.identity;
-      if (!identity || (!identity.githubRepo && !identity.powershellModule && !identity.nugetPackage)) {
+      const needsRepo = needsRepositoryIdentity(project.identity);
+      const detectedInfo = needsRepo ? await detectProjectIdentity(project.path) : undefined;
+      const identity = detectedInfo?.identity ? mergeIdentity(project.identity, detectedInfo.identity) : project.identity;
+      if (!identity || (!identity.githubRepo && !identity.repositoryPath && !identity.powershellModule && !identity.nugetPackage)) {
         continue;
       }
 
-      const [gitHub, prs, psGallery, nuget, localGit] = await Promise.all([
-        identity.githubRepo ? fetchGitHubRepo(identity.githubRepo, token) : Promise.resolve(undefined),
-        identity.githubRepo ? fetchGitHubOpenPrs(identity.githubRepo, token) : Promise.resolve(undefined),
+      const provider = resolveProvider(identity);
+      const repoPath = identity.repositoryPath ?? identity.githubRepo;
+      const githubRepo = identity.githubRepo ?? (provider === 'github' ? identity.repositoryPath : undefined);
+      const gitLabPath = provider === 'gitlab' ? repoPath : undefined;
+      const azurePath = provider === 'azure' ? repoPath : undefined;
+
+      const [gitHub, gitHubPrs, gitLab, gitLabMrs, azureRepo, psGallery, nuget, localGit] = await Promise.all([
+        githubRepo ? fetchGitHubRepo(githubRepo, token) : Promise.resolve(undefined),
+        githubRepo ? fetchGitHubOpenPrs(githubRepo, token) : Promise.resolve(undefined),
+        gitLabPath ? fetchGitLabProject(gitLabPath, gitLabToken) : Promise.resolve(undefined),
+        gitLabPath ? fetchGitLabOpenMrs(gitLabPath, gitLabToken) : Promise.resolve(undefined),
+        azurePath ? fetchAzureRepo(azurePath, azureToken) : Promise.resolve(undefined),
         identity.powershellModule ? fetchPowerShellGallery(identity.powershellModule) : Promise.resolve(undefined),
         identity.nugetPackage ? fetchNuGetPackage(identity.nugetPackage) : Promise.resolve(undefined),
         getLocalGitInfo(project.path)
       ]);
 
-      const activitySource = localGit?.lastCommit ?? gitHub?.pushedAt;
+      const [azurePrs, azureCommit] = azureRepo && azurePath
+        ? await Promise.all([
+          fetchAzureOpenPrs(azurePath, azureRepo.repoId, azureToken),
+          fetchAzureLatestCommit(azurePath, azureRepo.repoId, azureToken)
+        ])
+        : [undefined, undefined];
+
+      const activitySource = gitHub?.pushedAt ?? gitLab?.lastActivity ?? azureCommit?.lastCommit ?? localGit?.lastCommit;
       const activityTimestamp = activitySource ? Date.parse(activitySource) : 0;
       const activity = activitySource ? formatRelative(activitySource) : 'n/a';
-      const issues = gitHub ? String(gitHub.issues) : 'n/a';
-      const prCount = prs ? String(prs.openPrs) : 'n/a';
-      const stars = gitHub ? String(gitHub.stars) : 'n/a';
-      const version = psGallery?.version ?? nuget?.version ?? detectedInfo.moduleVersion ?? 'n/a';
+      const issues = gitHub ? String(gitHub.issues) : (gitLab ? String(gitLab.issues) : 'n/a');
+      const prCount = gitHubPrs
+        ? String(gitHubPrs.openPrs)
+        : (gitLabMrs ? String(gitLabMrs.openMrs) : (azurePrs ? String(azurePrs.openPrs) : 'n/a'));
+      const stars = gitHub ? String(gitHub.stars) : (gitLab ? String(gitLab.stars) : 'n/a');
+      const version = psGallery?.version ?? nuget?.version ?? detectedInfo?.moduleVersion ?? 'n/a';
       const released = psGallery?.released ?? nuget?.released ?? 'n/a';
-      const archived = gitHub?.archived ?? false;
+      const archived = gitHub?.archived ?? gitLab?.archived ?? azureRepo?.isDisabled ?? false;
       const repoUrl = resolveRepoUrl(identity);
-      const provider = resolveProvider(identity);
-      const visibility = gitHub ? (gitHub.private ? 'private' : 'public') : 'unknown';
-      const repoLabel = identity.githubRepo
-        ? (archived ? `${identity.githubRepo} (archived)` : identity.githubRepo)
+      const visibility = gitHub
+        ? (gitHub.private ? 'private' : 'public')
+        : (gitLab?.visibility ?? azureRepo?.visibility ?? 'unknown');
+      const repoLabel = githubRepo
+        ? (archived ? `${githubRepo} (archived)` : githubRepo)
         : (identity.repositoryPath ?? project.name);
 
       if (archived && settings.dashboardHideArchived) {
         continue;
       }
+
+      const issueCount = toCount(issues);
+      const prResolved = prCount;
+      const prCountValue = toCount(prResolved);
 
       rows.push({
         repoUrl,
@@ -83,12 +116,12 @@ export class DashboardService {
         activity,
         activityTimestamp: Number.isNaN(activityTimestamp) ? 0 : activityTimestamp,
         issues,
-        prs: prCount,
+        prs: prResolved,
         stars,
         version,
         released,
         archived,
-        highlight: !archived && (issues !== '0' || prCount !== '0')
+        highlight: !archived && ((issueCount ?? 0) > 0 || (prCountValue ?? 0) > 0)
       });
     }
 
@@ -110,11 +143,13 @@ export class DashboardService {
       const session = await vscode.authentication.getSession('github', ['repo', 'read:user'], {
         createIfNone: false
       });
-      return session?.accessToken;
+      if (session?.accessToken) {
+        return session.accessToken;
+      }
     } catch {
       this.logger.warn('GitHub auth unavailable. Continuing without auth.');
-      return undefined;
     }
+    return await this.tokenStore.getGitHubToken();
   }
 }
 
@@ -145,6 +180,11 @@ function formatRelative(isoDate: string): string {
   return diffYears === 1 ? '1 year ago' : `${diffYears} years ago`;
 }
 
+function toCount(value: string): number | undefined {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function resolveProvider(identity: { repositoryProvider?: string; githubRepo?: string; repositoryUrl?: string }): string {
   if (identity.repositoryProvider) {
     return identity.repositoryProvider;
@@ -156,7 +196,7 @@ function resolveProvider(identity: { repositoryProvider?: string; githubRepo?: s
     if (identity.repositoryUrl.includes('gitlab')) {
       return 'gitlab';
     }
-    if (identity.repositoryUrl.includes('azure')) {
+    if (identity.repositoryUrl.includes('dev.azure.com') || identity.repositoryUrl.includes('visualstudio.com')) {
       return 'azure';
     }
   }
@@ -185,4 +225,46 @@ function resolveRepoUrl(identity: { repositoryUrl?: string; repositoryProvider?:
     }
   }
   return undefined;
+}
+
+function needsRepositoryIdentity(identity: { repositoryUrl?: string; repositoryProvider?: string; repositoryPath?: string; githubRepo?: string } | undefined): boolean {
+  if (!identity) {
+    return true;
+  }
+  return !identity.repositoryUrl && !identity.repositoryProvider && !identity.repositoryPath && !identity.githubRepo;
+}
+
+function mergeIdentity(existing: {
+  repositoryUrl?: string;
+  repositoryProvider?: string;
+  repositoryPath?: string;
+  githubRepo?: string;
+  powershellModule?: string;
+  nugetPackage?: string;
+} | undefined, detected: {
+  repositoryUrl?: string;
+  repositoryProvider?: string;
+  repositoryPath?: string;
+  githubRepo?: string;
+  powershellModule?: string;
+  nugetPackage?: string;
+}): {
+  repositoryUrl?: string;
+  repositoryProvider?: string;
+  repositoryPath?: string;
+  githubRepo?: string;
+  powershellModule?: string;
+  nugetPackage?: string;
+} {
+  if (!existing) {
+    return detected;
+  }
+  return {
+    repositoryUrl: existing.repositoryUrl ?? detected.repositoryUrl,
+    repositoryProvider: existing.repositoryProvider ?? detected.repositoryProvider,
+    repositoryPath: existing.repositoryPath ?? detected.repositoryPath,
+    githubRepo: existing.githubRepo ?? detected.githubRepo,
+    powershellModule: existing.powershellModule ?? detected.powershellModule,
+    nugetPackage: existing.nugetPackage ?? detected.nugetPackage
+  };
 }

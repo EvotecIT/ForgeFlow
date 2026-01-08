@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { DashboardService } from './dashboard/dashboardService';
+import { DashboardTokenStore } from './dashboard/tokenStore';
 import { ProjectScanner } from './scan/projectScanner';
 import { RunService } from './run/runService';
 import { TerminalManager } from './run/terminalManager';
@@ -32,10 +33,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const terminalManager = new TerminalManager();
   const runService = new RunService(logger, favoritesStore, projectsStore, terminalManager);
   const scanner = new ProjectScanner();
+  const tokenStore = new DashboardTokenStore(context);
 
   const filesProvider = new FilesViewProvider(favoritesStore);
   const projectsProvider = new ProjectsViewProvider(projectsStore, scanner);
-  const dashboardService = new DashboardService(projectsStore, logger);
+  const dashboardService = new DashboardService(projectsStore, logger, tokenStore);
   const dashboardProvider = new DashboardViewProvider(dashboardService, logger);
 
   context.subscriptions.push(
@@ -215,6 +217,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('forgeflow.dashboard.refresh', async () => {
       await dashboardProvider.refresh();
     }),
+    vscode.commands.registerCommand('forgeflow.dashboard.configureTokens', async () => {
+      await configureDashboardTokens(tokenStore);
+      await dashboardProvider.refresh();
+    }),
     vscode.commands.registerCommand('forgeflow.dashboard.configureIdentity', async () => {
       await configureProjectIdentity(projectsStore, dashboardProvider);
     }),
@@ -372,7 +378,11 @@ async function configureProjectIdentity(
     return;
   }
 
-  const detected = await detectProjectIdentity(pick.project.path);
+  const settings = getForgeFlowSettings();
+  const detected = await detectProjectIdentity(pick.project.path, {
+    maxDepth: settings.identityScanDepth,
+    preferredFolders: settings.identityPreferredFolders
+  });
   const detectedIdentity = detected.identity;
 
   const githubRepo = await vscode.window.showInputBox({
@@ -409,6 +419,56 @@ async function configureProjectIdentity(
   });
 
   await dashboardProvider.refresh();
+}
+
+async function configureDashboardTokens(tokenStore: DashboardTokenStore): Promise<void> {
+  const options = [
+    {
+      label: 'GitHub Personal Access Token',
+      description: 'Optional fallback when VS Code GitHub auth is unavailable.',
+      key: 'github'
+    },
+    {
+      label: 'GitLab Personal Access Token',
+      description: 'Used for private GitLab repos and higher API limits.',
+      key: 'gitlab'
+    },
+    {
+      label: 'Azure DevOps Personal Access Token',
+      description: 'Used for Azure DevOps repo metadata and PR counts.',
+      key: 'azure'
+    }
+  ] as const;
+
+  const pick = await vscode.window.showQuickPick(options, {
+    placeHolder: 'Select token to configure'
+  });
+  if (!pick) {
+    return;
+  }
+
+  const prompt = `Enter ${pick.label} (leave empty to clear).`;
+  const value = await vscode.window.showInputBox({
+    prompt,
+    password: true,
+    ignoreFocusOut: true
+  });
+
+  if (value === undefined) {
+    return;
+  }
+
+  const token = value.trim();
+  if (pick.key === 'github') {
+    await tokenStore.setGitHubToken(token.length > 0 ? token : undefined);
+  } else if (pick.key === 'gitlab') {
+    await tokenStore.setGitLabToken(token.length > 0 ? token : undefined);
+  } else {
+    await tokenStore.setAzureDevOpsToken(token.length > 0 ? token : undefined);
+  }
+
+  const status = token.length > 0 ? 'saved' : 'cleared';
+  vscode.window.showInformationMessage(`ForgeFlow: ${pick.label} ${status}.`);
 }
 
 async function configureScanRoots(provider: ProjectsViewProvider): Promise<void> {
