@@ -392,7 +392,7 @@ function readRecord(value: Record<string, unknown>, key: string): Record<string,
 }
 
 function readMsbuildValue(text: string, property: string): string | undefined {
-  const regex = new RegExp(`<${property}>([^<]+)<\/${property}>`, 'i');
+  const regex = new RegExp(`<${property}>([^<]+)</${property}>`, 'i');
   const match = regex.exec(text);
   const value = match?.[1]?.trim();
   if (!value || value.includes('$(')) {

@@ -12,6 +12,10 @@ export interface ForgeFlowSettings {
   identityScanDepth: number;
   identityPreferredFolders: string[];
   projectModifiedScanDepth: number;
+  projectGitCommitCacheMinutes: number;
+  projectGitWatchMode: 'off' | 'workspace' | 'favorites' | 'all';
+  projectGitWatchMaxRepos: number;
+  projectGitWatchDebounceMs: number;
   powershellProfiles: PowerShellProfile[];
   defaultProfileId?: string;
   runDefaultTarget: RunTarget;
@@ -50,6 +54,10 @@ export function getForgeFlowSettings(): ForgeFlowSettings {
       'sources'
     ]),
     projectModifiedScanDepth: config.get<number>('projects.modifiedScanDepth', 2),
+    projectGitCommitCacheMinutes: config.get<number>('projects.gitCommitCacheMinutes', 30),
+    projectGitWatchMode: config.get<'off' | 'workspace' | 'favorites' | 'all'>('projects.gitWatch', 'off'),
+    projectGitWatchMaxRepos: config.get<number>('projects.gitWatchMaxRepos', 150),
+    projectGitWatchDebounceMs: config.get<number>('projects.gitWatchDebounceMs', 1000),
     powershellProfiles: config.get<PowerShellProfile[]>('powershell.profiles', []),
     defaultProfileId: config.get<string>('powershell.defaultProfileId'),
     runDefaultTarget: config.get<RunTarget>('run.defaultTarget', 'integrated'),

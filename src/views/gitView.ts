@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import type { Project } from '../models/project';
 import type { ProjectsStore } from '../store/projectsStore';
 import { treeId } from '../util/ids';
-import { GitService, type GitBranchGroup, type GitBranchInfo, type GitRepoStatus } from '../git/gitService';
+import type { GitService, GitBranchGroup, GitBranchInfo, GitRepoStatus } from '../git/gitService';
 import type { GitStore } from '../git/gitStore';
 import { buildProjectSummary } from '../git/gitSummary';
 import { getForgeFlowSettings, type GitBranchFilterMode, type GitBranchSortMode } from '../util/config';

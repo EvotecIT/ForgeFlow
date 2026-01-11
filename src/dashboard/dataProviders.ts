@@ -89,10 +89,11 @@ export interface LocalGitInfo {
   lastCommit?: string;
 }
 
-export async function fetchGitHubRepo(repo: string, token?: string): Promise<GitHubRepoInfo | undefined> {
+export async function fetchGitHubRepo(repo: string, token?: string, signal?: AbortSignal): Promise<GitHubRepoInfo | undefined> {
   try {
     const response = await fetch(`https://api.github.com/repos/${repo}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      signal
     });
 
     if (!response.ok) {
@@ -125,15 +126,19 @@ export async function fetchGitHubRepo(repo: string, token?: string): Promise<Git
       private: data.private ?? false
     };
   } catch {
+    if (signal?.aborted) {
+      return undefined;
+    }
     return undefined;
   }
 }
 
-export async function fetchGitHubOpenPrs(repo: string, token?: string): Promise<GitHubPrInfo | undefined> {
+export async function fetchGitHubOpenPrs(repo: string, token?: string, signal?: AbortSignal): Promise<GitHubPrInfo | undefined> {
   try {
     const query = encodeURIComponent(`repo:${repo} is:pr is:open`);
     const response = await fetch(`https://api.github.com/search/issues?q=${query}`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      signal
     });
 
     if (!response.ok) {
@@ -145,14 +150,18 @@ export async function fetchGitHubOpenPrs(repo: string, token?: string): Promise<
     const data = (await response.json()) as { total_count?: number };
     return { openPrs: data.total_count ?? 0 };
   } catch {
+    if (signal?.aborted) {
+      return undefined;
+    }
     return undefined;
   }
 }
 
-export async function fetchGitHubLatestRelease(repo: string, token?: string): Promise<GitHubReleaseInfo | undefined> {
+export async function fetchGitHubLatestRelease(repo: string, token?: string, signal?: AbortSignal): Promise<GitHubReleaseInfo | undefined> {
   try {
     const response = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : undefined
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      signal
     });
 
     if (!response.ok) {
@@ -171,15 +180,19 @@ export async function fetchGitHubLatestRelease(repo: string, token?: string): Pr
       publishedAt: data.published_at
     };
   } catch {
+    if (signal?.aborted) {
+      return undefined;
+    }
     return undefined;
   }
 }
 
-export async function fetchGitLabProject(repoPath: string, token?: string): Promise<GitLabRepoInfo | undefined> {
+export async function fetchGitLabProject(repoPath: string, token?: string, signal?: AbortSignal): Promise<GitLabRepoInfo | undefined> {
   try {
     const encoded = encodeURIComponent(repoPath);
     const response = await fetch(`https://gitlab.com/api/v4/projects/${encoded}`, {
-      headers: token ? { 'PRIVATE-TOKEN': token } : undefined
+      headers: token ? { 'PRIVATE-TOKEN': token } : undefined,
+      signal
     });
     if (!response.ok) {
       const rateLimited = response.status === 429;
@@ -209,15 +222,19 @@ export async function fetchGitLabProject(repoPath: string, token?: string): Prom
       visibility: data.visibility
     };
   } catch {
+    if (signal?.aborted) {
+      return undefined;
+    }
     return undefined;
   }
 }
 
-export async function fetchGitLabOpenMrs(repoPath: string, token?: string): Promise<GitLabMrInfo | undefined> {
+export async function fetchGitLabOpenMrs(repoPath: string, token?: string, signal?: AbortSignal): Promise<GitLabMrInfo | undefined> {
   try {
     const encoded = encodeURIComponent(repoPath);
     const response = await fetch(`https://gitlab.com/api/v4/projects/${encoded}/merge_requests?state=opened&per_page=1`, {
-      headers: token ? { 'PRIVATE-TOKEN': token } : undefined
+      headers: token ? { 'PRIVATE-TOKEN': token } : undefined,
+      signal
     });
     if (!response.ok) {
       const rateLimited = response.status === 429;
@@ -232,11 +249,14 @@ export async function fetchGitLabOpenMrs(repoPath: string, token?: string): Prom
     const data = (await response.json()) as unknown[];
     return { openMrs: Array.isArray(data) ? data.length : 0 };
   } catch {
+    if (signal?.aborted) {
+      return undefined;
+    }
     return undefined;
   }
 }
 
-export async function fetchAzureRepo(repoPath: string, token?: string): Promise<AzureRepoInfo | undefined> {
+export async function fetchAzureRepo(repoPath: string, token?: string, signal?: AbortSignal): Promise<AzureRepoInfo | undefined> {
   try {
     const parts = repoPath.split('/').filter(Boolean);
     const org = parts[0];
@@ -246,7 +266,8 @@ export async function fetchAzureRepo(repoPath: string, token?: string): Promise<
       return undefined;
     }
     const response = await fetch(`https://dev.azure.com/${org}/${project}/_apis/git/repositories/${repo}?api-version=7.1-preview.1`, {
-      headers: token ? { Authorization: `Basic ${Buffer.from(`:${token}`).toString('base64')}` } : undefined
+      headers: token ? { Authorization: `Basic ${Buffer.from(`:${token}`).toString('base64')}` } : undefined,
+      signal
     });
     if (!response.ok) {
       const rateLimited = response.status === 429;
@@ -275,11 +296,14 @@ export async function fetchAzureRepo(repoPath: string, token?: string): Promise<
       visibility: data.project?.visibility
     };
   } catch {
+    if (signal?.aborted) {
+      return undefined;
+    }
     return undefined;
   }
 }
 
-export async function fetchAzureOpenPrs(repoPath: string, repoId: string, token?: string): Promise<AzurePrInfo | undefined> {
+export async function fetchAzureOpenPrs(repoPath: string, repoId: string, token?: string, signal?: AbortSignal): Promise<AzurePrInfo | undefined> {
   try {
     const parts = repoPath.split('/').filter(Boolean);
     const org = parts[0];
@@ -289,7 +313,8 @@ export async function fetchAzureOpenPrs(repoPath: string, repoId: string, token?
     }
     const url = `https://dev.azure.com/${org}/${project}/_apis/git/repositories/${repoId}/pullrequests?searchCriteria.status=active&$top=1&api-version=7.1-preview.1`;
     const response = await fetch(url, {
-      headers: token ? { Authorization: `Basic ${Buffer.from(`:${token}`).toString('base64')}` } : undefined
+      headers: token ? { Authorization: `Basic ${Buffer.from(`:${token}`).toString('base64')}` } : undefined,
+      signal
     });
     if (!response.ok) {
       const rateLimited = response.status === 429;
@@ -299,11 +324,14 @@ export async function fetchAzureOpenPrs(repoPath: string, repoId: string, token?
     const data = (await response.json()) as { count?: number };
     return { openPrs: data.count ?? 0 };
   } catch {
+    if (signal?.aborted) {
+      return undefined;
+    }
     return undefined;
   }
 }
 
-export async function fetchAzureLatestCommit(repoPath: string, repoId: string, token?: string): Promise<AzureCommitInfo | undefined> {
+export async function fetchAzureLatestCommit(repoPath: string, repoId: string, token?: string, signal?: AbortSignal): Promise<AzureCommitInfo | undefined> {
   try {
     const parts = repoPath.split('/').filter(Boolean);
     const org = parts[0];
@@ -313,7 +341,8 @@ export async function fetchAzureLatestCommit(repoPath: string, repoId: string, t
     }
     const url = `https://dev.azure.com/${org}/${project}/_apis/git/repositories/${repoId}/commits?searchCriteria.$top=1&api-version=7.1-preview.1`;
     const response = await fetch(url, {
-      headers: token ? { Authorization: `Basic ${Buffer.from(`:${token}`).toString('base64')}` } : undefined
+      headers: token ? { Authorization: `Basic ${Buffer.from(`:${token}`).toString('base64')}` } : undefined,
+      signal
     });
     if (!response.ok) {
       const rateLimited = response.status === 429;
@@ -325,6 +354,9 @@ export async function fetchAzureLatestCommit(repoPath: string, repoId: string, t
     const date = commit?.committer?.date ?? commit?.author?.date;
     return date ? { lastCommit: date } : undefined;
   } catch {
+    if (signal?.aborted) {
+      return undefined;
+    }
     return undefined;
   }
 }

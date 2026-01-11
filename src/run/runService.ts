@@ -4,10 +4,10 @@ import type { FavoritesStore } from '../store/favoritesStore';
 import type { ProjectsStore } from '../store/projectsStore';
 import { getForgeFlowSettings } from '../util/config';
 import type { PowerShellProfile, RunRequest } from '../models/run';
-import { ForgeFlowLogger } from '../util/log';
+import type { ForgeFlowLogger } from '../util/log';
 import { buildAdminCommand, buildProcessCommand, buildTerminalCommand } from './commandBuilder';
 import { builtInProfiles } from './powershellProfiles';
-import { TerminalManager } from './terminalManager';
+import type { TerminalManager } from './terminalManager';
 
 export class RunService {
   public constructor(

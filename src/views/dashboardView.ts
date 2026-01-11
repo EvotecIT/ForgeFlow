@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { DashboardRow, DashboardService } from '../dashboard/dashboardService';
 import { renderDashboardHtml } from '../dashboard/webviewHtml';
-import { ForgeFlowLogger } from '../util/log';
+import type { ForgeFlowLogger } from '../util/log';
 import type { DashboardCache } from '../dashboard/cache';
 import type { DashboardFilterStore } from '../dashboard/filterStore';
 import type { DashboardTokenStore } from '../dashboard/tokenStore';
@@ -12,6 +12,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   private lastUpdated?: number;
   private authSummary = '';
   private pendingFocusFilter = false;
+  private refreshController?: AbortController;
+  private refreshPromise?: Promise<void>;
+  private progressCurrent = 0;
+  private progressTotal = 0;
+  private progressLabel = '';
+  private lastProgressUpdate = 0;
 
   public constructor(
     private readonly dashboardService: DashboardService,
@@ -47,7 +53,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       webviewView.webview.html = renderDashboardHtml(this.lastRows, webviewView.webview, {
         updatedAt: this.lastUpdated,
         filter,
-        authSummary: this.authSummary
+        authSummary: this.authSummary,
+        progressCurrent: this.progressCurrent,
+        progressTotal: this.progressTotal
       });
     }
 
@@ -59,6 +67,22 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     webviewView.webview.onDidReceiveMessage(async (message: { type?: string; url?: string; path?: string; filter?: string }) => {
       if (message.type === 'refresh') {
         await this.refresh();
+      }
+      if (message.type === 'cancelRefresh') {
+        if (this.refreshController) {
+          this.refreshController.abort();
+          vscode.window.setStatusBarMessage('ForgeFlow: Dashboard refresh cancelled.', 3000);
+          const filter = this.filterStore.getFilter();
+          if (this.view) {
+            this.view.webview.html = renderDashboardHtml(this.lastRows, this.view.webview, {
+              updatedAt: this.lastUpdated,
+              filter,
+              authSummary: this.authSummary,
+              progressCurrent: this.progressCurrent,
+              progressTotal: this.progressTotal
+            });
+          }
+        }
       }
       if (message.type === 'setFilter') {
         await this.filterStore.setFilter(message.filter ?? '');
@@ -89,34 +113,98 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     if (!this.view) {
       return;
     }
+    if (this.refreshController) {
+      this.refreshController.abort();
+    }
+    const controller = new AbortController();
+    this.refreshController = controller;
+    this.progressCurrent = 0;
+    this.progressTotal = 0;
+    this.progressLabel = '';
+    this.lastProgressUpdate = 0;
+    const task = this.performRefresh(controller.signal).finally(() => {
+      if (this.refreshController === controller) {
+        this.refreshController = undefined;
+      }
+      if (this.refreshPromise === task) {
+        this.refreshPromise = undefined;
+      }
+    });
+    this.refreshPromise = task;
+    await task;
+  }
+
+  private async performRefresh(signal: AbortSignal): Promise<void> {
+    if (!this.view) {
+      return;
+    }
     this.authSummary = await this.getAuthSummary();
     const filter = this.filterStore.getFilter();
     this.view.webview.html = renderDashboardHtml(this.lastRows, this.view.webview, {
       loading: true,
       updatedAt: this.lastUpdated,
       filter,
-      authSummary: this.authSummary
+      authSummary: this.authSummary,
+      progressCurrent: this.progressCurrent,
+      progressTotal: this.progressTotal
     });
     try {
-      const rows = await this.dashboardService.buildRows();
+      const rows = await this.dashboardService.buildRows(signal, (current, total, label) => {
+        this.progressCurrent = current;
+        this.progressTotal = total;
+        if (label) {
+          this.progressLabel = label;
+        }
+        this.maybeReportProgress();
+      });
+      if (signal.aborted) {
+        return;
+      }
       this.lastRows = rows;
       this.lastUpdated = Date.now();
       await this.cache.save(rows, this.lastUpdated);
       this.view.webview.html = renderDashboardHtml(rows, this.view.webview, {
         updatedAt: this.lastUpdated,
         filter,
-        authSummary: this.authSummary
+        authSummary: this.authSummary,
+        progressCurrent: this.progressCurrent,
+        progressTotal: this.progressTotal
       });
     } catch (error) {
+      if (signal.aborted) {
+        return;
+      }
       const message = error instanceof Error ? error.message : 'Unknown error';
+      if (message === 'AbortError') {
+        return;
+      }
       this.logger.error(`Dashboard refresh failed: ${message}`);
       this.view.webview.html = renderDashboardHtml(this.lastRows, this.view.webview, {
         message: 'Dashboard refresh failed.',
         updatedAt: this.lastUpdated,
         filter,
-        authSummary: this.authSummary
+        authSummary: this.authSummary,
+        progressCurrent: this.progressCurrent,
+        progressTotal: this.progressTotal
       });
     }
+  }
+
+  private maybeReportProgress(): void {
+    if (!this.view) {
+      return;
+    }
+    const now = Date.now();
+    if (now - this.lastProgressUpdate < 300) {
+      return;
+    }
+    this.lastProgressUpdate = now;
+    void this.view.webview.postMessage({
+      type: 'progress',
+      current: this.progressCurrent,
+      total: this.progressTotal,
+      label: this.progressLabel
+    });
   }
 
   public async focusFilter(): Promise<void> {

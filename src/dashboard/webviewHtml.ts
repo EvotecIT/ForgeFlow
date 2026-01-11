@@ -7,6 +7,9 @@ export interface DashboardRenderState {
   updatedAt?: number;
   filter?: string;
   authSummary?: string;
+  progressCurrent?: number;
+  progressTotal?: number;
+  progressLabel?: string;
 }
 
 export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webview, state?: DashboardRenderState): string {
@@ -89,6 +92,14 @@ export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webvie
       cursor: pointer;
     }
     button.focus {
+      background: transparent;
+      border: 1px solid var(--ff-border);
+      color: var(--ff-fg);
+      padding: 4px 8px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    button.cancel {
       background: transparent;
       border: 1px solid var(--ff-border);
       color: var(--ff-fg);
@@ -223,7 +234,7 @@ export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webvie
     <div class="title">
       <h2>ForgeFlow: Dashboard</h2>
       ${state?.updatedAt ? `<span class="status">Updated ${escapeHtml(formatTimestamp(state.updatedAt))}</span>` : ''}
-      ${state?.loading ? '<span class="status">Refreshing…</span>' : ''}
+      ${state?.loading ? `<span class="status" id="status-refresh">${escapeHtml(formatRefreshLabel(state.progressCurrent, state.progressTotal, state.progressLabel))}</span>` : ''}
       ${state?.authSummary ? `<span class="status">${escapeHtml(state.authSummary)}</span>` : ''}
     </div>
     <div class="controls">
@@ -231,6 +242,7 @@ export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webvie
       <button class="clear" id="clear">Clear</button>
       <button class="focus" id="focus">Focus</button>
       <span class="count" id="count"></span>
+      ${state?.loading ? '<button class="cancel" id="cancel">Cancel</button>' : ''}
       <button class="refresh" id="refresh">Refresh</button>
     </div>
   </header>
@@ -316,8 +328,10 @@ export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webvie
     const filterInput = document.getElementById('filter');
     const clearButton = document.getElementById('clear');
     const focusButton = document.getElementById('focus');
+    const cancelButton = document.getElementById('cancel');
     const countLabel = document.getElementById('count');
     const emptyRow = document.getElementById('filter-empty');
+    const refreshStatus = document.getElementById('status-refresh');
     let sortKey = 'activityTs';
     let sortDir = 'desc';
     let lastFilter = '';
@@ -346,7 +360,7 @@ export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webvie
       rows.sort((rowA, rowB) => {
         const a = rowA.dataset[sortKey] || '';
         const b = rowB.dataset[sortKey] || '';
-        const type = document.querySelector('th[data-key=\"' + sortKey + '\"]')?.dataset.type || 'string';
+        const type = document.querySelector('th[data-key="' + sortKey + '"]')?.dataset.type || 'string';
         const result = compareValues(a, b, type);
         return sortDir === 'asc' ? result : -result;
       });
@@ -431,6 +445,11 @@ export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webvie
         }
       });
     }
+    if (cancelButton) {
+      cancelButton.addEventListener('click', () => {
+        vscode.postMessage({ type: 'cancelRefresh' });
+      });
+    }
     if (filterInput) {
       filterInput.addEventListener('input', () => {
         applyFilter();
@@ -447,6 +466,14 @@ export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webvie
       if (message.type === 'applyFilter' && filterInput && 'value' in filterInput) {
         filterInput.value = String(message.filter || '');
         applyFilter();
+      }
+      if (message.type === 'progress' && refreshStatus) {
+        const current = Number(message.current || 0);
+        const total = Number(message.total || 0);
+        const label = message.label ? String(message.label) : '';
+        refreshStatus.textContent = total > 0
+          ? 'Refreshing… (' + String(current) + '/' + String(total) + ')' + (label ? ' • ' + label : '')
+          : 'Refreshing…' + (label ? ' • ' + label : '');
       }
     });
     applyFilter();
@@ -624,6 +651,16 @@ function formatTimestamp(value: number): string {
     return '';
   }
   return date.toLocaleString();
+}
+
+function formatRefreshLabel(current?: number, total?: number, label?: string): string {
+  const text = total && total > 0
+    ? `Refreshing… (${current ?? 0}/${total})`
+    : 'Refreshing…';
+  if (label) {
+    return `${text} • ${label}`;
+  }
+  return text;
 }
 
 function formatAge(value: number): string {

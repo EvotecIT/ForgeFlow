@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { Project } from '../models/project';
 import type { ProjectsStore } from '../store/projectsStore';
-import { ForgeFlowLogger } from '../util/log';
+import type { ForgeFlowLogger } from '../util/log';
 import { getForgeFlowSettings } from '../util/config';
 import {
   fetchAzureOpenPrs,
@@ -40,6 +40,8 @@ export interface DashboardRow {
   archived: boolean;
 }
 
+export type DashboardProgress = (current: number, total: number, label?: string) => void;
+
 export class DashboardService {
   public constructor(
     private readonly projectsStore: ProjectsStore,
@@ -47,21 +49,41 @@ export class DashboardService {
     private readonly tokenStore: DashboardTokenStore
   ) {}
 
-  public async buildRows(): Promise<DashboardRow[]> {
+  public async buildRows(signal?: AbortSignal, onProgress?: DashboardProgress): Promise<DashboardRow[]> {
     const projects = this.projectsStore.list();
     const settings = getForgeFlowSettings();
     const token = await this.getGitHubToken();
     const gitLabToken = await this.tokenStore.getGitLabToken();
     const azureToken = await this.tokenStore.getAzureDevOpsToken();
+    if (signal?.aborted) {
+      throw new Error('AbortError');
+    }
     const rows: DashboardRow[] = [];
-
-    for (const project of projects) {
-      const needsRepo = needsRepositoryIdentity(project.identity);
-      const detectedInfo = needsRepo ? await detectProjectIdentity(project.path) : undefined;
-      const identity = detectedInfo?.identity ? mergeIdentity(project.identity, detectedInfo.identity) : project.identity;
-      if (!identity || (!identity.githubRepo && !identity.repositoryPath && !identity.powershellModule && !identity.nugetPackage)) {
-        continue;
+    const total = projects.length;
+    let completed = 0;
+    const concurrency = Math.max(1, Math.min(6, total || 1));
+    const report = (label?: string): void => {
+      if (onProgress) {
+        onProgress(completed, total, label);
       }
+    };
+    report();
+
+    await runWithConcurrency(projects, concurrency, async (project) => {
+      let didComplete = false;
+      report(`${project.name} • identity`);
+      if (signal?.aborted) {
+        throw new Error('AbortError');
+      }
+      try {
+        const needsRepo = needsRepositoryIdentity(project.identity);
+        const detectedInfo = needsRepo ? await detectProjectIdentity(project.path) : undefined;
+        const identity = detectedInfo?.identity ? mergeIdentity(project.identity, detectedInfo.identity) : project.identity;
+        if (!identity || (!identity.githubRepo && !identity.repositoryPath && !identity.powershellModule && !identity.nugetPackage)) {
+          return;
+        }
+
+        report(`${project.name} • remote`);
 
       const provider = resolveProvider(identity);
       const repoPath = identity.repositoryPath ?? identity.githubRepo;
@@ -70,12 +92,12 @@ export class DashboardService {
       const azurePath = provider === 'azure' ? repoPath : undefined;
 
       const [gitHub, gitHubPrs, gitHubRelease, gitLab, gitLabMrs, azureRepo, psGallery, nuget, localGit] = await Promise.all([
-        githubRepo ? fetchGitHubRepo(githubRepo, token) : Promise.resolve(undefined),
-        githubRepo ? fetchGitHubOpenPrs(githubRepo, token) : Promise.resolve(undefined),
-        githubRepo ? fetchGitHubLatestRelease(githubRepo, token) : Promise.resolve(undefined),
-        gitLabPath ? fetchGitLabProject(gitLabPath, gitLabToken) : Promise.resolve(undefined),
-        gitLabPath ? fetchGitLabOpenMrs(gitLabPath, gitLabToken) : Promise.resolve(undefined),
-        azurePath ? fetchAzureRepo(azurePath, azureToken) : Promise.resolve(undefined),
+        githubRepo ? fetchGitHubRepo(githubRepo, token, signal) : Promise.resolve(undefined),
+        githubRepo ? fetchGitHubOpenPrs(githubRepo, token, signal) : Promise.resolve(undefined),
+        githubRepo ? fetchGitHubLatestRelease(githubRepo, token, signal) : Promise.resolve(undefined),
+        gitLabPath ? fetchGitLabProject(gitLabPath, gitLabToken, signal) : Promise.resolve(undefined),
+        gitLabPath ? fetchGitLabOpenMrs(gitLabPath, gitLabToken, signal) : Promise.resolve(undefined),
+        azurePath ? fetchAzureRepo(azurePath, azureToken, signal) : Promise.resolve(undefined),
         identity.powershellModule ? fetchPowerShellGallery(identity.powershellModule) : Promise.resolve(undefined),
         identity.nugetPackage ? fetchNuGetPackage(identity.nugetPackage) : Promise.resolve(undefined),
         getLocalGitInfo(project.path)
@@ -83,8 +105,8 @@ export class DashboardService {
 
       const [azurePrs, azureCommit] = azureRepo && azurePath
         ? await Promise.all([
-          fetchAzureOpenPrs(azurePath, azureRepo.repoId, azureToken),
-          fetchAzureLatestCommit(azurePath, azureRepo.repoId, azureToken)
+          fetchAzureOpenPrs(azurePath, azureRepo.repoId, azureToken, signal),
+          fetchAzureLatestCommit(azurePath, azureRepo.repoId, azureToken, signal)
         ])
         : [undefined, undefined];
 
@@ -137,7 +159,7 @@ export class DashboardService {
         : (identity.repositoryPath ?? project.name);
 
       if (archived && settings.dashboardHideArchived) {
-        continue;
+        return;
       }
 
       const issueCount = toCount(issues);
@@ -146,25 +168,32 @@ export class DashboardService {
 
       const localPath = resolveLocalPath(project.path, settings.projectScanRoots);
 
-      rows.push({
-        repoUrl,
-        projectPath: project.path,
-        localPath,
-        provider,
-        providerStatus,
-        visibility,
-        repo: repoLabel,
-        activity,
-        activityTimestamp: Number.isNaN(activityTimestamp) ? 0 : activityTimestamp,
-        issues,
-        prs: prResolved,
-        stars,
-        version,
-        released,
-        archived,
-        highlight: !archived && ((issueCount ?? 0) > 0 || (prCountValue ?? 0) > 0)
-      });
-    }
+        rows.push({
+          repoUrl,
+          projectPath: project.path,
+          localPath,
+          provider,
+          providerStatus,
+          visibility,
+          repo: repoLabel,
+          activity,
+          activityTimestamp: Number.isNaN(activityTimestamp) ? 0 : activityTimestamp,
+          issues,
+          prs: prResolved,
+          stars,
+          version,
+          released,
+          archived,
+          highlight: !archived && ((issueCount ?? 0) > 0 || (prCountValue ?? 0) > 0)
+        });
+      } finally {
+        if (!didComplete) {
+          completed += 1;
+          report(`${project.name} • done`);
+          didComplete = true;
+        }
+      }
+    });
 
     rows.sort((a, b) => {
       if (a.archived !== b.archived) {
@@ -283,6 +312,25 @@ function resolveRepoUrl(identity: { repositoryUrl?: string; repositoryProvider?:
     }
   }
   return undefined;
+}
+
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  handler: (item: T) => Promise<void>
+): Promise<void> {
+  let index = 0;
+  const workers = Array.from({ length: limit }, async () => {
+    while (true) {
+      const current = index;
+      index += 1;
+      if (current >= items.length) {
+        return;
+      }
+      await handler(items[current] as T);
+    }
+  });
+  await Promise.all(workers);
 }
 
 function resolveLocalPath(projectPath: string, scanRoots: string[]): string {

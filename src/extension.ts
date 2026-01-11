@@ -7,18 +7,21 @@ import { DashboardFilterStore } from './dashboard/filterStore';
 import { GitService } from './git/gitService';
 import { buildProjectSummary, type GitProjectSummary } from './git/gitSummary';
 import { GitStore, type GitProjectSettings } from './git/gitStore';
+import { GitWatchService } from './git/gitWatchService';
 import { ProjectScanner } from './scan/projectScanner';
 import { RunService } from './run/runService';
 import { TerminalManager } from './run/terminalManager';
 import { FavoritesStore } from './store/favoritesStore';
 import { ProjectsStore } from './store/projectsStore';
+import { GitCommitCacheStore } from './store/gitCommitCacheStore';
 import { StateStore } from './store/stateStore';
-import { FilesViewProvider, PathNode } from './views/filesView';
-import {
+import { FilesViewProvider } from './views/filesView';
+import type { PathNode } from './views/filesView';
+import { ProjectsViewProvider } from './views/projectsView';
+import type {
   ProjectNodeWithEntry,
   ProjectNodeWithPath,
-  ProjectNodeWithProject,
-  ProjectsViewProvider
+  ProjectNodeWithProject
 } from './views/projectsView';
 import { DashboardViewProvider } from './views/dashboardView';
 import { GitViewProvider, isGitBranchNode, isGitProjectNode } from './views/gitView';
@@ -37,6 +40,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const stateStore = new StateStore(context);
   const favoritesStore = new FavoritesStore(stateStore);
   const projectsStore = new ProjectsStore(stateStore);
+  const gitCommitCacheStore = new GitCommitCacheStore(stateStore);
   const terminalManager = new TerminalManager();
   const runService = new RunService(logger, favoritesStore, projectsStore, terminalManager);
   const scanner = new ProjectScanner();
@@ -45,9 +49,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const dashboardFilterStore = new DashboardFilterStore(stateStore);
   const gitStore = new GitStore(stateStore);
   const gitService = new GitService();
+  const gitWatchService = new GitWatchService(projectsStore, gitCommitCacheStore, logger);
 
   const filesProvider = new FilesViewProvider(favoritesStore);
-  const projectsProvider = new ProjectsViewProvider(projectsStore, scanner, gitStore);
+  const projectsProvider = new ProjectsViewProvider(projectsStore, scanner, gitStore, gitCommitCacheStore);
   const dashboardService = new DashboardService(projectsStore, logger, tokenStore);
   const dashboardProvider = new DashboardViewProvider(dashboardService, logger, dashboardCache, dashboardFilterStore, tokenStore);
   const gitProvider = new GitViewProvider(projectsStore, gitService, gitStore);
@@ -57,7 +62,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.registerTreeDataProvider('forgeflow.projects', projectsProvider),
     vscode.window.registerTreeDataProvider('forgeflow.git', gitProvider),
     vscode.window.registerWebviewViewProvider('forgeflow.dashboard', dashboardProvider),
-    terminalManager
+    terminalManager,
+    gitWatchService
+  );
+
+  projectsProvider.onDidUpdateProjects((projects) => {
+    gitWatchService.setProjects(projects, projectsStore.getFavoriteIds());
+  });
+  gitWatchService.onDidUpdate((update) => {
+    projectsProvider.applyGitCommitUpdate(update.projectId, update.lastGitCommit);
+  });
+  gitWatchService.setProjects(projectsStore.list(), projectsStore.getFavoriteIds());
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration('forgeflow.projects.gitWatch')
+        || event.affectsConfiguration('forgeflow.projects.gitWatchMaxRepos')
+        || event.affectsConfiguration('forgeflow.projects.gitWatchDebounceMs')) {
+        gitWatchService.refresh();
+      }
+    })
   );
 
   context.subscriptions.push(
