@@ -20,6 +20,14 @@ All settings live under the `forgeflow` namespace.
   - Preferred folder names used to rank identity files (default: module, modules, src, source, sources).
 - `forgeflow.projects.modifiedScanDepth` (number)
   - Depth used when scanning for recent file modifications (default: 2).
+- `forgeflow.projects.gitCommitCacheMinutes` (number)
+  - Minutes to cache git commit timestamps before re-checking (default: 30).
+- `forgeflow.projects.gitWatch` ("off" | "workspace" | "favorites" | "all")
+  - Watch `.git/HEAD` and `.git/logs/HEAD` for changes to keep commit sorting fresh.
+- `forgeflow.projects.gitWatchMaxRepos` (number)
+  - Maximum number of git repos to watch (default: 150).
+- `forgeflow.projects.gitWatchDebounceMs` (number)
+  - Debounce time in ms for watch refresh events (default: 1000).
 
 ## PowerShell
 - `forgeflow.powershell.profiles` (array)

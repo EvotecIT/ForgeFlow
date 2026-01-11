@@ -68,4 +68,12 @@ Marketplace verification is handled by Microsoft. Use the Marketplace publisher 
 - Verify your domain and request a verified publisher badge.
 
 ## Dev install (Insiders)
-See README for the dev link install steps.
+See README for the dev link install steps. For WSL → Windows Insiders one-shot install:
+```bash
+npm run install:insiders
+```
+
+Windows PowerShell:
+```powershell
+npm run install:insiders:ps
+```

@@ -1,12 +1,12 @@
 param(
-    [switch]$Insiders = $true,
+    [switch]$Insiders,
     [switch]$Stable,
     [switch]$Force
 )
 
 $ErrorActionPreference = 'Stop'
 
-$repoRoot = Resolve-Path -LiteralPath (Get-Location)
+$repoRoot = Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')
 $packagePath = Join-Path $repoRoot 'package.json'
 if (-not (Test-Path -LiteralPath $packagePath)) {
     throw "package.json not found at $packagePath"
@@ -23,7 +23,8 @@ if (-not $publisher -or -not $name -or -not $version) {
 $extId = "$publisher.$name"
 $extFolderName = "$extId-$version"
 
-$extensionsRoot = if ($Stable) {
+$useInsiders = $Insiders -or (-not $Stable)
+$extensionsRoot = if (-not $useInsiders) {
     Join-Path $env:USERPROFILE '.vscode\extensions'
 } else {
     Join-Path $env:USERPROFILE '.vscode-insiders\extensions'

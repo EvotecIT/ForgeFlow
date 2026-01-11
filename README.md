@@ -52,10 +52,28 @@ ForgeFlow uses VS Code's GitHub authentication when available. For GitLab and Az
 See `docs/configuration.md` for all settings.
 
 ## Install in VS Code Insiders (live usage)
+WSL → Windows Insiders one-liner:
+1) `npm run install:insiders`
+2) Reload window.
+
+Windows PowerShell one-liner:
+1) `npm run install:insiders:ps`
+2) Reload window.
+
+Automatic daily install (Windows):
+1) `npm run install:insiders:auto`
+2) Reload window after the first run.
+
+Defaults: runs on logon and daily at 09:00. To customize:
+- Logon only: `powershell -ExecutionPolicy Bypass -File scripts/auto-install-insiders.ps1 -DisableDaily`
+- Daily only (custom time): `powershell -ExecutionPolicy Bypass -File scripts/auto-install-insiders.ps1 -DisableLogon -DailyAt 18:30`
+- Remove: `npm run install:insiders:auto:remove`
+
+Manual steps (if you prefer):
 1) `npm run compile`
 2) `npm run package`
 3) Install the VSIX into Insiders:
-   - Command line: `code-insiders --install-extension forgeflow-0.1.0.vsix`
+   - Command line: `code-insiders --install-extension forgeflow-0.1.0.vsix --force`
    - Or Extensions view → “…” → **Install from VSIX…**
 4) Reload window.
 

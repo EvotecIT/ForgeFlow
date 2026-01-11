@@ -1388,6 +1388,38 @@
           "minimum": 1,
           "maximum": 6
         },
+        "forgeflow.projects.gitCommitCacheMinutes": {
+          "type": "number",
+          "description": "Minutes to cache git commit timestamps before re-checking.",
+          "default": 30,
+          "minimum": 0,
+          "maximum": 1440
+        },
+        "forgeflow.projects.gitWatch": {
+          "type": "string",
+          "description": "Watch git HEAD for changes to keep commit sorting fresh.",
+          "enum": [
+            "off",
+            "workspace",
+            "favorites",
+            "all"
+          ],
+          "default": "off"
+        },
+        "forgeflow.projects.gitWatchMaxRepos": {
+          "type": "number",
+          "description": "Maximum number of git repos to watch for changes.",
+          "default": 150,
+          "minimum": 0,
+          "maximum": 2000
+        },
+        "forgeflow.projects.gitWatchDebounceMs": {
+          "type": "number",
+          "description": "Debounce time in milliseconds for git watch refresh.",
+          "default": 1000,
+          "minimum": 0,
+          "maximum": 10000
+        },
         "forgeflow.powershell.profiles": {
           "type": "array",
           "description": "PowerShell profiles available for running scripts.",
@@ -1552,6 +1584,10 @@
     "publish:local": "powershell -ExecutionPolicy Bypass -File publish.ps1",
     "publish:sign": "powershell -ExecutionPolicy Bypass -File publish.ps1 -Sign",
     "publish:marketplace": "powershell -ExecutionPolicy Bypass -File publish.ps1 -Publish",
+    "install:insiders": "bash scripts/install-insiders.sh",
+    "install:insiders:ps": "powershell -ExecutionPolicy Bypass -File scripts/install-insiders.ps1 -Force",
+    "install:insiders:auto": "powershell -ExecutionPolicy Bypass -File scripts/auto-install-insiders.ps1",
+    "install:insiders:auto:remove": "powershell -ExecutionPolicy Bypass -File scripts/auto-install-insiders.ps1 -Remove",
     "dev:install:insiders": "powershell -ExecutionPolicy Bypass -File scripts/dev-install.ps1",
     "dev:install:stable": "powershell -ExecutionPolicy Bypass -File scripts/dev-install.ps1 -Stable",
     "prepublishOnly": "npm run compile"

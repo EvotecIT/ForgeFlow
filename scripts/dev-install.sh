@@ -19,20 +19,20 @@ if [[ ! -f "$PACKAGE" ]]; then
   exit 1
 fi
 
-PUBLISHER=$(python - <<'PY'
-import json
-print(json.load(open('package.json'))['publisher'])
-PY
+PUBLISHER=$(PACKAGE="$PACKAGE" node - <<'NODE'
+const pkg = require(process.env.PACKAGE);
+process.stdout.write(pkg.publisher || '');
+NODE
 )
-NAME=$(python - <<'PY'
-import json
-print(json.load(open('package.json'))['name'])
-PY
+NAME=$(PACKAGE="$PACKAGE" node - <<'NODE'
+const pkg = require(process.env.PACKAGE);
+process.stdout.write(pkg.name || '');
+NODE
 )
-VERSION=$(python - <<'PY'
-import json
-print(json.load(open('package.json'))['version'])
-PY
+VERSION=$(PACKAGE="$PACKAGE" node - <<'NODE'
+const pkg = require(process.env.PACKAGE);
+process.stdout.write(pkg.version || '');
+NODE
 )
 
 EXT_ID="$PUBLISHER.$NAME"

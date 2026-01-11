@@ -50,6 +50,9 @@ describe('PowerShell command builder', () => {
     const scriptArgIndex = command.args.findIndex((arg) => arg === '-Command');
     assert.ok(scriptArgIndex >= 0);
     const script = command.args[scriptArgIndex + 1];
-    assert.ok(script.includes('-NoExit'));
+    assert.equal(typeof script, 'string');
+    if (typeof script === 'string') {
+      assert.ok(script.includes('-NoExit'));
+    }
   });
 });
