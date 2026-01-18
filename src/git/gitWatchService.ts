@@ -150,8 +150,8 @@ export class GitWatchService implements vscode.Disposable {
     for (const watcher of watch.watchers) {
       try {
         watcher.close();
-      } catch {
-        // ignore
+      } catch (error) {
+        this.logger.warn(`Git watch close failed for ${watch.repoPath}: ${String(error)}`);
       }
     }
     this.watches.delete(projectId);

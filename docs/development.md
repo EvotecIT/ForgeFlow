@@ -24,6 +24,11 @@ npm run typecheck
 npm test
 ```
 
+## Coverage
+```bash
+npm run test:coverage
+```
+
 ## Run in VS Code
 - Press `F5` to launch the Extension Development Host.
 

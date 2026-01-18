@@ -89,6 +89,12 @@ export interface LocalGitInfo {
   lastCommit?: string;
 }
 
+function logProviderError(label: string, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  // Use console to avoid a logger dependency in this data module.
+  console.warn(`[ForgeFlow] ${label} failed: ${message}`);
+}
+
 export async function fetchGitHubRepo(repo: string, token?: string, signal?: AbortSignal): Promise<GitHubRepoInfo | undefined> {
   try {
     const response = await fetch(`https://api.github.com/repos/${repo}`, {
@@ -125,11 +131,17 @@ export async function fetchGitHubRepo(repo: string, token?: string, signal?: Abo
       archived: data.archived ?? false,
       private: data.private ?? false
     };
-  } catch {
+  } catch (error) {
     if (signal?.aborted) {
       return undefined;
     }
-    return undefined;
+    logProviderError(`GitHub repo (${repo})`, error);
+    return {
+      repo,
+      stars: 0,
+      issues: 0,
+      requestFailed: true
+    };
   }
 }
 
@@ -149,11 +161,12 @@ export async function fetchGitHubOpenPrs(repo: string, token?: string, signal?: 
 
     const data = (await response.json()) as { total_count?: number };
     return { openPrs: data.total_count ?? 0 };
-  } catch {
+  } catch (error) {
     if (signal?.aborted) {
       return undefined;
     }
-    return undefined;
+    logProviderError(`GitHub PRs (${repo})`, error);
+    return { openPrs: 0, requestFailed: true };
   }
 }
 
@@ -179,11 +192,12 @@ export async function fetchGitHubLatestRelease(repo: string, token?: string, sig
       tag: data.tag_name,
       publishedAt: data.published_at
     };
-  } catch {
+  } catch (error) {
     if (signal?.aborted) {
       return undefined;
     }
-    return undefined;
+    logProviderError(`GitHub releases (${repo})`, error);
+    return { requestFailed: true };
   }
 }
 
@@ -221,11 +235,17 @@ export async function fetchGitLabProject(repoPath: string, token?: string, signa
       archived: data.archived ?? false,
       visibility: data.visibility
     };
-  } catch {
+  } catch (error) {
     if (signal?.aborted) {
       return undefined;
     }
-    return undefined;
+    logProviderError(`GitLab repo (${repoPath})`, error);
+    return {
+      repoPath,
+      stars: 0,
+      issues: 0,
+      requestFailed: true
+    };
   }
 }
 
@@ -248,11 +268,12 @@ export async function fetchGitLabOpenMrs(repoPath: string, token?: string, signa
     }
     const data = (await response.json()) as unknown[];
     return { openMrs: Array.isArray(data) ? data.length : 0 };
-  } catch {
+  } catch (error) {
     if (signal?.aborted) {
       return undefined;
     }
-    return undefined;
+    logProviderError(`GitLab MRs (${repoPath})`, error);
+    return { openMrs: 0, requestFailed: true };
   }
 }
 
@@ -295,11 +316,16 @@ export async function fetchAzureRepo(repoPath: string, token?: string, signal?: 
       isDisabled: data.isDisabled ?? false,
       visibility: data.project?.visibility
     };
-  } catch {
+  } catch (error) {
     if (signal?.aborted) {
       return undefined;
     }
-    return undefined;
+    logProviderError(`Azure repo (${repoPath})`, error);
+    return {
+      repoPath,
+      repoId: '',
+      requestFailed: true
+    };
   }
 }
 
@@ -323,11 +349,12 @@ export async function fetchAzureOpenPrs(repoPath: string, repoId: string, token?
     }
     const data = (await response.json()) as { count?: number };
     return { openPrs: data.count ?? 0 };
-  } catch {
+  } catch (error) {
     if (signal?.aborted) {
       return undefined;
     }
-    return undefined;
+    logProviderError(`Azure PRs (${repoPath})`, error);
+    return { openPrs: 0, requestFailed: true };
   }
 }
 
@@ -353,11 +380,12 @@ export async function fetchAzureLatestCommit(repoPath: string, repoId: string, t
     const commit = data.value?.[0];
     const date = commit?.committer?.date ?? commit?.author?.date;
     return date ? { lastCommit: date } : undefined;
-  } catch {
+  } catch (error) {
     if (signal?.aborted) {
       return undefined;
     }
-    return undefined;
+    logProviderError(`Azure commits (${repoPath})`, error);
+    return { requestFailed: true };
   }
 }
 
@@ -375,7 +403,8 @@ export async function fetchPowerShellGallery(moduleName: string): Promise<PowerS
       version: versionMatch?.[1],
       released: releasedMatch?.[1]
     };
-  } catch {
+  } catch (error) {
+    logProviderError(`PowerShell Gallery (${moduleName})`, error);
     return undefined;
   }
 }
@@ -392,7 +421,8 @@ export async function fetchNuGetPackage(packageName: string): Promise<NuGetInfo 
     return {
       version: versions.at(-1)
     };
-  } catch {
+  } catch (error) {
+    logProviderError(`NuGet (${packageName})`, error);
     return undefined;
   }
 }
@@ -407,7 +437,8 @@ export async function getLocalGitInfo(projectPath: string): Promise<LocalGitInfo
       isDirty: status.trim().length > 0,
       lastCommit: lastCommit.trim()
     };
-  } catch {
+  } catch (error) {
+    logProviderError(`Local git (${projectPath})`, error);
     return undefined;
   }
 }

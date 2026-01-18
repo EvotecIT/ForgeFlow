@@ -33,7 +33,11 @@ export class ProjectScanner {
           lastModified: previous?.lastModified ?? project.lastModified,
           lastGitCommit: previous?.lastGitCommit,
           pinnedItems: previous?.pinnedItems ?? [],
+          entryPointOverrides: previous?.entryPointOverrides ?? [],
           preferredRunProfileId: previous?.preferredRunProfileId,
+          preferredRunTarget: previous?.preferredRunTarget,
+          preferredRunWorkingDirectory: previous?.preferredRunWorkingDirectory,
+          runPresets: previous?.runPresets ?? [],
           identity: previous?.identity,
           tags: previous?.tags ?? project.tags
         });
@@ -84,7 +88,7 @@ export class ProjectScanner {
     for (const [name, type] of entries) {
       const isDirectory = type === vscode.FileType.Directory;
       const isFile = type === vscode.FileType.File;
-      if (name === '.git' && isDirectory) {
+      if (name === '.git' && (isDirectory || isFile)) {
         marker = chooseMarker(marker, { type: 'git', markerPath: path.join(dir, '.git') });
         continue;
       }
@@ -120,7 +124,9 @@ export class ProjectScanner {
       type: marker.type,
       tags: [marker.type],
       lastModified: stat?.mtime,
-      pinnedItems: []
+      pinnedItems: [],
+      entryPointOverrides: [],
+      runPresets: []
     };
   }
 }

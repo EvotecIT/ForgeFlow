@@ -1,6 +1,8 @@
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { getForgeFlowSettings } from '../util/config';
+import type { ForgeFlowLogger } from '../util/log';
+import { buildStatusLabel, diffDays, parseTrack } from './gitParsing';
 
 const execFileAsync = promisify(execFile);
 
@@ -45,6 +47,8 @@ export interface GitRepoOverrides {
 }
 
 export class GitService {
+  public constructor(private readonly logger?: ForgeFlowLogger) {}
+
   public async getRepoStatus(
     repoPath: string,
     repoName: string,
@@ -94,7 +98,10 @@ export class GitService {
         defaultBranch,
         branches: enriched
       };
-    } catch {
+    } catch (error) {
+      if (this.logger) {
+        this.logger.error(`Git status failed for ${repoName}: ${formatGitError(error)}`);
+      }
       return undefined;
     }
   }
@@ -156,8 +163,8 @@ export class GitService {
       if (name) {
         return name;
       }
-    } catch {
-      // ignore
+    } catch (error) {
+      this.logger?.warn(`Git default branch lookup failed for ${repoPath}: ${formatGitError(error)}`);
     }
 
     const localNames = new Set(branches.map((branch) => branch.name));
@@ -181,16 +188,11 @@ export class GitService {
         .map((line) => line.replace('*', '').trim())
         .filter(Boolean);
       return new Set(names);
-    } catch {
+    } catch (error) {
+      this.logger?.warn(`Git merged branch lookup failed for ${repoPath}: ${formatGitError(error)}`);
       return new Set<string>();
     }
   }
-}
-
-interface TrackInfo {
-  ahead: number;
-  behind: number;
-  isGone: boolean;
 }
 
 function parseBranchLine(line: string, currentBranch: string): GitBranchInfo {
@@ -213,73 +215,14 @@ function parseBranchLine(line: string, currentBranch: string): GitBranchInfo {
   };
 }
 
-function parseTrack(value?: string): TrackInfo {
-  if (!value) {
-    return { ahead: 0, behind: 0, isGone: false };
-  }
-  if (value.includes('gone')) {
-    return { ahead: 0, behind: 0, isGone: true };
-  }
-  const aheadMatch = /ahead\s+(\d+)/i.exec(value);
-  const behindMatch = /behind\s+(\d+)/i.exec(value);
-  return {
-    ahead: aheadMatch ? Number(aheadMatch[1]) : 0,
-    behind: behindMatch ? Number(behindMatch[1]) : 0,
-    isGone: false
-  };
-}
-
-function buildStatusLabel(input: {
-  isCurrent: boolean;
-  isGone: boolean;
-  hasUpstream: boolean;
-  ahead: number;
-  behind: number;
-  isMerged: boolean;
-  isStale: boolean;
-  ageDays?: number;
-}): string {
-  const labels: string[] = [];
-  if (input.isCurrent) {
-    labels.push('current');
-  }
-  if (input.isGone) {
-    labels.push('gone');
-  } else if (!input.hasUpstream) {
-    labels.push('no upstream');
-  }
-  if (input.ahead > 0 && input.behind > 0) {
-    labels.push(`diverged ${input.ahead}/${input.behind}`);
-  } else if (input.ahead > 0) {
-    labels.push(`ahead ${input.ahead}`);
-  } else if (input.behind > 0) {
-    labels.push(`behind ${input.behind}`);
-  }
-  if (input.isMerged) {
-    labels.push('merged');
-  }
-  if (input.isStale && input.ageDays !== undefined) {
-    labels.push(`stale ${input.ageDays}d`);
-  }
-  if (labels.length === 0) {
-    return 'clean';
-  }
-  return labels.join(' · ');
-}
-
-function diffDays(isoDate: string): number | undefined {
-  const timestamp = Date.parse(isoDate);
-  if (Number.isNaN(timestamp)) {
-    return undefined;
-  }
-  const diffMs = Date.now() - timestamp;
-  if (diffMs < 0) {
-    return 0;
-  }
-  return Math.floor(diffMs / (1000 * 60 * 60 * 24));
-}
-
 async function execGit(cwd: string, args: string[]): Promise<string> {
   const result = await execFileAsync('git', ['-C', cwd, ...args]);
   return result.stdout;
+}
+
+function formatGitError(error: unknown): string {
+  if (error instanceof Error && 'message' in error) {
+    return error.message;
+  }
+  return String(error);
 }

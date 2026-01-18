@@ -16,3 +16,33 @@ export interface RunRequest {
   profileId?: string;
   target?: RunTarget;
 }
+
+export type RunHistoryKind = 'powershell' | 'command' | 'task';
+
+export interface RunHistoryEntry {
+  id: string;
+  kind: RunHistoryKind;
+  label: string;
+  timestamp: number;
+  filePath?: string;
+  command?: string;
+  workingDirectory?: string;
+  projectId?: string;
+  profileId?: string;
+  target?: RunTarget;
+  taskName?: string;
+  taskSource?: string;
+}
+
+export interface RunPreset {
+  id: string;
+  label: string;
+  kind: RunHistoryKind;
+  filePath?: string;
+  command?: string;
+  workingDirectory?: string;
+  profileId?: string;
+  target?: RunTarget;
+  taskName?: string;
+  taskSource?: string;
+}

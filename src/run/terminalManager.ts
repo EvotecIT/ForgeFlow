@@ -4,6 +4,7 @@ import { resolveExecutable } from './powershellProfiles';
 
 export interface TerminalOptions {
   reuseTerminal: boolean;
+  reuseScope: 'profile' | 'shared';
   perProject: boolean;
   projectId?: string;
   workingDirectory?: string;
@@ -11,6 +12,17 @@ export interface TerminalOptions {
 
 export class TerminalManager implements vscode.Disposable {
   private readonly terminals = new Map<string, vscode.Terminal>();
+  private readonly closeSubscription: vscode.Disposable;
+
+  public constructor() {
+    this.closeSubscription = vscode.window.onDidCloseTerminal((terminal) => {
+      for (const [key, value] of this.terminals.entries()) {
+        if (value === terminal) {
+          this.terminals.delete(key);
+        }
+      }
+    });
+  }
 
   public getTerminal(profile: PowerShellProfile, options: TerminalOptions): vscode.Terminal {
     const key = this.getKey(profile, options);
@@ -40,6 +52,7 @@ export class TerminalManager implements vscode.Disposable {
   }
 
   public dispose(): void {
+    this.closeSubscription.dispose();
     for (const terminal of this.terminals.values()) {
       terminal.dispose();
     }
@@ -47,6 +60,12 @@ export class TerminalManager implements vscode.Disposable {
   }
 
   private getKey(profile: PowerShellProfile, options: TerminalOptions): string {
+    if (options.reuseScope === 'shared') {
+      if (options.perProject && options.projectId) {
+        return `shared:${options.projectId}`;
+      }
+      return 'shared';
+    }
     if (options.perProject && options.projectId) {
       return `${profile.id}:${options.projectId}`;
     }

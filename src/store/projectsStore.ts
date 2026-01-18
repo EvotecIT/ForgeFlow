@@ -1,15 +1,36 @@
 import type { StateStore } from './stateStore';
+import { getScopedValue, setScopedValue } from './filterScope';
 import type { Project, ProjectIdentity } from '../models/project';
+import type { ProjectSortMode, SortDirection } from '../util/config';
+import type { RunPreset } from '../models/run';
 
 const PROJECTS_KEY = 'forgeflow.projects.items.v1';
 const FAVORITES_KEY = 'forgeflow.projects.favorites.v1';
 const WORKSPACE_OVERRIDES_KEY = 'forgeflow.projects.workspaceOverrides.v1';
 const FILTER_KEY = 'forgeflow.projects.filter.v1';
+const FAVORITES_ONLY_KEY = 'forgeflow.projects.favoritesOnly.v1';
+const SCAN_META_KEY = 'forgeflow.projects.scanMeta.v1';
+const SORT_ORDER_KEY = 'forgeflow.projects.sortOrder.v1';
 
 interface ProjectWorkspaceOverride {
   lastOpened?: number;
   lastActivity?: number;
   preferredRunProfileId?: string;
+  preferredRunTarget?: 'integrated' | 'external' | 'externalAdmin';
+  preferredRunWorkingDirectory?: string;
+}
+
+export interface ProjectScanMeta {
+  roots: string[];
+  maxDepth: number;
+  fetchedAt: number;
+}
+
+export interface ProjectSortOrder {
+  mode: ProjectSortMode;
+  direction: SortDirection;
+  ids: string[];
+  savedAt: number;
 }
 
 export class ProjectsStore {
@@ -22,7 +43,12 @@ export class ProjectsStore {
       ...project,
       lastOpened: overrides[project.id]?.lastOpened ?? project.lastOpened,
       lastActivity: overrides[project.id]?.lastActivity ?? project.lastActivity,
-      preferredRunProfileId: overrides[project.id]?.preferredRunProfileId ?? project.preferredRunProfileId
+      preferredRunProfileId: overrides[project.id]?.preferredRunProfileId ?? project.preferredRunProfileId,
+      preferredRunTarget: overrides[project.id]?.preferredRunTarget ?? project.preferredRunTarget,
+      preferredRunWorkingDirectory: overrides[project.id]?.preferredRunWorkingDirectory ?? project.preferredRunWorkingDirectory,
+      entryPointOverrides: project.entryPointOverrides ?? [],
+      pinnedItems: project.pinnedItems ?? [],
+      runPresets: project.runPresets ?? []
     }));
   }
 
@@ -35,11 +61,35 @@ export class ProjectsStore {
   }
 
   public getFilter(): string {
-    return this.state.getWorkspace<string>(FILTER_KEY, '');
+    return getScopedValue(this.state, FILTER_KEY, '');
   }
 
   public async setFilter(value: string): Promise<void> {
-    await this.state.setWorkspace(FILTER_KEY, value);
+    await setScopedValue(this.state, FILTER_KEY, value);
+  }
+
+  public getFavoritesOnly(): boolean {
+    return this.state.getWorkspace<boolean>(FAVORITES_ONLY_KEY, false);
+  }
+
+  public async setFavoritesOnly(value: boolean): Promise<void> {
+    await this.state.setWorkspace(FAVORITES_ONLY_KEY, value);
+  }
+
+  public getScanMeta(): ProjectScanMeta | undefined {
+    return this.state.getGlobal<ProjectScanMeta | undefined>(SCAN_META_KEY, undefined);
+  }
+
+  public async setScanMeta(meta: ProjectScanMeta): Promise<void> {
+    await this.state.setGlobal(SCAN_META_KEY, meta);
+  }
+
+  public getSortOrder(): ProjectSortOrder | undefined {
+    return this.state.getGlobal<ProjectSortOrder | undefined>(SORT_ORDER_KEY, undefined);
+  }
+
+  public async setSortOrder(order: ProjectSortOrder): Promise<void> {
+    await this.state.setGlobal(SORT_ORDER_KEY, order);
   }
 
   public async addFavorite(projectId: string): Promise<void> {
@@ -107,10 +157,50 @@ export class ProjectsStore {
     await this.state.setGlobal(PROJECTS_KEY, projects);
   }
 
+  public async updateEntryPointOverrides(projectId: string, entryPointOverrides: string[]): Promise<void> {
+    const projects = this.state.getGlobal<Project[]>(PROJECTS_KEY, []);
+    const index = projects.findIndex((item) => item.id === projectId);
+    if (index === -1) {
+      return;
+    }
+    const existing = projects[index];
+    if (!existing) {
+      return;
+    }
+    projects[index] = { ...existing, entryPointOverrides };
+    await this.state.setGlobal(PROJECTS_KEY, projects);
+  }
+
   public async updatePreferredProfile(projectId: string, profileId?: string): Promise<void> {
     const overrides = this.state.getWorkspace<Record<string, ProjectWorkspaceOverride>>(WORKSPACE_OVERRIDES_KEY, {});
     overrides[projectId] = { ...overrides[projectId], preferredRunProfileId: profileId };
     await this.state.setWorkspace(WORKSPACE_OVERRIDES_KEY, overrides);
+  }
+
+  public async updatePreferredRunTarget(projectId: string, target?: 'integrated' | 'external' | 'externalAdmin'): Promise<void> {
+    const overrides = this.state.getWorkspace<Record<string, ProjectWorkspaceOverride>>(WORKSPACE_OVERRIDES_KEY, {});
+    overrides[projectId] = { ...overrides[projectId], preferredRunTarget: target };
+    await this.state.setWorkspace(WORKSPACE_OVERRIDES_KEY, overrides);
+  }
+
+  public async updatePreferredRunWorkingDirectory(projectId: string, workingDirectory?: string): Promise<void> {
+    const overrides = this.state.getWorkspace<Record<string, ProjectWorkspaceOverride>>(WORKSPACE_OVERRIDES_KEY, {});
+    overrides[projectId] = { ...overrides[projectId], preferredRunWorkingDirectory: workingDirectory };
+    await this.state.setWorkspace(WORKSPACE_OVERRIDES_KEY, overrides);
+  }
+
+  public async updateRunPresets(projectId: string, presets: RunPreset[]): Promise<void> {
+    const projects = this.state.getGlobal<Project[]>(PROJECTS_KEY, []);
+    const index = projects.findIndex((item) => item.id === projectId);
+    if (index === -1) {
+      return;
+    }
+    const existing = projects[index];
+    if (!existing) {
+      return;
+    }
+    projects[index] = { ...existing, runPresets: presets };
+    await this.state.setGlobal(PROJECTS_KEY, projects);
   }
 
   public async updateIdentity(projectId: string, identity: ProjectIdentity): Promise<void> {

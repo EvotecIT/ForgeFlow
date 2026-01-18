@@ -20,8 +20,20 @@ All settings live under the `forgeflow` namespace.
   - Preferred folder names used to rank identity files (default: module, modules, src, source, sources).
 - `forgeflow.projects.modifiedScanDepth` (number)
   - Depth used when scanning for recent file modifications (default: 2).
+- `forgeflow.projects.entryPointScanDepth` (number)
+  - Depth used when locating additional entry points (default: 2).
+- `forgeflow.projects.entryPointPreferredFolders` (string[])
+  - Preferred folder names when searching for entry points (default: build, scripts, tools, module, src, sources).
+- `forgeflow.projects.entryPointFileNames` (string[])
+  - File names that should always be treated as entry points (default: build.ps1, publish.ps1, azure-pipelines.yml, etc.).
+- `forgeflow.projects.entryPointMaxCount` (number)
+  - Maximum number of auto-discovered entry points per project (default: 8).
+- `forgeflow.projects.entryPointCacheMinutes` (number)
+  - Minutes to cache entry point scan results (default: 5, 0 = no cache).
 - `forgeflow.projects.gitCommitCacheMinutes` (number)
   - Minutes to cache git commit timestamps before re-checking (default: 30).
+- `forgeflow.projects.pageSize` (number)
+  - Maximum number of projects to show before paging (default: 200, 0 = show all).
 - `forgeflow.projects.gitWatch` ("off" | "workspace" | "favorites" | "all")
   - Watch `.git/HEAD` and `.git/logs/HEAD` for changes to keep commit sorting fresh.
 - `forgeflow.projects.gitWatchMaxRepos` (number)
@@ -38,11 +50,59 @@ All settings live under the `forgeflow` namespace.
 ## Run
 - `forgeflow.run.defaultTarget` ("integrated" | "external" | "externalAdmin")
 - `forgeflow.run.integrated.reuseTerminal` (boolean)
+- `forgeflow.run.integrated.reuseScope` ("profile" | "shared")
 - `forgeflow.run.integrated.perProjectTerminal` (boolean)
 - `forgeflow.run.external.keepOpen` (boolean)
   - Keep the external PowerShell window open after the script finishes.
+- `forgeflow.run.external.logOutput` (boolean)
+  - Send external PowerShell session output to a dedicated output channel.
+- `forgeflow.run.external.reuseSession` (boolean)
+  - Reuse a single external PowerShell session per profile (best effort).
+- `forgeflow.run.external.alwaysRestart` (boolean)
+  - Always restart the external session before running when reuse is enabled.
 - `forgeflow.run.externalAdmin.keepOpen` (boolean)
   - Keep the elevated PowerShell window open after the script finishes.
+- `forgeflow.run.history.maxItems` (number)
+  - Maximum number of run history entries to keep.
+- `forgeflow.run.history.perProjectMaxItems` (number)
+  - Maximum number of recent runs shown per project.
+- `forgeflow.run.history.perProjectSortMode` ("time" | "label" | "type")
+  - Sorting for recent runs shown per project.
+
+## Files
+- `forgeflow.files.favorites.viewMode` ("workspace" | "all" | "pinned")
+  - Controls which favorites are shown in the Files view.
+
+### Run by file (opt-in)
+- `forgeflow.run.byFile.enabled` (boolean)
+  - Enable running non-PowerShell files based on file type.
+- `forgeflow.run.byFile.csProjectCommand` (string)
+  - Command template used for running .cs files via a project. Tokens: `{file}`, `{project}`, `{projectDir}` (tokens are auto-quoted).
+- `forgeflow.run.byFile.csSolutionCommand` (string)
+  - Command template used for running .cs files via a solution (.sln). Tokens: `{file}`, `{project}`, `{projectDir}` (tokens are auto-quoted).
+- `forgeflow.run.byFile.csScriptEnabled` (boolean)
+  - Allow running .cs files as scripts (dotnet 10+).
+- `forgeflow.run.byFile.csScriptCommand` (string)
+  - Command template for .cs script runs. Tokens: `{file}`, `{project}`, `{projectDir}` (tokens are auto-quoted).
+- `forgeflow.run.byFile.reuseTerminal` (boolean)
+  - Reuse the terminal for run-by-file commands.
+
+## Filters
+- `forgeflow.filters.scope` ("workspace" | "global")
+  - Controls whether filter values are stored per-workspace or shared globally.
+- `forgeflow.filters.projects.minChars` (number)
+  - Minimum characters before project filtering activates.
+- `forgeflow.filters.files.minChars` (number)
+  - Minimum characters before files filtering activates.
+- `forgeflow.filters.git.minChars` (number)
+  - Minimum characters before git filtering activates.
+- `forgeflow.filters.dashboard.minChars` (number)
+  - Minimum characters before dashboard filtering activates.
+- `forgeflow.filters.files.maxDepth` (number)
+  - Maximum depth to scan for file filter matches (0 = current folder only).
+- `forgeflow.filters.matchMode` ("substring" | "fuzzy")
+  - Match mode used by filters.
+  - Filters support `+include` and `-exclude` tokens plus quoted phrases (e.g., `"api gateway" -legacy`).
 
 ## Browser
 - `forgeflow.browser.preferred` ("default" | "edge" | "chrome" | "chromium" | "firefox" | "firefox-dev")
@@ -53,6 +113,10 @@ All settings live under the `forgeflow` namespace.
 ## Dashboard
 - `forgeflow.dashboard.hideArchived` (boolean)
   - Hide archived repositories from the dashboard.
+- `forgeflow.dashboard.health.enabled` (boolean)
+  - Enable local health scoring (README, license, CI, tests, dependency freshness).
+- `forgeflow.dashboard.health.depStaleDays` (number)
+  - Days before dependency lock/props files are considered stale.
 - GitHub releases are used for `released` when no package release is available.
 
 ### Dashboard Tokens
@@ -89,3 +153,5 @@ Use **ForgeFlow: Git: Preview Clean Project** to see which branches would be rem
 
 ## Notes
 Favorites and pinned items are stored in global state. Workspace-level overrides can be added later via workspace state if needed.
+Filters are stored per workspace by default. Set `forgeflow.filters.scope` to `global` (or use **ForgeFlow: Toggle Filter Scope**) to share filters across windows.
+Run targets and preferred working directories are stored in workspace state per project. Use **ForgeFlow: Set Project Run Target** and **ForgeFlow: Set Project Run Working Directory** to configure them.

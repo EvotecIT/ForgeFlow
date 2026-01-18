@@ -5,6 +5,9 @@ import type { ForgeFlowLogger } from '../util/log';
 import type { DashboardCache } from '../dashboard/cache';
 import type { DashboardFilterStore } from '../dashboard/filterStore';
 import type { DashboardTokenStore } from '../dashboard/tokenStore';
+import type { DashboardViewState, DashboardViewStateStore } from '../dashboard/viewStateStore';
+import { getForgeFlowSettings } from '../util/config';
+import type { TagFilterStore } from '../store/tagFilterStore';
 
 export class DashboardViewProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
@@ -12,6 +15,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   private lastUpdated?: number;
   private authSummary = '';
   private pendingFocusFilter = false;
+  private tagFilter: string[] = [];
+  private readonly onDidChangeTagFilterEmitter = new vscode.EventEmitter<string[]>();
+  public readonly onDidChangeTagFilter = this.onDidChangeTagFilterEmitter.event;
   private refreshController?: AbortController;
   private refreshPromise?: Promise<void>;
   private progressCurrent = 0;
@@ -24,7 +30,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     private readonly logger: ForgeFlowLogger,
     private readonly cache: DashboardCache,
     private readonly filterStore: DashboardFilterStore,
-    private readonly tokenStore: DashboardTokenStore
+    private readonly tokenStore: DashboardTokenStore,
+    private readonly viewStateStore: DashboardViewStateStore,
+    private readonly tagFilterStore: TagFilterStore
   ) {}
 
   public resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -37,10 +45,19 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       this.authSummary = summary;
       if (this.view) {
         const filter = this.filterStore.getFilter();
+        const viewState = this.viewStateStore.getState();
+        const settings = getForgeFlowSettings();
+        this.tagFilter = this.tagFilterStore.getFilter();
         this.view.webview.html = renderDashboardHtml(this.lastRows, this.view.webview, {
           updatedAt: this.lastUpdated,
           filter,
-          authSummary: this.authSummary
+          activeTags: this.tagFilter,
+          filterMinChars: settings.filtersDashboardMinChars,
+          filterMatchMode: settings.filtersMatchMode,
+          authSummary: this.authSummary,
+          sortKey: viewState.sortKey,
+          sortDir: viewState.sortDir,
+          colWidths: viewState.colWidths
         });
       }
     });
@@ -50,12 +67,21 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       this.lastRows = cached.rows;
       this.lastUpdated = cached.updatedAt;
       const filter = this.filterStore.getFilter();
+      const viewState = this.viewStateStore.getState();
+      const settings = getForgeFlowSettings();
+      this.tagFilter = this.tagFilterStore.getFilter();
       webviewView.webview.html = renderDashboardHtml(this.lastRows, webviewView.webview, {
         updatedAt: this.lastUpdated,
         filter,
+        activeTags: this.tagFilter,
+        filterMinChars: settings.filtersDashboardMinChars,
+        filterMatchMode: settings.filtersMatchMode,
         authSummary: this.authSummary,
         progressCurrent: this.progressCurrent,
-        progressTotal: this.progressTotal
+        progressTotal: this.progressTotal,
+        sortKey: viewState.sortKey,
+        sortDir: viewState.sortDir,
+        colWidths: viewState.colWidths
       });
     }
 
@@ -64,7 +90,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       void webviewView.webview.postMessage({ type: 'focusFilter' });
     }
 
-    webviewView.webview.onDidReceiveMessage(async (message: { type?: string; url?: string; path?: string; filter?: string }) => {
+    webviewView.webview.onDidReceiveMessage(async (message: { type?: string; url?: string; path?: string; filter?: string; tags?: string[]; sortKey?: string; sortDir?: string; colWidths?: Record<string, number> }) => {
       if (message.type === 'refresh') {
         await this.refresh();
       }
@@ -73,10 +99,15 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           this.refreshController.abort();
           vscode.window.setStatusBarMessage('ForgeFlow: Dashboard refresh cancelled.', 3000);
           const filter = this.filterStore.getFilter();
+          const settings = getForgeFlowSettings();
+          this.tagFilter = this.tagFilterStore.getFilter();
           if (this.view) {
             this.view.webview.html = renderDashboardHtml(this.lastRows, this.view.webview, {
               updatedAt: this.lastUpdated,
               filter,
+              activeTags: this.tagFilter,
+              filterMinChars: settings.filtersDashboardMinChars,
+              filterMatchMode: settings.filtersMatchMode,
               authSummary: this.authSummary,
               progressCurrent: this.progressCurrent,
               progressTotal: this.progressTotal
@@ -86,6 +117,22 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       }
       if (message.type === 'setFilter') {
         await this.filterStore.setFilter(message.filter ?? '');
+      }
+      if (message.type === 'setTagFilter') {
+        const tags = Array.isArray(message.tags) ? message.tags.filter((tag) => typeof tag === 'string') : [];
+        await this.applyTagFilter(tags, true, false);
+        this.onDidChangeTagFilterEmitter.fire(this.tagFilter);
+      }
+      if (message.type === 'setViewState') {
+        const sortDir: DashboardViewState['sortDir'] = message.sortDir === 'asc' || message.sortDir === 'desc'
+          ? message.sortDir
+          : undefined;
+        const next: DashboardViewState = {
+          sortKey: typeof message.sortKey === 'string' ? message.sortKey : undefined,
+          sortDir,
+          colWidths: message.colWidths ?? undefined
+        };
+        await this.viewStateStore.setState(next);
       }
       if (message.type === 'openUrl' && message.url) {
         await vscode.env.openExternal(vscode.Uri.parse(message.url));
@@ -104,9 +151,30 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         await vscode.env.clipboard.writeText(message.path);
         vscode.window.setStatusBarMessage('ForgeFlow: Relative path copied.', 2000);
       }
+      if (message.type === 'openTerminal' && message.path) {
+        await vscode.commands.executeCommand('forgeflow.projects.openInTerminal', message.path);
+      }
+      if (message.type === 'runProject' && message.path) {
+        await vscode.commands.executeCommand('forgeflow.projects.run', message.path);
+      }
+      if (message.type === 'gitCleanProject' && message.path) {
+        await vscode.commands.executeCommand('forgeflow.projects.gitClean', message.path);
+      }
+      if (message.type === 'openVisualStudio' && message.path) {
+        await vscode.commands.executeCommand('forgeflow.projects.openInVisualStudio', message.path);
+      }
     });
 
-    void this.refresh();
+    const autoRefreshMinutes = getForgeFlowSettings().dashboardAutoRefreshMinutes;
+    const cacheAgeMs = this.lastUpdated ? Date.now() - this.lastUpdated : undefined;
+    const shouldAutoRefresh = autoRefreshMinutes <= 0
+      ? true
+      : cacheAgeMs === undefined
+        ? true
+        : cacheAgeMs > autoRefreshMinutes * 60_000;
+    if (shouldAutoRefresh) {
+      void this.refresh();
+    }
   }
 
   public async refresh(): Promise<void> {
@@ -140,13 +208,22 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     }
     this.authSummary = await this.getAuthSummary();
     const filter = this.filterStore.getFilter();
+    const viewState = this.viewStateStore.getState();
+    const settings = getForgeFlowSettings();
+    this.tagFilter = this.tagFilterStore.getFilter();
     this.view.webview.html = renderDashboardHtml(this.lastRows, this.view.webview, {
       loading: true,
       updatedAt: this.lastUpdated,
       filter,
+      activeTags: this.tagFilter,
+      filterMinChars: settings.filtersDashboardMinChars,
+      filterMatchMode: settings.filtersMatchMode,
       authSummary: this.authSummary,
       progressCurrent: this.progressCurrent,
-      progressTotal: this.progressTotal
+      progressTotal: this.progressTotal,
+      sortKey: viewState.sortKey,
+      sortDir: viewState.sortDir,
+      colWidths: viewState.colWidths
     });
     try {
       const rows = await this.dashboardService.buildRows(signal, (current, total, label) => {
@@ -163,12 +240,21 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       this.lastRows = rows;
       this.lastUpdated = Date.now();
       await this.cache.save(rows, this.lastUpdated);
+      const viewState = this.viewStateStore.getState();
+      const settings = getForgeFlowSettings();
+      this.tagFilter = this.tagFilterStore.getFilter();
       this.view.webview.html = renderDashboardHtml(rows, this.view.webview, {
         updatedAt: this.lastUpdated,
         filter,
+        activeTags: this.tagFilter,
+        filterMinChars: settings.filtersDashboardMinChars,
+        filterMatchMode: settings.filtersMatchMode,
         authSummary: this.authSummary,
         progressCurrent: this.progressCurrent,
-        progressTotal: this.progressTotal
+        progressTotal: this.progressTotal,
+        sortKey: viewState.sortKey,
+        sortDir: viewState.sortDir,
+        colWidths: viewState.colWidths
       });
     } catch (error) {
       if (signal.aborted) {
@@ -179,13 +265,22 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         return;
       }
       this.logger.error(`Dashboard refresh failed: ${message}`);
+      const viewState = this.viewStateStore.getState();
+      const settings = getForgeFlowSettings();
+      this.tagFilter = this.tagFilterStore.getFilter();
       this.view.webview.html = renderDashboardHtml(this.lastRows, this.view.webview, {
         message: 'Dashboard refresh failed.',
         updatedAt: this.lastUpdated,
         filter,
+        activeTags: this.tagFilter,
+        filterMinChars: settings.filtersDashboardMinChars,
+        filterMatchMode: settings.filtersMatchMode,
         authSummary: this.authSummary,
         progressCurrent: this.progressCurrent,
-        progressTotal: this.progressTotal
+        progressTotal: this.progressTotal,
+        sortKey: viewState.sortKey,
+        sortDir: viewState.sortDir,
+        colWidths: viewState.colWidths
       });
     }
   }
@@ -205,6 +300,23 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       total: this.progressTotal,
       label: this.progressLabel
     });
+  }
+
+  public async applyTagFilter(tags: string[], persist = true, notifyWebview = true): Promise<void> {
+    this.tagFilter = normalizeTagFilter(tags);
+    if (persist) {
+      await this.tagFilterStore.setFilter(this.tagFilter);
+    }
+    if (notifyWebview && this.view) {
+      void this.view.webview.postMessage({ type: 'applyTagFilter', tags: this.tagFilter });
+    }
+  }
+
+  public async applyFilter(value: string): Promise<void> {
+    await this.filterStore.setFilter(value);
+    if (this.view) {
+      void this.view.webview.postMessage({ type: 'applyFilter', filter: value });
+    }
   }
 
   public async focusFilter(): Promise<void> {
@@ -247,4 +359,18 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     }
     return 'GH: anon';
   }
+}
+
+function normalizeTagFilter(tags: string[]): string[] {
+  const deduped = new Map<string, string>();
+  tags
+    .map((tag) => tag.trim())
+    .filter(Boolean)
+    .forEach((tag) => {
+      const key = tag.toLowerCase();
+      if (!deduped.has(key)) {
+        deduped.set(key, tag);
+      }
+    });
+  return Array.from(deduped.values());
 }

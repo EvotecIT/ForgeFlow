@@ -1,4 +1,4 @@
-import { spawn } from 'child_process';
+import { spawn, type ChildProcessWithoutNullStreams } from 'child_process';
 import * as vscode from 'vscode';
 import type { FavoritesStore } from '../store/favoritesStore';
 import type { ProjectsStore } from '../store/projectsStore';
@@ -6,10 +6,13 @@ import { getForgeFlowSettings } from '../util/config';
 import type { PowerShellProfile, RunRequest } from '../models/run';
 import type { ForgeFlowLogger } from '../util/log';
 import { buildAdminCommand, buildProcessCommand, buildTerminalCommand } from './commandBuilder';
-import { builtInProfiles } from './powershellProfiles';
+import { getAllProfiles, resolveExecutable } from './powershellProfiles';
 import type { TerminalManager } from './terminalManager';
 
 export class RunService {
+  private readonly externalSessions = new Map<string, ChildProcessWithoutNullStreams>();
+  private externalOutput?: vscode.OutputChannel;
+
   public constructor(
     private readonly logger: ForgeFlowLogger,
     private readonly favoritesStore: FavoritesStore,
@@ -37,15 +40,31 @@ export class RunService {
 
     const target = request.target ?? settings.runDefaultTarget;
     if (target === 'integrated') {
-      await this.runIntegrated(request, profile, settings.runIntegratedReuseTerminal, settings.runIntegratedPerProjectTerminal);
+      await this.runIntegrated(
+        request,
+        profile,
+        settings.runIntegratedReuseTerminal,
+        settings.runIntegratedReuseScope,
+        settings.runIntegratedPerProjectTerminal
+      );
       return;
     }
 
     if (target === 'external') {
-      await this.runExternal(request, profile, settings.runExternalKeepOpen);
+      await this.runExternal(
+        request,
+        profile,
+        settings.runExternalKeepOpen,
+        settings.runExternalReuseSession,
+        settings.runExternalLogOutput,
+        settings.runExternalAlwaysRestart
+      );
       return;
     }
 
+    if (settings.runExternalReuseSession) {
+      vscode.window.setStatusBarMessage('ForgeFlow: External session reuse is not supported for elevated runs.', 3000);
+    }
     await this.runExternalAdmin(request, profile, settings.runExternalAdminKeepOpen);
   }
 
@@ -56,7 +75,7 @@ export class RunService {
     profiles: PowerShellProfile[],
     defaultProfileId?: string
   ): PowerShellProfile | undefined {
-    const allProfiles = [...builtInProfiles, ...profiles];
+    const allProfiles = getAllProfiles(profiles);
     const explicit = explicitProfileId ? allProfiles.find((p) => p.id === explicitProfileId) : undefined;
     if (explicit) {
       return explicit;
@@ -90,9 +109,16 @@ export class RunService {
     return allProfiles[0];
   }
 
-  private async runIntegrated(request: RunRequest, profile: PowerShellProfile, reuseTerminal: boolean, perProject: boolean): Promise<void> {
+  private async runIntegrated(
+    request: RunRequest,
+    profile: PowerShellProfile,
+    reuseTerminal: boolean,
+    reuseScope: 'profile' | 'shared',
+    perProject: boolean
+  ): Promise<void> {
     const terminal = this.terminalManager.getTerminal(profile, {
       reuseTerminal,
+      reuseScope,
       perProject,
       projectId: request.projectId,
       workingDirectory: request.workingDirectory
@@ -103,7 +129,43 @@ export class RunService {
     this.logger.info(`Run integrated: ${request.filePath}`);
   }
 
-  private async runExternal(request: RunRequest, profile: PowerShellProfile, keepOpen: boolean): Promise<void> {
+  private async runExternal(
+    request: RunRequest,
+    profile: PowerShellProfile,
+    keepOpen: boolean,
+    reuseSession: boolean,
+    logOutput: boolean,
+    alwaysRestart: boolean
+  ): Promise<void> {
+    if (reuseSession) {
+      const command = buildTerminalCommand(request);
+      if (alwaysRestart) {
+        this.resetExternalSession(profile.id);
+        vscode.window.setStatusBarMessage('ForgeFlow: External session restarted.', 2000);
+      }
+      const session = this.getExternalSession(profile, logOutput);
+      if (session?.stdin && !session.killed && session.exitCode === null) {
+        const sent = this.trySendExternalCommand(session, command.commandLine);
+        if (sent) {
+          this.logger.info(`Run external (reuse): ${request.filePath}`);
+          return;
+        }
+        this.logger.warn('External session stale, restarting.');
+        this.resetExternalSession(profile.id);
+        const retry = this.getExternalSession(profile, logOutput);
+        if (retry?.stdin && !retry.killed && retry.exitCode === null) {
+          const resent = this.trySendExternalCommand(retry, command.commandLine);
+          if (resent) {
+            vscode.window.setStatusBarMessage('ForgeFlow: External session restarted.', 2500);
+            this.logger.info(`Run external (reuse): ${request.filePath}`);
+            return;
+          }
+        }
+      }
+      this.logger.warn('External session reuse requested but no live session found, spawning new process.');
+      vscode.window.setStatusBarMessage('ForgeFlow: External session not available, starting new window.', 2500);
+    }
+
     const command = buildProcessCommand(request, profile, keepOpen);
     this.logger.info(`Run external: ${command.executable} ${command.args.join(' ')}`);
     const child = spawn(command.executable, command.args, {
@@ -112,8 +174,9 @@ export class RunService {
     });
 
     child.on('error', (error) => {
-      this.logger.error(`Run failed: ${error.message}`);
-      vscode.window.showErrorMessage(`ForgeFlow: Run failed - ${error.message}`);
+      const context = this.formatRunContext(request, profile, 'external');
+      this.logger.error(`Run failed (${context}): ${error.message}`);
+      vscode.window.showErrorMessage(`ForgeFlow: Run failed (${context}) - ${error.message}`);
     });
   }
 
@@ -132,8 +195,134 @@ export class RunService {
 
     child.unref();
     child.on('error', (error) => {
-      this.logger.error(`Admin run failed: ${error.message}`);
-      vscode.window.showErrorMessage(`ForgeFlow: Admin run failed - ${error.message}`);
+      const context = this.formatRunContext(request, profile, 'externalAdmin');
+      this.logger.error(`Admin run failed (${context}): ${error.message}`);
+      vscode.window.showErrorMessage(`ForgeFlow: Admin run failed (${context}) - ${error.message}`);
     });
+  }
+
+  private getExternalSession(
+    profile: PowerShellProfile,
+    logOutput: boolean
+  ): ChildProcessWithoutNullStreams | undefined {
+    const key = profile.id;
+    const existing = this.externalSessions.get(key);
+    if (existing && existing.exitCode === null && !existing.killed) {
+      return existing;
+    }
+    if (existing) {
+      this.externalSessions.delete(key);
+    }
+
+    const executable = resolveExecutable(profile);
+    const args: string[] = ['-NoLogo', '-NoProfile', '-NoExit'];
+    if (process.platform === 'win32') {
+      args.push('-ExecutionPolicy', 'Bypass');
+    }
+    const child = spawn(executable, args, {
+      stdio: 'pipe',
+      windowsHide: false
+    });
+
+    const outputChannel = this.getExternalOutputChannel(logOutput);
+    child.stdout.on('data', (chunk) => {
+      const message = chunk.toString().trimEnd();
+      if (!message) {
+        return;
+      }
+      if (outputChannel) {
+        outputChannel.appendLine(`[${profile.label}] ${message}`);
+      } else {
+        this.logger.info(`[External:${profile.label}] ${message}`);
+      }
+    });
+    child.stderr.on('data', (chunk) => {
+      const message = chunk.toString().trimEnd();
+      if (!message) {
+        return;
+      }
+      if (outputChannel) {
+        outputChannel.appendLine(`[${profile.label}] ${message}`);
+      } else {
+        this.logger.error(`[External:${profile.label}] ${message}`);
+      }
+    });
+    child.on('exit', () => {
+      this.externalSessions.delete(key);
+    });
+    child.on('error', (error) => {
+      this.logger.error(`External session error: ${error.message}`);
+      this.externalSessions.delete(key);
+    });
+
+    this.externalSessions.set(key, child);
+    return child;
+  }
+
+  private getExternalOutputChannel(enabled: boolean): vscode.OutputChannel | undefined {
+    if (!enabled) {
+      return undefined;
+    }
+    if (!this.externalOutput) {
+      this.externalOutput = vscode.window.createOutputChannel('ForgeFlow External PowerShell');
+    }
+    return this.externalOutput;
+  }
+
+  private trySendExternalCommand(session: ChildProcessWithoutNullStreams, commandLine: string): boolean {
+    try {
+      session.stdin.write(`${commandLine}\n`);
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`External session write failed: ${message}`);
+      return false;
+    }
+  }
+
+  private formatRunContext(request: RunRequest, profile: PowerShellProfile, target: 'external' | 'externalAdmin'): string {
+    const parts = [
+      target,
+      `profile:${profile.label}`
+    ];
+    if (request.projectId) {
+      parts.push(`project:${request.projectId}`);
+    }
+    if (request.workingDirectory) {
+      parts.push(`cwd:${request.workingDirectory}`);
+    }
+    return parts.join(' ');
+  }
+
+  public resetExternalSession(profileId?: string): number {
+    if (profileId) {
+      const session = this.externalSessions.get(profileId);
+      if (!session) {
+        return 0;
+      }
+      this.closeExternalSession(session);
+      this.externalSessions.delete(profileId);
+      return 1;
+    }
+    let count = 0;
+    for (const [key, session] of this.externalSessions.entries()) {
+      this.closeExternalSession(session);
+      this.externalSessions.delete(key);
+      count += 1;
+    }
+    return count;
+  }
+
+  private closeExternalSession(session: ChildProcessWithoutNullStreams): void {
+    try {
+      session.stdin.write('exit\n');
+    } catch (error) {
+      this.logger.warn(`External session exit failed: ${String(error)}`);
+    }
+    try {
+      session.kill();
+    } catch (error) {
+      this.logger.warn(`External session kill failed: ${String(error)}`);
+    }
   }
 }

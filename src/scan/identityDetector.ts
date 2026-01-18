@@ -42,7 +42,7 @@ const ignoredFolders = new Set([
 export async function detectProjectIdentity(projectPath: string, options?: IdentityScanOptions): Promise<DetectedIdentity> {
   const scanOptions = options ?? getIdentityScanOptions();
   const [gitInfo, psInfo, csInfo, propsInfo, vscodeInfo] = await Promise.all([
-    detectRepositoryInfo(projectPath),
+    detectRepositoryInfo(projectPath, scanOptions.maxDepth),
     detectPowerShellModule(projectPath, scanOptions),
     detectCsproj(projectPath, scanOptions),
     detectMsBuildProps(projectPath, scanOptions),
@@ -72,8 +72,8 @@ export async function detectProjectIdentity(projectPath: string, options?: Ident
   };
 }
 
-async function detectRepositoryInfo(projectPath: string): Promise<RepoInfo | undefined> {
-  const configPath = await resolveGitConfigPath(projectPath);
+async function detectRepositoryInfo(projectPath: string, maxDepth: number): Promise<RepoInfo | undefined> {
+  const configPath = await resolveGitConfigPath(projectPath, maxDepth);
   if (!configPath) {
     return undefined;
   }
@@ -88,7 +88,24 @@ async function detectRepositoryInfo(projectPath: string): Promise<RepoInfo | und
   return parseRepositoryInfo(remoteUrl);
 }
 
-async function resolveGitConfigPath(projectPath: string): Promise<string | undefined> {
+async function resolveGitConfigPath(projectPath: string, maxDepth: number): Promise<string | undefined> {
+  let current = projectPath;
+  const depthLimit = Math.max(0, maxDepth);
+  for (let depth = 0; depth <= depthLimit; depth += 1) {
+    const config = await resolveGitConfigAt(current);
+    if (config) {
+      return config;
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      break;
+    }
+    current = parent;
+  }
+  return undefined;
+}
+
+async function resolveGitConfigAt(projectPath: string): Promise<string | undefined> {
   const dotGit = path.join(projectPath, '.git');
   const stat = await statPath(dotGit);
   if (!stat) {
@@ -102,14 +119,10 @@ async function resolveGitConfigPath(projectPath: string): Promise<string | undef
     return undefined;
   }
   const match = /gitdir:\s*(.+)/i.exec(text);
-  if (!match) {
+  const gitDirValue = match?.[1]?.trim();
+  if (!gitDirValue) {
     return undefined;
   }
-  const gitDir = match[1];
-  if (!gitDir) {
-    return undefined;
-  }
-  const gitDirValue = gitDir.trim();
   const resolved = path.isAbsolute(gitDirValue) ? gitDirValue : path.resolve(projectPath, gitDirValue);
   return path.join(resolved, 'config');
 }
@@ -168,6 +181,14 @@ function parseRepositoryInfo(remoteUrl: string): RepoInfo | undefined {
   if (sshAzureScp) {
     return toAzureRepoInfo(sshAzureScp[1]);
   }
+  const sshVisualStudio = /^git@vs-ssh\.visualstudio\.com:v3\/(.+)$/i.exec(cleaned);
+  if (sshVisualStudio) {
+    return toAzureRepoInfo(sshVisualStudio[1]);
+  }
+  const sshGeneric = /^git@([^:]+):(.+)$/i.exec(cleaned);
+  if (sshGeneric) {
+    return toHostedRepoInfo(sshGeneric[1] ?? '', sshGeneric[2] ?? '');
+  }
 
   if (cleaned.includes('://')) {
     const urlInfo = parseUrlRepository(cleaned);
@@ -183,30 +204,38 @@ function parseUrlRepository(remoteUrl: string): RepoInfo | undefined {
   try {
     const url = new URL(remoteUrl);
     const host = url.hostname.toLowerCase();
+    const hostWithPort = url.host.toLowerCase();
     const pathParts = url.pathname.split('/').filter(Boolean);
 
     if (host === 'github.com') {
-      return toRepoInfo('github', pathParts.slice(0, 2).join('/'), 'https://github.com');
+      return toRepoInfo('github', toGitHubRepoPath(pathParts), 'https://github.com');
     }
     if (host === 'gitlab.com') {
-      return toRepoInfo('gitlab', pathParts.slice(0, 2).join('/'), 'https://gitlab.com');
+      return toRepoInfo('gitlab', toGitLabRepoPath(pathParts), 'https://gitlab.com');
     }
-    if (host === 'dev.azure.com' || host === 'ssh.dev.azure.com' || host.endsWith('.visualstudio.com')) {
-      const orgFromHost = host.endsWith('.visualstudio.com') ? host.split('.')[0] : undefined;
+    if (host === 'dev.azure.com' || host === 'ssh.dev.azure.com' || host.endsWith('.visualstudio.com') || host === 'vs-ssh.visualstudio.com') {
+      const orgFromHost = host.endsWith('.visualstudio.com') && host !== 'vs-ssh.visualstudio.com'
+        ? host.split('.')[0]
+        : undefined;
       return toAzureRepoInfoFromParts(orgFromHost, pathParts);
     }
+    if (host.includes('github')) {
+      return toRepoInfo('github', toGitHubRepoPath(pathParts), `https://${hostWithPort}`);
+    }
+    if (host.includes('gitlab')) {
+      return toRepoInfo('gitlab', toGitLabRepoPath(pathParts), `https://${hostWithPort}`);
+    }
+    return toHostedRepoInfo(hostWithPort, pathParts.join('/'));
   } catch {
     return undefined;
   }
-
-  return undefined;
 }
 
 function toRepoInfo(provider: RepositoryProvider, pathValue: string | undefined, baseUrl: string): RepoInfo | undefined {
   if (!pathValue) {
     return undefined;
   }
-  const repoPath = trimRepoPath(pathValue);
+  const repoPath = trimRepoPath(pathValue, provider);
   if (!repoPath) {
     return undefined;
   }
@@ -254,14 +283,47 @@ function toAzureRepoInfoFromParts(orgFromHost: string | undefined, parts: string
   };
 }
 
-function trimRepoPath(value: string): string | undefined {
+function trimRepoPath(value: string, provider: RepositoryProvider): string | undefined {
   const parts = value.split('/').filter((part) => part.length > 0);
+  if (provider === 'gitlab') {
+    return parts.length >= 2 ? parts.join('/') : undefined;
+  }
   const owner = parts[0];
   const repo = parts[1];
   if (!owner || !repo) {
     return undefined;
   }
   return `${owner}/${repo}`;
+}
+
+function toHostedRepoInfo(host: string, pathValue: string): RepoInfo | undefined {
+  const cleanedPath = pathValue.replace(/^\//, '').replace(/\.git$/, '');
+  const pathParts = cleanedPath.split('/').filter(Boolean);
+  if (pathParts.length < 2) {
+    return undefined;
+  }
+  if (host.includes('github')) {
+    const repoPath = toGitHubRepoPath(pathParts);
+    return repoPath ? { provider: 'github', repoPath, url: `https://${host}/${repoPath}`, githubRepo: repoPath } : undefined;
+  }
+  if (host.includes('gitlab')) {
+    const repoPath = toGitLabRepoPath(pathParts);
+    return repoPath ? { provider: 'gitlab', repoPath, url: `https://${host}/${repoPath}` } : undefined;
+  }
+  const repoPath = pathParts.join('/');
+  return {
+    provider: 'unknown',
+    repoPath,
+    url: `https://${host}/${repoPath}`
+  };
+}
+
+function toGitHubRepoPath(parts: string[]): string | undefined {
+  return parts.length >= 2 ? `${parts[0]}/${parts[1]}` : undefined;
+}
+
+function toGitLabRepoPath(parts: string[]): string | undefined {
+  return parts.length >= 2 ? parts.join('/') : undefined;
 }
 
 async function detectPowerShellModule(projectPath: string, options: IdentityScanOptions): Promise<{ moduleName?: string; moduleVersion?: string; repoInfo?: RepoInfo } | undefined> {

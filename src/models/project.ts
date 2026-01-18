@@ -12,6 +12,8 @@ export interface ProjectIdentity {
   vscodeExtensionVersion?: string;
 }
 
+import type { RunPreset } from './run';
+
 export interface Project {
   id: string;
   name: string;
@@ -23,12 +25,23 @@ export interface Project {
   lastModified?: number;
   lastGitCommit?: number;
   pinnedItems: string[];
+  entryPointOverrides: string[];
   preferredRunProfileId?: string;
+  preferredRunTarget?: 'integrated' | 'external' | 'externalAdmin';
+  preferredRunWorkingDirectory?: string;
+  runPresets?: RunPreset[];
   identity?: ProjectIdentity;
 }
 
 export interface ProjectEntryPoint {
   label: string;
   path: string;
-  kind: 'sln' | 'csproj' | 'powershell' | 'node' | 'readme' | 'other';
+  kind: 'sln' | 'csproj' | 'powershell' | 'node' | 'readme' | 'build' | 'task' | 'other';
+  source?: 'auto' | 'custom';
+  task?: {
+    name: string;
+    source?: string;
+    type?: string;
+    group?: string;
+  };
 }

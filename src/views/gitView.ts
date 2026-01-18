@@ -1,8 +1,12 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 import type { Project } from '../models/project';
 import type { ProjectsStore } from '../store/projectsStore';
 import { treeId } from '../util/ids';
 import type { GitService, GitBranchGroup, GitBranchInfo, GitRepoStatus } from '../git/gitService';
+import type { GitFilterStore } from '../store/gitFilterStore';
+import { matchesFilterQuery } from '../util/filter';
+import type { ForgeFlowLogger } from '../util/log';
 import type { GitStore } from '../git/gitStore';
 import { buildProjectSummary } from '../git/gitSummary';
 import { getForgeFlowSettings, type GitBranchFilterMode, type GitBranchSortMode } from '../util/config';
@@ -28,12 +32,29 @@ export class GitViewProvider implements vscode.TreeDataProvider<GitNode> {
   private status?: GitRepoStatus;
   private isLoading = false;
   private pendingRefresh = false;
+  private errorMessage?: string;
+  private lastErrorProjectId?: string;
+  private filterText = '';
 
   public constructor(
     private readonly projectsStore: ProjectsStore,
     private readonly gitService: GitService,
-    private readonly gitStore: GitStore
-  ) {}
+    private readonly gitStore: GitStore,
+    private readonly filterStore: GitFilterStore,
+    private readonly logger: ForgeFlowLogger
+  ) {
+    this.filterText = filterStore.getFilter();
+  }
+
+  public getFilter(): string {
+    return this.filterText;
+  }
+
+  public setFilter(value: string): void {
+    this.filterText = value;
+    void this.filterStore.setFilter(value);
+    this.onDidChangeTreeDataEmitter.fire(undefined);
+  }
 
   public async refresh(): Promise<void> {
     if (this.isLoading) {
@@ -52,8 +73,25 @@ export class GitViewProvider implements vscode.TreeDataProvider<GitNode> {
     try {
       const overrides = this.gitStore.getProjectSettings(project.id);
       this.status = await this.gitService.getRepoStatus(project.path, project.name, overrides);
+      this.errorMessage = undefined;
+      this.lastErrorProjectId = undefined;
       if (this.status) {
         await this.gitStore.setSummary(project.id, buildProjectSummary(this.status));
+      } else {
+        this.errorMessage = `ForgeFlow: Git status failed for ${project.name}. See Output > ForgeFlow for details.`;
+        if (this.lastErrorProjectId !== project.id) {
+          this.lastErrorProjectId = project.id;
+          vscode.window.showWarningMessage(this.errorMessage);
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Git status failed for ${project.name}: ${message}`);
+      this.status = undefined;
+      this.errorMessage = `ForgeFlow: Git status failed for ${project.name}. See Output > ForgeFlow for details.`;
+      if (this.lastErrorProjectId !== project.id) {
+        this.lastErrorProjectId = project.id;
+        vscode.window.showWarningMessage(this.errorMessage);
       }
     } finally {
       this.isLoading = false;
@@ -84,27 +122,52 @@ export class GitViewProvider implements vscode.TreeDataProvider<GitNode> {
     }
 
     const gitProjects = this.getGitProjects();
+    const minChars = getForgeFlowSettings().filtersGitMinChars;
+    const filter = normalizeFilter(this.filterText, minChars);
+    const mode = getForgeFlowSettings().filtersMatchMode;
+    const filteredProjects = filter
+      ? gitProjects.filter((project) => matchesFilterQuery(`${project.name} ${project.path}`, filter, mode))
+      : gitProjects;
     if (gitProjects.length === 0) {
       return [new GitHintNode('No git projects found. Adjust scan roots.', 'forgeflow.projects.configureScanRoots')];
     }
 
     const selected = await this.resolveSelectedProject();
     if (!selected) {
-      return [new GitHintNode('Select a project to inspect branches', 'forgeflow.git.selectProject')];
+      return [
+        new GitProjectPickerNode(filteredProjects),
+        new GitHintNode('Select a project to inspect branches', 'forgeflow.git.selectProject')
+      ];
     }
 
     if (this.isLoading) {
-      return [new GitHintNode('Loading git status...', 'forgeflow.git.refresh'), new GitProjectNode(selected, this.status)];
+      return [
+        new GitProjectPickerNode(filteredProjects, selected.id),
+        new GitHintNode('Loading git status...', 'forgeflow.git.refresh'),
+        new GitProjectNode(selected, this.status)
+      ];
     }
 
     if (!this.status) {
       void this.refresh();
-      return [new GitHintNode('Loading git status...', 'forgeflow.git.refresh'), new GitProjectNode(selected, this.status)];
+      if (this.errorMessage) {
+        return [
+          new GitProjectPickerNode(filteredProjects, selected.id),
+          new GitHintNode(this.errorMessage, 'forgeflow.git.refresh'),
+          new GitProjectNode(selected, this.status)
+        ];
+      }
+      return [
+        new GitProjectPickerNode(filteredProjects, selected.id),
+        new GitHintNode('Loading git status...', 'forgeflow.git.refresh'),
+        new GitProjectNode(selected, this.status)
+      ];
     }
 
     return [
+      new GitProjectPickerNode(filteredProjects, selected.id),
       new GitProjectNode(selected, this.status),
-      ...buildBranchGroups(this.status)
+      ...buildBranchGroups(this.status, this.filterText)
     ];
   }
 
@@ -128,7 +191,27 @@ export class GitViewProvider implements vscode.TreeDataProvider<GitNode> {
         return match;
       }
     }
-    return gitProjects[0];
+    const activePath = getActiveFilePath();
+    if (activePath) {
+      const match = findProjectByPath(gitProjects, activePath);
+      if (match) {
+        await this.gitStore.setSelectedProjectId(match.id);
+        return match;
+      }
+    }
+    const workspacePath = getWorkspacePath();
+    if (workspacePath) {
+      const match = findProjectByPath(gitProjects, workspacePath);
+      if (match) {
+        await this.gitStore.setSelectedProjectId(match.id);
+        return match;
+      }
+    }
+    const fallback = gitProjects[0];
+    if (fallback) {
+      await this.gitStore.setSelectedProjectId(fallback.id);
+    }
+    return fallback;
   }
 }
 
@@ -148,6 +231,50 @@ class GitHintNode implements GitNode {
     item.iconPath = new vscode.ThemeIcon('info');
     item.contextValue = 'forgeflowGitHint';
     item.command = { command: this.commandId, title: this.message };
+    return item;
+  }
+}
+
+class GitProjectPickerNode implements GitNode {
+  public readonly id: string;
+
+  public constructor(private readonly projects: Project[], private readonly selectedId?: string) {
+    this.id = treeId('git-projects', 'root');
+  }
+
+  public async getChildren(): Promise<GitNode[]> {
+    return this.projects.map((project) => new GitProjectChoiceNode(project, project.id === this.selectedId));
+  }
+
+  public getTreeItem(): vscode.TreeItem {
+    const item = new vscode.TreeItem('Projects', vscode.TreeItemCollapsibleState.Collapsed);
+    item.contextValue = 'forgeflowGitProjects';
+    item.iconPath = new vscode.ThemeIcon('repo');
+    return item;
+  }
+}
+
+class GitProjectChoiceNode implements GitNode, GitNodeWithProject {
+  public readonly id: string;
+
+  public constructor(public readonly project: Project, private readonly isSelected: boolean) {
+    this.id = treeId('git-project-choice', project.id);
+  }
+
+  public async getChildren(): Promise<GitNode[]> {
+    return [];
+  }
+
+  public getTreeItem(): vscode.TreeItem {
+    const item = new vscode.TreeItem(this.project.name, vscode.TreeItemCollapsibleState.None);
+    item.contextValue = 'forgeflowGitProjectChoice';
+    item.iconPath = new vscode.ThemeIcon(this.isSelected ? 'check' : 'repo');
+    item.description = this.isSelected ? 'selected' : undefined;
+    item.command = {
+      command: 'forgeflow.git.selectProject',
+      title: 'Select Git Project',
+      arguments: [this.project.id]
+    };
     return item;
   }
 }
@@ -180,6 +307,49 @@ class GitProjectNode implements GitNode, GitNodeWithProject {
     }
     return item;
   }
+}
+
+function getActiveFilePath(): string | undefined {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor || editor.document.uri.scheme !== 'file') {
+    return undefined;
+  }
+  return normalizeFsPath(editor.document.uri.fsPath);
+}
+
+function getWorkspacePath(): string | undefined {
+  const folders = vscode.workspace.workspaceFolders;
+  if (!folders || folders.length === 0) {
+    return undefined;
+  }
+  const first = folders[0];
+  if (!first) {
+    return undefined;
+  }
+  return normalizeFsPath(first.uri.fsPath);
+}
+
+function findProjectByPath(projects: Project[], filePath: string): Project | undefined {
+  const resolved = normalizeFsPath(path.resolve(filePath));
+  return projects.find((project) => isWithin(normalizeFsPath(project.path), resolved));
+}
+
+function isWithin(parent: string, child: string): boolean {
+  const compareParent = process.platform === 'win32' ? parent.toLowerCase() : parent;
+  const compareChild = process.platform === 'win32' ? child.toLowerCase() : child;
+  const relative = path.relative(compareParent, compareChild);
+  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
+}
+
+function normalizeFsPath(value: string): string {
+  if (process.platform === 'win32') {
+    const match = /^\/([a-zA-Z]:)(\/.*)/.exec(value);
+    if (match) {
+      return `${match[1]}${match[2]}`.replace(/\//g, '\\');
+    }
+    return value.replace(/\//g, '\\');
+  }
+  return value;
 }
 
 class GitDetailNode implements GitNode {
@@ -241,34 +411,57 @@ class GitBranchNode implements GitNode, GitNodeWithBranch {
   }
 }
 
-function buildBranchGroups(status: GitRepoStatus): GitNode[] {
+function buildBranchGroups(status: GitRepoStatus, filterText: string): GitNode[] {
   const settings = getForgeFlowSettings();
   const showClean = settings.gitShowCleanBranches;
-  const sorted = sortBranches(status.branches, settings.gitBranchSortMode, settings.gitBranchSortDirection);
+  const minChars = settings.filtersGitMinChars;
+  const filter = normalizeFilter(filterText, minChars);
+  const filtered = filter
+    ? status.branches.filter((branch) => matchesBranchFilter(branch, filter))
+    : status.branches;
+  const sorted = sortBranches(filtered, settings.gitBranchSortMode, settings.gitBranchSortDirection);
   const groups = groupBranches(sorted);
   const nodes: GitNode[] = [];
-  const filter = settings.gitBranchFilter;
+  const filterMode = settings.gitBranchFilter;
 
-  if (shouldIncludeGroup(filter, 'gone') && groups.gone.length > 0) {
+  if (shouldIncludeGroup(filterMode, 'gone') && groups.gone.length > 0) {
     nodes.push(new GitBranchGroupNode('Gone Branches', groups.gone, 'gone'));
   }
-  if (shouldIncludeGroup(filter, 'merged') && groups.merged.length > 0) {
+  if (shouldIncludeGroup(filterMode, 'merged') && groups.merged.length > 0) {
     nodes.push(new GitBranchGroupNode('Merged Branches', groups.merged, 'merged'));
   }
-  if (shouldIncludeGroup(filter, 'noUpstream') && groups.noUpstream.length > 0) {
+  if (shouldIncludeGroup(filterMode, 'noUpstream') && groups.noUpstream.length > 0) {
     nodes.push(new GitBranchGroupNode('No Upstream', groups.noUpstream, 'noUpstream'));
   }
-  if (shouldIncludeGroup(filter, 'aheadBehind') && groups.aheadBehind.length > 0) {
+  if (shouldIncludeGroup(filterMode, 'aheadBehind') && groups.aheadBehind.length > 0) {
     nodes.push(new GitBranchGroupNode('Ahead/Behind', groups.aheadBehind, 'aheadBehind'));
   }
-  if (shouldIncludeGroup(filter, 'stale') && groups.stale.length > 0) {
+  if (shouldIncludeGroup(filterMode, 'stale') && groups.stale.length > 0) {
     nodes.push(new GitBranchGroupNode('Stale Branches', groups.stale, 'stale'));
   }
-  if (showClean && shouldIncludeGroup(filter, 'clean') && groups.clean.length > 0) {
+  if (showClean && shouldIncludeGroup(filterMode, 'clean') && groups.clean.length > 0) {
     nodes.push(new GitBranchGroupNode('Clean Branches', groups.clean, 'clean'));
   }
 
   return nodes;
+}
+
+function matchesBranchFilter(branch: GitBranchInfo, filter: string): boolean {
+  const haystack = [
+    branch.name,
+    branch.upstream,
+    branch.statusLabel,
+    branch.track
+  ].filter(Boolean).join(' ');
+  return matchesFilterQuery(haystack, filter, getForgeFlowSettings().filtersMatchMode);
+}
+
+function normalizeFilter(value: string, minChars: number): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length < minChars) {
+    return undefined;
+  }
+  return trimmed;
 }
 
 function groupBranches(branches: GitBranchInfo[]): Record<GitBranchGroup, GitBranchInfo[]> {

@@ -9,12 +9,21 @@ export interface FavoriteItem {
 }
 
 const FAVORITES_KEY = 'forgeflow.files.favorites.v1';
+const WORKSPACE_PINNED_KEY = 'forgeflow.files.favorites.workspacePinned.v1';
 
 export class FavoritesStore {
   public constructor(private readonly state: StateStore) {}
 
   public list(): FavoriteItem[] {
     return this.state.getGlobal<FavoriteItem[]>(FAVORITES_KEY, []);
+  }
+
+  public listWorkspacePinned(): string[] {
+    return this.state.getWorkspace<string[]>(WORKSPACE_PINNED_KEY, []);
+  }
+
+  public async setWorkspacePinned(paths: string[]): Promise<void> {
+    await this.state.setWorkspace(WORKSPACE_PINNED_KEY, paths);
   }
 
   public async add(item: FavoriteItem): Promise<void> {
@@ -29,6 +38,7 @@ export class FavoritesStore {
   public async remove(path: string): Promise<void> {
     const items = this.list().filter((item) => item.path !== path);
     await this.state.setGlobal(FAVORITES_KEY, items);
+    await this.unpinFromWorkspace(path);
   }
 
   public async move(path: string, direction: 'up' | 'down'): Promise<void> {
@@ -61,5 +71,18 @@ export class FavoritesStore {
     }
     items[index] = { ...existing, profileOverrideId: profileId };
     await this.state.setGlobal(FAVORITES_KEY, items);
+  }
+
+  public async pinToWorkspace(path: string): Promise<void> {
+    const pinned = this.listWorkspacePinned();
+    if (!pinned.includes(path)) {
+      pinned.push(path);
+      await this.setWorkspacePinned(pinned);
+    }
+  }
+
+  public async unpinFromWorkspace(path: string): Promise<void> {
+    const pinned = this.listWorkspacePinned().filter((item) => item !== path);
+    await this.setWorkspacePinned(pinned);
   }
 }

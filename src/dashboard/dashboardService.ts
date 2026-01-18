@@ -1,8 +1,11 @@
 import * as vscode from 'vscode';
-import type { Project } from '../models/project';
+import type { Project, ProjectIdentity } from '../models/project';
 import type { ProjectsStore } from '../store/projectsStore';
+import type { TagsStore } from '../store/tagsStore';
 import type { ForgeFlowLogger } from '../util/log';
 import { getForgeFlowSettings } from '../util/config';
+import { readDirectory, statPath } from '../util/fs';
+import * as path from 'path';
 import {
   fetchAzureOpenPrs,
   fetchAzureRepo,
@@ -38,6 +41,11 @@ export interface DashboardRow {
   released: string;
   highlight: boolean;
   archived: boolean;
+  favorite: boolean;
+  tags: string[];
+  healthScore?: number;
+  healthIssues?: string[];
+  healthStatus?: 'ok' | 'warn' | 'bad' | 'unknown';
 }
 
 export type DashboardProgress = (current: number, total: number, label?: string) => void;
@@ -46,11 +54,13 @@ export class DashboardService {
   public constructor(
     private readonly projectsStore: ProjectsStore,
     private readonly logger: ForgeFlowLogger,
-    private readonly tokenStore: DashboardTokenStore
+    private readonly tokenStore: DashboardTokenStore,
+    private readonly tagsStore: TagsStore
   ) {}
 
   public async buildRows(signal?: AbortSignal, onProgress?: DashboardProgress): Promise<DashboardRow[]> {
     const projects = this.projectsStore.list();
+    const favorites = new Set(this.projectsStore.getFavoriteIds());
     const settings = getForgeFlowSettings();
     const token = await this.getGitHubToken();
     const gitLabToken = await this.tokenStore.getGitLabToken();
@@ -79,94 +89,101 @@ export class DashboardService {
         const needsRepo = needsRepositoryIdentity(project.identity);
         const detectedInfo = needsRepo ? await detectProjectIdentity(project.path) : undefined;
         const identity = detectedInfo?.identity ? mergeIdentity(project.identity, detectedInfo.identity) : project.identity;
+        if (detectedInfo?.identity && identity) {
+          await this.projectsStore.updateIdentity(project.id, identity);
+        }
         if (!identity || (!identity.githubRepo && !identity.repositoryPath && !identity.powershellModule && !identity.nugetPackage)) {
           return;
         }
 
         report(`${project.name} • remote`);
 
-      const provider = resolveProvider(identity);
-      const repoPath = identity.repositoryPath ?? identity.githubRepo;
-      const githubRepo = identity.githubRepo ?? (provider === 'github' ? identity.repositoryPath : undefined);
-      const gitLabPath = provider === 'gitlab' ? repoPath : undefined;
-      const azurePath = provider === 'azure' ? repoPath : undefined;
+        const provider = resolveProvider(identity);
+        const repoPath = identity.repositoryPath ?? identity.githubRepo;
+        const githubRepo = identity.githubRepo ?? (provider === 'github' ? identity.repositoryPath : undefined);
+        const gitLabPath = provider === 'gitlab' ? repoPath : undefined;
+        const azurePath = provider === 'azure' ? repoPath : undefined;
 
-      const [gitHub, gitHubPrs, gitHubRelease, gitLab, gitLabMrs, azureRepo, psGallery, nuget, localGit] = await Promise.all([
-        githubRepo ? fetchGitHubRepo(githubRepo, token, signal) : Promise.resolve(undefined),
-        githubRepo ? fetchGitHubOpenPrs(githubRepo, token, signal) : Promise.resolve(undefined),
-        githubRepo ? fetchGitHubLatestRelease(githubRepo, token, signal) : Promise.resolve(undefined),
-        gitLabPath ? fetchGitLabProject(gitLabPath, gitLabToken, signal) : Promise.resolve(undefined),
-        gitLabPath ? fetchGitLabOpenMrs(gitLabPath, gitLabToken, signal) : Promise.resolve(undefined),
-        azurePath ? fetchAzureRepo(azurePath, azureToken, signal) : Promise.resolve(undefined),
-        identity.powershellModule ? fetchPowerShellGallery(identity.powershellModule) : Promise.resolve(undefined),
-        identity.nugetPackage ? fetchNuGetPackage(identity.nugetPackage) : Promise.resolve(undefined),
-        getLocalGitInfo(project.path)
-      ]);
+        const [gitHub, gitHubPrs, gitHubRelease, gitLab, gitLabMrs, azureRepo, psGallery, nuget, localGit] = await Promise.all([
+          githubRepo ? fetchGitHubRepo(githubRepo, token, signal) : Promise.resolve(undefined),
+          githubRepo ? fetchGitHubOpenPrs(githubRepo, token, signal) : Promise.resolve(undefined),
+          githubRepo ? fetchGitHubLatestRelease(githubRepo, token, signal) : Promise.resolve(undefined),
+          gitLabPath ? fetchGitLabProject(gitLabPath, gitLabToken, signal) : Promise.resolve(undefined),
+          gitLabPath ? fetchGitLabOpenMrs(gitLabPath, gitLabToken, signal) : Promise.resolve(undefined),
+          azurePath ? fetchAzureRepo(azurePath, azureToken, signal) : Promise.resolve(undefined),
+          identity.powershellModule ? fetchPowerShellGallery(identity.powershellModule) : Promise.resolve(undefined),
+          identity.nugetPackage ? fetchNuGetPackage(identity.nugetPackage) : Promise.resolve(undefined),
+          getLocalGitInfo(project.path)
+        ]);
 
-      const [azurePrs, azureCommit] = azureRepo && azurePath
-        ? await Promise.all([
-          fetchAzureOpenPrs(azurePath, azureRepo.repoId, azureToken, signal),
-          fetchAzureLatestCommit(azurePath, azureRepo.repoId, azureToken, signal)
-        ])
-        : [undefined, undefined];
+        const [azurePrs, azureCommit] = azureRepo && azurePath
+          ? await Promise.all([
+            fetchAzureOpenPrs(azurePath, azureRepo.repoId, azureToken, signal),
+            fetchAzureLatestCommit(azurePath, azureRepo.repoId, azureToken, signal)
+          ])
+          : [undefined, undefined];
 
-      const githubStatus = resolveProviderStatus([gitHub, gitHubPrs, gitHubRelease]);
-      const gitlabStatus = resolveProviderStatus([gitLab, gitLabMrs]);
-      const azureStatus = resolveProviderStatus([azureRepo, azurePrs, azureCommit]);
-      const providerStatus = provider === 'github'
-        ? githubStatus
-        : (provider === 'gitlab' ? gitlabStatus : (provider === 'azure' ? azureStatus : 'unknown'));
-      const remoteOk = providerStatus === 'ok';
-      const activitySource = (provider === 'github' && githubStatus === 'ok' ? gitHub?.pushedAt : undefined)
-        ?? (provider === 'gitlab' && gitlabStatus === 'ok' ? gitLab?.lastActivity : undefined)
-        ?? (provider === 'azure' && azureStatus === 'ok' ? azureCommit?.lastCommit : undefined)
-        ?? localGit?.lastCommit;
-      const activityTimestamp = activitySource ? Date.parse(activitySource) : 0;
-      const activity = activitySource ? formatRelative(activitySource) : 'n/a';
-      const issues = remoteOk
-        ? (gitHub ? String(gitHub.issues) : (gitLab ? String(gitLab.issues) : 'n/a'))
-        : 'n/a';
-      const prCount = remoteOk
-        ? (gitHubPrs
-          ? String(gitHubPrs.openPrs)
-          : (gitLabMrs ? String(gitLabMrs.openMrs) : (azurePrs ? String(azurePrs.openPrs) : 'n/a')))
-        : 'n/a';
-      const stars = remoteOk
-        ? (gitHub ? String(gitHub.stars) : (gitLab ? String(gitLab.stars) : 'n/a'))
-        : 'n/a';
-      const version = psGallery?.version
-        ?? nuget?.version
-        ?? identity.vscodeExtensionVersion
-        ?? gitHubRelease?.tag
-        ?? detectedInfo?.moduleVersion
-        ?? 'n/a';
-      const released = psGallery?.released
-        ?? nuget?.released
-        ?? gitHubRelease?.publishedAt
-        ?? 'n/a';
-      const archived = (githubStatus === 'ok' ? gitHub?.archived : undefined)
-        ?? (gitlabStatus === 'ok' ? gitLab?.archived : undefined)
-        ?? (azureStatus === 'ok' ? azureRepo?.isDisabled : undefined)
-        ?? false;
-      const repoUrl = resolveRepoUrl(identity);
-      const visibility = remoteOk
-        ? (gitHub
-          ? (gitHub.private ? 'private' : 'public')
-          : (gitLab?.visibility ?? azureRepo?.visibility ?? 'unknown'))
-        : 'unknown';
-      const repoLabel = githubRepo
-        ? (archived ? `${githubRepo} (archived)` : githubRepo)
-        : (identity.repositoryPath ?? project.name);
+        const githubStatus = resolveProviderStatus([gitHub, gitHubPrs, gitHubRelease]);
+        const gitlabStatus = resolveProviderStatus([gitLab, gitLabMrs]);
+        const azureStatus = resolveProviderStatus([azureRepo, azurePrs, azureCommit]);
+        const providerStatus = provider === 'github'
+          ? githubStatus
+          : (provider === 'gitlab' ? gitlabStatus : (provider === 'azure' ? azureStatus : 'unknown'));
+        const remoteOk = providerStatus === 'ok';
+        const activitySource = (provider === 'github' && githubStatus === 'ok' ? gitHub?.pushedAt : undefined)
+          ?? (provider === 'gitlab' && gitlabStatus === 'ok' ? gitLab?.lastActivity : undefined)
+          ?? (provider === 'azure' && azureStatus === 'ok' ? azureCommit?.lastCommit : undefined)
+          ?? localGit?.lastCommit;
+        const activityTimestamp = activitySource ? Date.parse(activitySource) : 0;
+        const activity = activitySource ? formatRelative(activitySource) : 'n/a';
+        const issues = remoteOk
+          ? (gitHub ? String(gitHub.issues) : (gitLab ? String(gitLab.issues) : 'n/a'))
+          : 'n/a';
+        const prCount = remoteOk
+          ? (gitHubPrs
+            ? String(gitHubPrs.openPrs)
+            : (gitLabMrs ? String(gitLabMrs.openMrs) : (azurePrs ? String(azurePrs.openPrs) : 'n/a')))
+          : 'n/a';
+        const stars = remoteOk
+          ? (gitHub ? String(gitHub.stars) : (gitLab ? String(gitLab.stars) : 'n/a'))
+          : 'n/a';
+        const version = psGallery?.version
+          ?? nuget?.version
+          ?? identity.vscodeExtensionVersion
+          ?? gitHubRelease?.tag
+          ?? detectedInfo?.moduleVersion
+          ?? 'n/a';
+        const released = psGallery?.released
+          ?? nuget?.released
+          ?? gitHubRelease?.publishedAt
+          ?? 'n/a';
+        const archived = (githubStatus === 'ok' ? gitHub?.archived : undefined)
+          ?? (gitlabStatus === 'ok' ? gitLab?.archived : undefined)
+          ?? (azureStatus === 'ok' ? azureRepo?.isDisabled : undefined)
+          ?? false;
+        const repoUrl = resolveRepoUrl(identity);
+        const visibility = remoteOk
+          ? (gitHub
+            ? (gitHub.private ? 'private' : 'public')
+            : (gitLab?.visibility ?? azureRepo?.visibility ?? 'unknown'))
+          : 'unknown';
+        const repoLabel = githubRepo
+          ? (archived ? `${githubRepo} (archived)` : githubRepo)
+          : (identity.repositoryPath ?? project.name);
+        const tags = this.tagsStore.getTags(project.id);
 
-      if (archived && settings.dashboardHideArchived) {
-        return;
-      }
+        if (archived && settings.dashboardHideArchived) {
+          return;
+        }
 
-      const issueCount = toCount(issues);
-      const prResolved = prCount;
-      const prCountValue = toCount(prResolved);
+        const issueCount = toCount(issues);
+        const prResolved = prCount;
+        const prCountValue = toCount(prResolved);
 
-      const localPath = resolveLocalPath(project.path, settings.projectScanRoots);
+        const localPath = resolveLocalPath(project.path, settings.projectScanRoots);
+        const health = settings.dashboardHealthEnabled
+          ? await computeHealth(project.path, settings.dashboardHealthDepStaleDays)
+          : undefined;
 
         rows.push({
           repoUrl,
@@ -184,8 +201,19 @@ export class DashboardService {
           version,
           released,
           archived,
-          highlight: !archived && ((issueCount ?? 0) > 0 || (prCountValue ?? 0) > 0)
+          highlight: !archived && ((issueCount ?? 0) > 0 || (prCountValue ?? 0) > 0),
+          favorite: favorites.has(project.id),
+          tags,
+          healthScore: health?.score,
+          healthIssues: health?.issues,
+          healthStatus: health?.status ?? 'unknown'
         });
+      } catch (error) {
+        if (signal?.aborted) {
+          throw error;
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Dashboard data failed for ${project.name}: ${message}`);
       } finally {
         if (!didComplete) {
           completed += 1;
@@ -248,6 +276,118 @@ function formatRelative(isoDate: string): string {
   }
   const diffYears = Math.floor(diffMonths / 12);
   return diffYears === 1 ? '1 year ago' : `${diffYears} years ago`;
+}
+
+interface HealthResult {
+  score: number;
+  issues: string[];
+  status: 'ok' | 'warn' | 'bad';
+}
+
+const README_NAMES = ['readme.md', 'readme.txt', 'readme'];
+const LICENSE_NAMES = ['license', 'license.md', 'license.txt', 'copying'];
+const TEST_DIRS = ['test', 'tests', '__tests__'];
+const CI_FILES = ['azure-pipelines.yml', 'azure-pipelines.yaml', '.gitlab-ci.yml'];
+const DEP_FILES = [
+  'package-lock.json',
+  'yarn.lock',
+  'pnpm-lock.yaml',
+  'packages.lock.json',
+  'packages.config',
+  'directory.packages.props',
+  'paket.lock',
+  'requirements.txt',
+  'poetry.lock',
+  'cargo.lock'
+];
+
+async function computeHealth(projectPath: string, depStaleDays: number): Promise<HealthResult> {
+  const entries = await readDirectory(projectPath);
+  const names = new Map(entries.map(([name, type]) => [name.toLowerCase(), type]));
+  const issues: string[] = [];
+  let score = 0;
+
+  const hasReadme = README_NAMES.some((name) => names.has(name));
+  if (hasReadme) {
+    score += 20;
+  } else {
+    issues.push('readme');
+  }
+
+  const hasLicense = LICENSE_NAMES.some((name) => names.has(name));
+  if (hasLicense) {
+    score += 20;
+  } else {
+    issues.push('license');
+  }
+
+  const hasTests = TEST_DIRS.some((name) => names.get(name) === vscode.FileType.Directory);
+  if (hasTests) {
+    score += 20;
+  } else {
+    issues.push('tests');
+  }
+
+  const hasCi = await detectCi(projectPath, names);
+  if (hasCi) {
+    score += 20;
+  } else {
+    issues.push('ci');
+  }
+
+  const depsStatus = await detectDependencyFreshness(projectPath, names, depStaleDays);
+  if (depsStatus.ok) {
+    score += 20;
+  } else {
+    issues.push(depsStatus.issue);
+  }
+
+  const status = score >= 80 ? 'ok' : (score >= 50 ? 'warn' : 'bad');
+  return { score, issues, status };
+}
+
+async function detectCi(projectPath: string, names: Map<string, vscode.FileType>): Promise<boolean> {
+  if (CI_FILES.some((name) => names.has(name))) {
+    return true;
+  }
+  if (names.get('.github') === vscode.FileType.Directory) {
+    const workflowsPath = path.join(projectPath, '.github', 'workflows');
+    const workflows = await readDirectory(workflowsPath);
+    return workflows.some(([name, type]) => type === vscode.FileType.File && /\.(ya?ml)$/i.test(name));
+  }
+  return false;
+}
+
+async function detectDependencyFreshness(
+  projectPath: string,
+  names: Map<string, vscode.FileType>,
+  depStaleDays: number
+): Promise<{ ok: boolean; issue: string }> {
+  const candidates = DEP_FILES.filter((name) => names.has(name));
+  if (candidates.length === 0) {
+    return { ok: false, issue: 'deps' };
+  }
+  let newest: number | undefined;
+  for (const candidate of candidates) {
+    const stat = await statPath(path.join(projectPath, candidate));
+    if (!stat) {
+      continue;
+    }
+    const mtime = stat.mtime ?? 0;
+    if (!newest || mtime > newest) {
+      newest = mtime;
+    }
+  }
+  if (!newest) {
+    return { ok: false, issue: 'deps' };
+  }
+  if (depStaleDays > 0) {
+    const ageDays = Math.floor((Date.now() - newest) / (1000 * 60 * 60 * 24));
+    if (ageDays > depStaleDays) {
+      return { ok: false, issue: 'deps stale' };
+    }
+  }
+  return { ok: true, issue: '' };
 }
 
 function toCount(value: string): number | undefined {
@@ -346,41 +486,14 @@ function resolveLocalPath(projectPath: string, scanRoots: string[]): string {
   return relative || normalized;
 }
 
-function needsRepositoryIdentity(identity: { repositoryUrl?: string; repositoryProvider?: string; repositoryPath?: string; githubRepo?: string } | undefined): boolean {
+function needsRepositoryIdentity(identity: ProjectIdentity | undefined): boolean {
   if (!identity) {
     return true;
   }
   return !identity.repositoryUrl && !identity.repositoryProvider && !identity.repositoryPath && !identity.githubRepo;
 }
 
-function mergeIdentity(existing: {
-  repositoryUrl?: string;
-  repositoryProvider?: string;
-  repositoryPath?: string;
-  githubRepo?: string;
-  powershellModule?: string;
-  nugetPackage?: string;
-  vscodeExtensionId?: string;
-  vscodeExtensionVersion?: string;
-} | undefined, detected: {
-  repositoryUrl?: string;
-  repositoryProvider?: string;
-  repositoryPath?: string;
-  githubRepo?: string;
-  powershellModule?: string;
-  nugetPackage?: string;
-  vscodeExtensionId?: string;
-  vscodeExtensionVersion?: string;
-}): {
-  repositoryUrl?: string;
-  repositoryProvider?: string;
-  repositoryPath?: string;
-  githubRepo?: string;
-  powershellModule?: string;
-  nugetPackage?: string;
-  vscodeExtensionId?: string;
-  vscodeExtensionVersion?: string;
-} {
+function mergeIdentity(existing: ProjectIdentity | undefined, detected: ProjectIdentity): ProjectIdentity {
   if (!existing) {
     return detected;
   }
