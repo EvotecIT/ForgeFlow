@@ -46,15 +46,20 @@ export function buildAdminCommand(request: RunRequest, profile: PowerShellProfil
   const targetExe = resolveExecutable(profile);
   const targetArgs = buildProcessCommand(request, profile, keepOpen).args;
   const argList = targetArgs.map((arg) => quotePowerShellLiteral(arg)).join(', ');
-  const parts: string[] = [
+  const startProcessParts: string[] = [
     `Start-Process -FilePath ${quotePowerShellLiteral(targetExe)}`,
     `-ArgumentList @(${argList})`,
-    '-Verb RunAs'
+    '-Verb RunAs',
+    '-ErrorAction Stop'
   ];
   if (request.workingDirectory) {
-    parts.push(`-WorkingDirectory ${quotePowerShellLiteral(request.workingDirectory)}`);
+    startProcessParts.push(`-WorkingDirectory ${quotePowerShellLiteral(request.workingDirectory)}`);
   }
-  const script = parts.join(' ');
+  const startProcess = startProcessParts.join(' ');
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    `try { ${startProcess} | Out-Null } catch { Write-Error $_.Exception.Message; exit 1 }`
+  ].join('; ');
   return {
     executable,
     args: ['-NoProfile', '-Command', script],

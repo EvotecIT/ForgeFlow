@@ -57,7 +57,7 @@ export class RunHistoryStore implements vscode.Disposable {
 }
 
 function buildSignature(entry: RunHistoryEntry): string {
-  return [
+  const signature = [
     entry.kind,
     entry.filePath,
     entry.command,
@@ -67,7 +67,8 @@ function buildSignature(entry: RunHistoryEntry): string {
     entry.target,
     entry.taskName,
     entry.taskSource
-  ].filter(Boolean).join('|').toLowerCase();
+  ].filter(Boolean).join('|');
+  return process.platform === 'win32' ? signature.toLowerCase() : signature;
 }
 
 function compareHistoryEntries(

@@ -9,7 +9,7 @@ import { buildAdminCommand, buildProcessCommand, buildTerminalCommand } from './
 import { getAllProfiles, resolveExecutable } from './powershellProfiles';
 import type { TerminalManager } from './terminalManager';
 
-export class RunService {
+export class RunService implements vscode.Disposable {
   private readonly externalSessions = new Map<string, ChildProcessWithoutNullStreams>();
   private externalOutput?: vscode.OutputChannel;
 
@@ -81,7 +81,9 @@ export class RunService {
       return explicit;
     }
 
-    const favoriteOverride = this.favoritesStore.list().find((item) => item.path === filePath)?.profileOverrideId;
+    const normalizedFilePath = normalizePathForCompare(filePath);
+    const favoriteOverride = this.favoritesStore.list()
+      .find((item) => normalizePathForCompare(item.path) === normalizedFilePath)?.profileOverrideId;
     if (favoriteOverride) {
       const favoriteProfile = allProfiles.find((p) => p.id === favoriteOverride);
       if (favoriteProfile) {
@@ -189,16 +191,30 @@ export class RunService {
     this.logger.info(`Run external admin: ${command.executable} ${command.args.join(' ')}`);
     const child = spawn(command.executable, command.args, {
       cwd: command.cwd,
-      stdio: 'ignore',
-      detached: true
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true
     });
 
-    child.unref();
+    const stderrChunks: string[] = [];
+    child.stderr?.on('data', (chunk) => {
+      stderrChunks.push(chunk.toString());
+    });
     child.on('error', (error) => {
       const context = this.formatRunContext(request, profile, 'externalAdmin');
       this.logger.error(`Admin run failed (${context}): ${error.message}`);
       vscode.window.showErrorMessage(`ForgeFlow: Admin run failed (${context}) - ${error.message}`);
     });
+    child.on('exit', (code) => {
+      if (code === 0 || code === null) {
+        return;
+      }
+      const context = this.formatRunContext(request, profile, 'externalAdmin');
+      const stderr = stderrChunks.join('').trim();
+      const message = stderr ? `${stderr}` : `exit code ${code}`;
+      this.logger.error(`Admin run failed (${context}): ${message}`);
+      vscode.window.showErrorMessage(`ForgeFlow: Admin run failed (${context}) - ${message}`);
+    });
+    child.unref();
   }
 
   private getExternalSession(
@@ -325,4 +341,21 @@ export class RunService {
       this.logger.warn(`External session kill failed: ${String(error)}`);
     }
   }
+
+  public dispose(): void {
+    this.resetExternalSession();
+    if (this.externalOutput) {
+      this.externalOutput.dispose();
+      this.externalOutput = undefined;
+    }
+  }
+}
+
+function normalizePathForCompare(value: string): string {
+  if (process.platform !== 'win32') {
+    return value;
+  }
+  const match = /^\/([a-zA-Z]:)(\/.*)/.exec(value);
+  const normalized = match ? `${match[1]}${match[2]}` : value;
+  return normalized.replace(/\//g, '\\').toLowerCase();
 }

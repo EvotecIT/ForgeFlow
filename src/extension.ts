@@ -168,6 +168,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.registerWebviewViewProvider('forgeflow.projects.web', projectsWebviewProvider),
     vscode.window.registerWebviewViewProvider('forgeflow.projects.web.panel', projectsWebviewPanelProvider),
     terminalManager,
+    runService,
     gitWatchService,
     runHistoryStore
   );
@@ -1257,7 +1258,29 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
 
-  void maybeRunOnboarding(stateStore, context);
+  let onboardingRequested = false;
+  const requestOnboarding = (): void => {
+    if (onboardingRequested) {
+      return;
+    }
+    onboardingRequested = true;
+    void maybeRunOnboarding(stateStore, context);
+  };
+  const registerOnboardingOnVisible = (view: vscode.TreeView<unknown>): void => {
+    context.subscriptions.push(
+      view.onDidChangeVisibility((event) => {
+        if (event.visible) {
+          requestOnboarding();
+        }
+      })
+    );
+  };
+  registerOnboardingOnVisible(filesView);
+  registerOnboardingOnVisible(filesPanelView);
+  registerOnboardingOnVisible(projectsView);
+  registerOnboardingOnVisible(projectsPanelView);
+  registerOnboardingOnVisible(gitView);
+  registerOnboardingOnVisible(gitPanelView);
   await projectsProvider.refresh();
   logger.info('ForgeFlow activated.');
 }

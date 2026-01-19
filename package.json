@@ -3,7 +3,8 @@
   "displayName": "ForgeFlow",
   "description": "ForgeFlow: Explorer replacement, Projects manager, PowerShell execution control plane, and Dashboard.",
   "version": "0.1.0",
-  "publisher": "evotec",
+  "publisher": "evotec-services",
+  "author": "Evotec Services sp. z o.o.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -108,12 +109,16 @@
     "onCommand:forgeflow.dashboard.configureTokens",
     "onCommand:forgeflow.layout.toggle",
     "onCommand:forgeflow.run",
+    "onCommand:forgeflow.run.chooseProfile",
     "onCommand:forgeflow.run.last",
     "onCommand:forgeflow.run.history",
     "onCommand:forgeflow.run.clearHistory",
     "onCommand:forgeflow.run.savePreset",
     "onCommand:forgeflow.run.resetExternalSession",
+    "onCommand:forgeflow.run.integrated",
+    "onCommand:forgeflow.run.external",
     "onCommand:forgeflow.run.external.chooseProfile",
+    "onCommand:forgeflow.run.externalAdmin",
     "onCommand:forgeflow.run.externalAdmin.chooseProfile",
     "onCommand:forgeflow.run.setProjectProfile",
     "onCommand:forgeflow.run.clearProjectProfile",
@@ -395,42 +400,49 @@
         "command": "forgeflow.projects.open",
         "title": "Open Project",
         "shortTitle": "Open Project",
+        "icon": "$(folder-opened)",
         "category": "ForgeFlow"
       },
       {
         "command": "forgeflow.projects.openInNewWindow",
         "title": "Open Project in New Window",
         "shortTitle": "Open in New Window",
+        "icon": "$(window)",
         "category": "ForgeFlow"
       },
       {
         "command": "forgeflow.projects.addToWorkspace",
         "title": "Add Project to Workspace",
         "shortTitle": "Add to Workspace",
+        "icon": "$(root-folder)",
         "category": "ForgeFlow"
       },
       {
         "command": "forgeflow.projects.openInTerminal",
         "title": "Open Project in Terminal",
         "shortTitle": "Open in Terminal",
+        "icon": "$(terminal)",
         "category": "ForgeFlow"
       },
       {
         "command": "forgeflow.projects.run",
         "title": "Run Project Entry Point",
         "shortTitle": "Run Project",
+        "icon": "$(play)",
         "category": "ForgeFlow"
       },
       {
         "command": "forgeflow.projects.gitClean",
         "title": "Git Clean Project",
         "shortTitle": "Git Clean",
+        "icon": "$(trash)",
         "category": "ForgeFlow"
       },
       {
         "command": "forgeflow.projects.openInVisualStudio",
         "title": "Open Project in Visual Studio",
         "shortTitle": "Open in Visual Studio",
+        "icon": "$(window)",
         "category": "ForgeFlow"
       },
       {
