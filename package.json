@@ -45,26 +45,26 @@
         {
           "id": "forgeflow.files",
           "name": "ForgeFlow: Files",
-          "icon": "resources/forgeflow-activity.svg",
+          "icon": "resources/forgeflow-files.svg",
           "when": "forgeflow.layout != expanded"
         },
         {
           "id": "forgeflow.projects",
           "name": "ForgeFlow: Projects",
-          "icon": "resources/forgeflow-activity.svg",
+          "icon": "resources/forgeflow-projects.svg",
           "when": "forgeflow.layout != expanded"
         },
         {
           "id": "forgeflow.projects.web",
           "name": "ForgeFlow: Projects (Web)",
           "type": "webview",
-          "icon": "resources/forgeflow-activity.svg",
+          "icon": "resources/forgeflow-projects-web.svg",
           "when": "forgeflow.layout != expanded"
         },
         {
           "id": "forgeflow.git",
           "name": "ForgeFlow: Git",
-          "icon": "resources/forgeflow-activity.svg",
+          "icon": "resources/forgeflow-git.svg",
           "when": "forgeflow.layout != expanded"
         }
       ],
@@ -73,31 +73,31 @@
           "id": "forgeflow.dashboard",
           "name": "ForgeFlow: Dashboard",
           "type": "webview",
-          "icon": "resources/forgeflow-panel.svg"
+          "icon": "resources/forgeflow-dashboard.svg"
         },
         {
           "id": "forgeflow.files.panel",
           "name": "ForgeFlow: Files",
-          "icon": "resources/forgeflow-panel.svg",
+          "icon": "resources/forgeflow-files.svg",
           "when": "forgeflow.layout == expanded"
         },
         {
           "id": "forgeflow.projects.panel",
           "name": "ForgeFlow: Projects",
-          "icon": "resources/forgeflow-panel.svg",
+          "icon": "resources/forgeflow-projects.svg",
           "when": "forgeflow.layout == expanded"
         },
         {
           "id": "forgeflow.projects.web.panel",
           "name": "ForgeFlow: Projects (Web)",
           "type": "webview",
-          "icon": "resources/forgeflow-panel.svg",
+          "icon": "resources/forgeflow-projects-web.svg",
           "when": "forgeflow.layout == expanded"
         },
         {
           "id": "forgeflow.git.panel",
           "name": "ForgeFlow: Git",
-          "icon": "resources/forgeflow-panel.svg",
+          "icon": "resources/forgeflow-git.svg",
           "when": "forgeflow.layout == expanded"
         }
       ]
