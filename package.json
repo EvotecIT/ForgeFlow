@@ -20,150 +20,9 @@
   "categories": [
     "Other",
     "Programming Languages",
-    "Source Control"
+    "SCM Providers"
   ],
   "main": "./out/extension.js",
-  "activationEvents": [
-    "onView:forgeflow.files",
-    "onView:forgeflow.projects",
-    "onView:forgeflow.projects.web",
-    "onView:forgeflow.git",
-    "onView:forgeflow.dashboard",
-    "onView:forgeflow.files.panel",
-    "onView:forgeflow.projects.panel",
-    "onView:forgeflow.projects.web.panel",
-    "onView:forgeflow.git.panel",
-    "onCommand:forgeflow.files.open",
-    "onCommand:forgeflow.files.run",
-    "onCommand:forgeflow.files.setFavoritesViewMode",
-    "onCommand:forgeflow.files.filter",
-    "onCommand:forgeflow.files.focusFilter",
-    "onCommand:forgeflow.filters.toggleScope",
-    "onCommand:forgeflow.files.clearFilter",
-    "onCommand:forgeflow.files.saveFilterPreset",
-    "onCommand:forgeflow.files.applyFilterPreset",
-    "onCommand:forgeflow.files.deleteFilterPreset",
-    "onCommand:forgeflow.projects.open",
-    "onCommand:forgeflow.projects.openInNewWindow",
-    "onCommand:forgeflow.projects.addToWorkspace",
-    "onCommand:forgeflow.projects.openInTerminal",
-    "onCommand:forgeflow.projects.run",
-    "onCommand:forgeflow.projects.runPreset",
-    "onCommand:forgeflow.projects.deletePreset",
-    "onCommand:forgeflow.projects.runPresetItem",
-    "onCommand:forgeflow.projects.deletePresetItem",
-    "onCommand:forgeflow.projects.runHistoryItem",
-    "onCommand:forgeflow.projects.deleteHistoryItem",
-    "onCommand:forgeflow.projects.saveHistoryItemAsPreset",
-    "onCommand:forgeflow.projects.clearHistoryForProject",
-    "onCommand:forgeflow.projects.runHistoryForProject",
-    "onCommand:forgeflow.projects.runHistoryFromRoot",
-    "onCommand:forgeflow.projects.saveHistoryForProjectAsPreset",
-    "onCommand:forgeflow.projects.saveHistoryForProjectAsPresets",
-    "onCommand:forgeflow.projects.runTask",
-    "onCommand:forgeflow.projects.gitClean",
-    "onCommand:forgeflow.projects.openInVisualStudio",
-    "onCommand:forgeflow.projects.switch",
-    "onCommand:forgeflow.projects.setTags",
-    "onCommand:forgeflow.projects.clearTags",
-    "onCommand:forgeflow.projects.renameTag",
-    "onCommand:forgeflow.tags.toggleFilter",
-    "onCommand:forgeflow.tags.clearFilter",
-    "onCommand:forgeflow.tags.savePreset",
-    "onCommand:forgeflow.tags.applyPreset",
-    "onCommand:forgeflow.tags.deletePreset",
-    "onCommand:forgeflow.dashboard.open",
-    "onCommand:forgeflow.git.refresh",
-    "onCommand:forgeflow.git.selectProject",
-    "onCommand:forgeflow.git.filter",
-    "onCommand:forgeflow.git.focusFilter",
-    "onCommand:forgeflow.git.clearFilter",
-    "onCommand:forgeflow.git.saveFilterPreset",
-    "onCommand:forgeflow.git.applyFilterPreset",
-    "onCommand:forgeflow.git.deleteFilterPreset",
-    "onCommand:forgeflow.git.setBranchSortMode",
-    "onCommand:forgeflow.git.setBranchSortDirection",
-    "onCommand:forgeflow.git.setBranchFilter",
-    "onCommand:forgeflow.git.refreshSummaries",
-    "onCommand:forgeflow.git.bulkPruneRemotes",
-    "onCommand:forgeflow.git.bulkDeleteMerged",
-    "onCommand:forgeflow.git.bulkDeleteGone",
-    "onCommand:forgeflow.git.configureProject",
-    "onCommand:forgeflow.git.clearProjectSettings",
-    "onCommand:forgeflow.git.cleanProject",
-    "onCommand:forgeflow.git.previewCleanProject",
-    "onCommand:forgeflow.git.openProject",
-    "onCommand:forgeflow.git.checkoutBranch",
-    "onCommand:forgeflow.git.copyBranchName",
-    "onCommand:forgeflow.git.deleteBranch",
-    "onCommand:forgeflow.git.forceDeleteBranch",
-    "onCommand:forgeflow.git.pruneRemotes",
-    "onCommand:forgeflow.git.deleteGoneBranches",
-    "onCommand:forgeflow.git.deleteMergedBranches",
-    "onCommand:forgeflow.git.previewCleanAll",
-    "onCommand:forgeflow.git.cleanAll",
-    "onCommand:forgeflow.dashboard.focusFilter",
-    "onCommand:forgeflow.dashboard.saveFilterPreset",
-    "onCommand:forgeflow.dashboard.applyFilterPreset",
-    "onCommand:forgeflow.dashboard.deleteFilterPreset",
-    "onCommand:forgeflow.dashboard.configureTokens",
-    "onCommand:forgeflow.layout.toggle",
-    "onCommand:forgeflow.run",
-    "onCommand:forgeflow.run.chooseProfile",
-    "onCommand:forgeflow.run.last",
-    "onCommand:forgeflow.run.history",
-    "onCommand:forgeflow.run.clearHistory",
-    "onCommand:forgeflow.run.savePreset",
-    "onCommand:forgeflow.run.resetExternalSession",
-    "onCommand:forgeflow.run.integrated",
-    "onCommand:forgeflow.run.external",
-    "onCommand:forgeflow.run.external.chooseProfile",
-    "onCommand:forgeflow.run.externalAdmin",
-    "onCommand:forgeflow.run.externalAdmin.chooseProfile",
-    "onCommand:forgeflow.run.setProjectProfile",
-    "onCommand:forgeflow.run.clearProjectProfile",
-    "onCommand:forgeflow.run.setProjectTarget",
-    "onCommand:forgeflow.run.clearProjectTarget",
-    "onCommand:forgeflow.run.setProjectWorkingDirectory",
-    "onCommand:forgeflow.run.clearProjectWorkingDirectory",
-    "onCommand:forgeflow.run.setFavoriteProfile",
-    "onCommand:forgeflow.run.clearFavoriteProfile",
-    "onCommand:forgeflow.modules.list",
-    "onCommand:forgeflow.projects.configureScanRoots",
-    "onCommand:forgeflow.projects.setSortMode",
-    "onCommand:forgeflow.projects.setSortDirection",
-    "onCommand:forgeflow.projects.filter",
-    "onCommand:forgeflow.projects.web.focusFilter",
-    "onCommand:forgeflow.projects.focusFilter",
-    "onCommand:forgeflow.projects.search",
-    "onCommand:forgeflow.projects.clearFilter",
-    "onCommand:forgeflow.projects.saveFilterPreset",
-    "onCommand:forgeflow.projects.applyFilterPreset",
-    "onCommand:forgeflow.projects.deleteFilterPreset",
-    "onCommand:forgeflow.projects.toggleFavoritesOnly",
-    "onCommand:forgeflow.projects.loadMore",
-    "onCommand:forgeflow.projects.manageEntryPoints",
-    "onCommand:forgeflow.projects.addEntryPoint",
-    "onCommand:forgeflow.projects.removeEntryPoint",
-    "onCommand:forgeflow.onboarding.start",
-    "onCommand:forgeflow.diagnostics.export",
-    "onCommand:forgeflow.openInBrowser",
-    "onCommand:forgeflow.openInBrowser.shortcut",
-    "onCommand:forgeflow.openInBrowser.choose",
-    "onCommand:forgeflow.openInDefaultApp",
-    "onCommand:forgeflow.openInVisualStudio",
-    "onCommand:forgeflow.files.openToSide",
-    "onCommand:forgeflow.files.openWith",
-    "onCommand:forgeflow.files.openInTerminal",
-    "onCommand:forgeflow.files.pinWorkspaceFavorite",
-    "onCommand:forgeflow.files.unpinWorkspaceFavorite",
-    "onCommand:forgeflow.files.copyPath",
-    "onCommand:forgeflow.files.copyRelativePath",
-    "onCommand:forgeflow.files.rename",
-    "onCommand:forgeflow.files.delete",
-    "onCommand:forgeflow.files.newFile",
-    "onCommand:forgeflow.files.newFolder"
-  ],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -186,22 +45,26 @@
         {
           "id": "forgeflow.files",
           "name": "ForgeFlow: Files",
+          "icon": "resources/forgeflow-activity.svg",
           "when": "forgeflow.layout != expanded"
         },
         {
           "id": "forgeflow.projects",
           "name": "ForgeFlow: Projects",
+          "icon": "resources/forgeflow-activity.svg",
           "when": "forgeflow.layout != expanded"
         },
         {
           "id": "forgeflow.projects.web",
           "name": "ForgeFlow: Projects (Web)",
           "type": "webview",
+          "icon": "resources/forgeflow-activity.svg",
           "when": "forgeflow.layout != expanded"
         },
         {
           "id": "forgeflow.git",
           "name": "ForgeFlow: Git",
+          "icon": "resources/forgeflow-activity.svg",
           "when": "forgeflow.layout != expanded"
         }
       ],
@@ -209,27 +72,32 @@
         {
           "id": "forgeflow.dashboard",
           "name": "ForgeFlow: Dashboard",
-          "type": "webview"
+          "type": "webview",
+          "icon": "resources/forgeflow-panel.svg"
         },
         {
           "id": "forgeflow.files.panel",
           "name": "ForgeFlow: Files",
+          "icon": "resources/forgeflow-panel.svg",
           "when": "forgeflow.layout == expanded"
         },
         {
           "id": "forgeflow.projects.panel",
           "name": "ForgeFlow: Projects",
+          "icon": "resources/forgeflow-panel.svg",
           "when": "forgeflow.layout == expanded"
         },
         {
           "id": "forgeflow.projects.web.panel",
           "name": "ForgeFlow: Projects (Web)",
           "type": "webview",
+          "icon": "resources/forgeflow-panel.svg",
           "when": "forgeflow.layout == expanded"
         },
         {
           "id": "forgeflow.git.panel",
           "name": "ForgeFlow: Git",
+          "icon": "resources/forgeflow-panel.svg",
           "when": "forgeflow.layout == expanded"
         }
       ]
@@ -472,7 +340,7 @@
       {
         "command": "forgeflow.projects.setSortDirection",
         "title": "Set Project Sort Direction",
-        "icon": "$(sort-precedence)",
+        "icon": "$(arrow-both)",
         "category": "ForgeFlow"
       },
       {
@@ -492,14 +360,14 @@
         "command": "forgeflow.projects.web.focusFilter",
         "title": "Focus Projects Filter (Web)",
         "shortTitle": "Focus Filter",
-        "icon": "$(search)",
+        "icon": "$(filter)",
         "category": "ForgeFlow"
       },
       {
         "command": "forgeflow.projects.focusFilter",
         "title": "Focus Projects Filter",
         "shortTitle": "Focus Filter",
-        "icon": "$(target)",
+        "icon": "$(filter)",
         "category": "ForgeFlow"
       },
       {
@@ -1225,122 +1093,72 @@
         {
           "command": "forgeflow.projects.refresh",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.projects.refresh",
-          "when": "(view == forgeflow.projects.web || view == forgeflow.projects.web.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.projects.runHistoryFromRoot",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.projects.runHistoryFromRoot",
-          "when": "(view == forgeflow.projects.web || view == forgeflow.projects.web.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.run.resetExternalSession",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.run.resetExternalSession",
-          "when": "(view == forgeflow.projects.web || view == forgeflow.projects.web.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.projects.configureScanRoots",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.projects.configureScanRoots",
-          "when": "(view == forgeflow.projects.web || view == forgeflow.projects.web.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.projects.setSortMode",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.projects.setSortMode",
-          "when": "(view == forgeflow.projects.web || view == forgeflow.projects.web.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.projects.setSortDirection",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.projects.setSortDirection",
-          "when": "(view == forgeflow.projects.web || view == forgeflow.projects.web.panel)",
-          "group": "navigation"
+          "group": "navigation@1"
         },
         {
           "command": "forgeflow.projects.search",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel)",
-          "group": "navigation"
+          "group": "navigation@2"
         },
         {
           "command": "forgeflow.projects.focusFilter",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel)",
-          "group": "navigation"
+          "group": "navigation@3"
         },
         {
-          "command": "forgeflow.projects.search",
-          "when": "(view == forgeflow.projects.web || view == forgeflow.projects.web.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.projects.web.focusFilter",
-          "when": "(view == forgeflow.projects.web || view == forgeflow.projects.web.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.projects.applyFilterPreset",
+          "command": "forgeflow.projects.setSortMode",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel)",
-          "group": "navigation"
+          "group": "navigation@4"
         },
         {
-          "command": "forgeflow.projects.saveFilterPreset",
+          "command": "forgeflow.projects.setSortDirection",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.projects.deleteFilterPreset",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.tags.clearFilter",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.tags.applyPreset",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.tags.savePreset",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.projects.clearFilter",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel)",
-          "group": "navigation"
+          "group": "navigation@5"
         },
         {
           "command": "forgeflow.projects.toggleFavoritesOnly",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel)",
-          "group": "navigation"
+          "group": "navigation@6"
+        },
+        {
+          "command": "forgeflow.projects.configureScanRoots",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel)",
+          "group": "navigation@7"
+        },
+        {
+          "command": "forgeflow.projects.refresh",
+          "when": "(view == forgeflow.projects.web || view == forgeflow.projects.web.panel)",
+          "group": "navigation@1"
+        },
+        {
+          "command": "forgeflow.projects.search",
+          "when": "(view == forgeflow.projects.web || view == forgeflow.projects.web.panel)",
+          "group": "navigation@2"
+        },
+        {
+          "command": "forgeflow.projects.web.focusFilter",
+          "when": "(view == forgeflow.projects.web || view == forgeflow.projects.web.panel)",
+          "group": "navigation@3"
+        },
+        {
+          "command": "forgeflow.projects.setSortMode",
+          "when": "(view == forgeflow.projects.web || view == forgeflow.projects.web.panel)",
+          "group": "navigation@4"
+        },
+        {
+          "command": "forgeflow.projects.setSortDirection",
+          "when": "(view == forgeflow.projects.web || view == forgeflow.projects.web.panel)",
+          "group": "navigation@5"
+        },
+        {
+          "command": "forgeflow.projects.toggleFavoritesOnly",
+          "when": "(view == forgeflow.projects.web || view == forgeflow.projects.web.panel)",
+          "group": "navigation@6"
+        },
+        {
+          "command": "forgeflow.projects.configureScanRoots",
+          "when": "(view == forgeflow.projects.web || view == forgeflow.projects.web.panel)",
+          "group": "navigation@7"
         },
         {
           "command": "forgeflow.dashboard.refresh",
@@ -1375,87 +1193,27 @@
         {
           "command": "forgeflow.git.refresh",
           "when": "(view == forgeflow.git || view == forgeflow.git.panel)",
-          "group": "navigation"
+          "group": "navigation@1"
         },
         {
           "command": "forgeflow.git.selectProject",
           "when": "(view == forgeflow.git || view == forgeflow.git.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.git.pruneRemotes",
-          "when": "(view == forgeflow.git || view == forgeflow.git.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.git.setBranchSortMode",
-          "when": "(view == forgeflow.git || view == forgeflow.git.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.git.setBranchSortDirection",
-          "when": "(view == forgeflow.git || view == forgeflow.git.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.git.setBranchFilter",
-          "when": "(view == forgeflow.git || view == forgeflow.git.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.git.filter",
-          "when": "(view == forgeflow.git || view == forgeflow.git.panel)",
-          "group": "navigation"
+          "group": "navigation@2"
         },
         {
           "command": "forgeflow.git.focusFilter",
           "when": "(view == forgeflow.git || view == forgeflow.git.panel)",
-          "group": "navigation"
+          "group": "navigation@3"
         },
         {
-          "command": "forgeflow.git.applyFilterPreset",
+          "command": "forgeflow.git.setBranchSortMode",
           "when": "(view == forgeflow.git || view == forgeflow.git.panel)",
-          "group": "navigation"
+          "group": "navigation@4"
         },
         {
-          "command": "forgeflow.git.saveFilterPreset",
+          "command": "forgeflow.git.setBranchSortDirection",
           "when": "(view == forgeflow.git || view == forgeflow.git.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.git.deleteFilterPreset",
-          "when": "(view == forgeflow.git || view == forgeflow.git.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.git.clearFilter",
-          "when": "(view == forgeflow.git || view == forgeflow.git.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.git.configureProject",
-          "when": "(view == forgeflow.git || view == forgeflow.git.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.git.clearProjectSettings",
-          "when": "(view == forgeflow.git || view == forgeflow.git.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.git.refreshSummaries",
-          "when": "(view == forgeflow.git || view == forgeflow.git.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.git.previewCleanAll",
-          "when": "(view == forgeflow.git || view == forgeflow.git.panel)",
-          "group": "navigation"
-        },
-        {
-          "command": "forgeflow.git.cleanAll",
-          "when": "(view == forgeflow.git || view == forgeflow.git.panel)",
-          "group": "navigation"
+          "group": "navigation@5"
         }
       ],
       "view/item/context": [
@@ -2971,7 +2729,8 @@
     "compile": "tsc -p tsconfig.json",
     "compile:test": "tsc -p tsconfig.test.json",
     "watch": "tsc -watch -p tsconfig.json",
-    "lint": "eslint .",
+    "lint": "eslint . && npm run lint:package",
+    "lint:package": "node scripts/validate-package.cjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "npm run compile && npm run compile:test && mocha --require test/setup.js out/test/**/*.test.js",
     "test:coverage": "npm run compile && npm run compile:test && c8 -r text -r lcov mocha --require test/setup.js out/test/**/*.test.js",
