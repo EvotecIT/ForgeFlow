@@ -1335,7 +1335,7 @@ function renderRow(row: DashboardRow, updatedAt?: number): string {
   const healthIssues = Array.isArray(row.healthIssues) ? row.healthIssues : [];
   const healthStatus = row.healthStatus ?? (healthScore !== undefined ? 'warn' : 'unknown');
   const healthLabel = healthScore !== undefined ? String(healthScore) : 'n/a';
-  const healthTitle = healthIssues.length > 0 ? `Missing: ${healthIssues.join(', ')}` : 'Healthy';
+  const healthTitle = formatHealthTitle(healthScore, healthIssues);
   const repoCell = row.repoUrl
     ? `<a class="repo-link" data-url="${escapeHtml(row.repoUrl)}">${escapeHtml(row.repo)}</a>`
     : `<span>${escapeHtml(row.repo)}</span>`;
@@ -1345,7 +1345,7 @@ function renderRow(row: DashboardRow, updatedAt?: number): string {
   const actionsCell = buildActionsCell(row);
 
   const statusBadge = statusLabel
-    ? `<span class="badge status ${statusClass}">${escapeHtml(statusLabel)}</span>`
+    ? `<span class="badge status ${statusClass}" title="${escapeHtml(formatStatusTooltip(row.providerStatus))}">${escapeHtml(statusLabel)}</span>`
     : '';
   const hostCell = `<div class="host-cell"><span class="host-line"><span class="badge ${providerClass}">${escapeHtml(row.provider)}</span>${statusBadge}</span>${repoCell}</div>`;
   const searchText = [
@@ -1533,6 +1533,29 @@ function formatStatusLabel(value: string): string {
     default:
       return '';
   }
+}
+
+function formatStatusTooltip(value: string): string {
+  switch (value) {
+    case 'limited':
+      return 'Provider status: LIMITED — API rate limit reached.';
+    case 'unauthorized':
+      return 'Provider status: UNAUTHORIZED — token missing or lacks access.';
+    case 'error':
+      return 'Provider status: ERROR — request failed (network or API error).';
+    default:
+      return 'Provider status: OK — authenticated and reachable.';
+  }
+}
+
+function formatHealthTitle(score: number | undefined, issues: string[]): string {
+  if (typeof score !== 'number') {
+    return 'Health score: n/a.';
+  }
+  if (issues.length === 0) {
+    return `Health score: ${score}/100 — all checks passed.`;
+  }
+  return `Health score: ${score}/100 — missing ${issues.join(', ')}.`;
 }
 
 function escapeHtml(value: string): string {

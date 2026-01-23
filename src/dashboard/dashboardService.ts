@@ -170,11 +170,16 @@ export class DashboardService {
           ?? (azureStatus === 'ok' ? azureRepo?.isDisabled : undefined)
           ?? false;
         const repoUrl = resolveRepoUrl(identity);
-        const visibility = remoteOk
+        let visibility = remoteOk
           ? (gitHub
             ? (gitHub.private ? 'private' : 'public')
             : (gitLab?.visibility ?? azureRepo?.visibility ?? 'unknown'))
           : 'unknown';
+        if (!remoteOk && provider === 'github' && githubRepo) {
+          if (githubStatus === 'unauthorized' || githubStatus === 'error') {
+            visibility = 'private';
+          }
+        }
         const repoLabel = githubRepo
           ? (archived ? `${githubRepo} (archived)` : githubRepo)
           : (identity.repositoryPath ?? project.name);
