@@ -2519,47 +2519,47 @@
       {
         "command": "forgeflow.files.rename",
         "key": "f2",
-        "when": "view == forgeflow.files || view == forgeflow.files.panel"
+        "when": "(view == forgeflow.files || view == forgeflow.files.panel) && listFocus"
       },
       {
         "command": "forgeflow.files.delete",
         "key": "delete",
-        "when": "view == forgeflow.files || view == forgeflow.files.panel"
+        "when": "(view == forgeflow.files || view == forgeflow.files.panel) && listFocus"
       },
       {
         "command": "forgeflow.files.delete",
         "key": "cmd+backspace",
-        "when": "isMac && (view == forgeflow.files || view == forgeflow.files.panel)"
+        "when": "isMac && (view == forgeflow.files || view == forgeflow.files.panel) && listFocus"
       },
       {
         "command": "forgeflow.files.copy",
         "key": "ctrl+c",
-        "when": "view == forgeflow.files || view == forgeflow.files.panel"
+        "when": "(view == forgeflow.files || view == forgeflow.files.panel) && listFocus"
       },
       {
         "command": "forgeflow.files.cut",
         "key": "ctrl+x",
-        "when": "view == forgeflow.files || view == forgeflow.files.panel"
+        "when": "(view == forgeflow.files || view == forgeflow.files.panel) && listFocus"
       },
       {
         "command": "forgeflow.files.paste",
         "key": "ctrl+v",
-        "when": "view == forgeflow.files || view == forgeflow.files.panel"
+        "when": "(view == forgeflow.files || view == forgeflow.files.panel) && listFocus"
       },
       {
         "command": "forgeflow.files.copy",
         "key": "cmd+c",
-        "when": "isMac && (view == forgeflow.files || view == forgeflow.files.panel)"
+        "when": "isMac && (view == forgeflow.files || view == forgeflow.files.panel) && listFocus"
       },
       {
         "command": "forgeflow.files.cut",
         "key": "cmd+x",
-        "when": "isMac && (view == forgeflow.files || view == forgeflow.files.panel)"
+        "when": "isMac && (view == forgeflow.files || view == forgeflow.files.panel) && listFocus"
       },
       {
         "command": "forgeflow.files.paste",
         "key": "cmd+v",
-        "when": "isMac && (view == forgeflow.files || view == forgeflow.files.panel)"
+        "when": "isMac && (view == forgeflow.files || view == forgeflow.files.panel) && listFocus"
       },
       {
         "command": "forgeflow.projects.focusFilter",
