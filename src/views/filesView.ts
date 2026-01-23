@@ -177,6 +177,7 @@ class FavoriteItemNode implements FilesNode, PathNode {
       : vscode.TreeItemCollapsibleState.None;
     const item = new vscode.TreeItem(label, collapsible);
     item.resourceUri = vscode.Uri.file(this.favorite.path);
+    item.tooltip = this.favorite.path;
     item.contextValue = 'forgeflowFavorite';
     const profileLabel = resolveFavoriteProfileLabel(this.favorite);
     if (profileLabel) {
@@ -221,6 +222,7 @@ class WorkspaceFolderNode implements FilesNode, PathNode {
   public getTreeItem(): vscode.TreeItem {
     const item = new vscode.TreeItem(this.label, vscode.TreeItemCollapsibleState.Expanded);
     item.resourceUri = vscode.Uri.file(this.path);
+    item.tooltip = this.path;
     item.contextValue = 'forgeflowWorkspaceRoot';
     return item;
   }
@@ -249,6 +251,7 @@ class WorkspaceEntryNode implements FilesNode, PathNode {
       : vscode.TreeItemCollapsibleState.None;
     const item = new vscode.TreeItem(label, collapsible);
     item.resourceUri = vscode.Uri.file(this.path);
+    item.tooltip = this.path;
     item.contextValue = 'forgeflowFile';
     if (this.entryType !== vscode.FileType.Directory) {
       item.command = {

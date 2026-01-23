@@ -40,10 +40,14 @@ All settings live under the `forgeflow` namespace.
   - Maximum number of git repos to watch (default: 150).
 - `forgeflow.projects.gitWatchDebounceMs` (number)
   - Debounce time in ms for watch refresh events (default: 1000).
+- `forgeflow.projects.gitResolveMode` ("closest" | "outermost")
+  - Controls which `.git` is used when multiple exist in the ancestor chain.
+  - Use `outermost` to prefer the top-level repo.
 
 ## PowerShell
 - `forgeflow.powershell.profiles` (array)
   - Custom profiles. Built-in profiles are always available.
+  - Use **ForgeFlow: Run (Choose Profile)** and pick **Add custom profile...** to auto-fill.
 - `forgeflow.powershell.defaultProfileId` (string)
   - Default profile when no override is set.
 
@@ -104,11 +108,25 @@ All settings live under the `forgeflow` namespace.
   - Match mode used by filters.
   - Filters support `+include` and `-exclude` tokens plus quoted phrases (e.g., `"api gateway" -legacy`).
 
+## Editor tools
+- `forgeflow.toggleQuotes.chars` (array, language-overridable)
+  - Quote characters to cycle through. Supports strings (`"`, `'`, `` ` ``), pairs (`["<", ">"]`), or objects (`{ "begin": "<", "end": ">" }`).
+- `forgeflow.unicodeSubstitutions.rules` (array)
+  - Linting rules for correcting invalid unicode. Each rule needs `invalid`, `valid`, `message` (strings).
+- `forgeflow.unicodeSubstitutions.enableDefaultRules` (boolean | object)
+  - Enable/disable default rules globally or per-language.
+- `forgeflow.unicodeSubstitutions.enableFormatting` (boolean | object)
+  - Enable/disable formatting fixes globally or per-language.
+- `forgeflow.unicodeSubstitutions.enabledLanguageIds` (string[])
+  - Language IDs to lint (default: `["*"]`).
+
 ## Browser
-- `forgeflow.browser.preferred` ("default" | "edge" | "chrome" | "chromium" | "firefox" | "firefox-dev")
+- `forgeflow.browser.preferred` ("default" | "edge" | "chrome" | "chromium" | "firefox" | "firefox-dev" | "custom")
   - Preferred browser for **ForgeFlow: Open in Browser**.
 - `forgeflow.browser.fileExtensions` (string[])
   - File extensions that trigger the `Alt+B` shortcut.
+- `forgeflow.browser.customPath` (string)
+  - Full path to a custom browser executable when preferred is set to `custom`.
 
 ## Dashboard
 - `forgeflow.dashboard.hideArchived` (boolean)

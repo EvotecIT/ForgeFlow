@@ -26,22 +26,59 @@ Coverage reports are generated in CI as artifacts and can be uploaded to Codecov
 
 ForgeFlow keeps project discovery, git hygiene, PowerShell automation, and a lightweight dashboard in one place so you can work from a single view instead of bouncing between multiple panels.
 
-## Features
+## Views at a glance
 
-- [x] **ForgeFlow: Files** — Explorer replacement with Favorites and Workspace
-- [x] **ForgeFlow: Projects** — discovery, pinned items, entry points, tags, browse
-- [x] **PowerShell profiles** — integrated, external, and elevated (Windows)
-- [x] **Run by file (opt-in)** — .cs via csproj/sln and .cs script runs (dotnet 10+)
-- [x] **Run history + presets** — run last/history, recent runs per project, and pinned presets
-- [x] **Tasks integration** — tasks.json surfaced as entry points
-- [x] **ForgeFlow: Dashboard** — repo-level snapshot of activity + package metadata
-- [x] **Health scoring** — README/license/CI/tests/dependency freshness indicators
-- [x] **ForgeFlow: Git** — branch hygiene (gone/merged/no-upstream/stale) for a selected repo
-- [x] **Live filters + presets** — min chars, fuzzy/substring, saved presets, workspace/global scope
-- [x] **Shared state** — projects, tags, favorites, and caches shared across windows
-- [x] **Layout toggle** — compact sidebar vs expanded panel
-- [x] **PowerForge-ready** — typed interfaces and disabled commands, no engine logic yet
-- [x] **No telemetry**
+| View | What it is | Best for |
+| --- | --- | --- |
+| **ForgeFlow: Files** | Explorer replacement with Favorites + Workspace | File operations, favorites, quick actions |
+| **ForgeFlow: Projects** | Project discovery and workflows | Open/switch projects, tags, entry points, presets |
+| **ForgeFlow: Git** | Git hygiene for a selected repo | Prune/clean branches, stale/gone/merged views |
+| **ForgeFlow: Dashboard** | Repo health + activity panel | Status, README/license/CI/tests, dependency freshness |
+
+Layout modes:
+- **Compact**: all views in the left sidebar.
+- **Expanded**: Files/Projects/Git move to the panel for a wide layout.
+
+## Capabilities by area
+
+**Files & Workspace**
+- Favorites (global + workspace pinned)
+- Multi-select copy/cut/paste/rename/delete
+- Open in terminal, open in browser, open in Visual Studio (Windows)
+
+**Projects**
+- Auto discovery by scan roots (or workspace folders)
+- Entry points (scripts, tasks.json, pinned commands)
+- Tags, favorites, and quick switching
+
+**Run & PowerShell**
+- Integrated, external, and elevated PowerShell (Windows)
+- Profiles with defaults + per-project overrides
+- Run history and run presets
+- Run-by-file (opt-in) for .cs via csproj/sln and .cs scripts (dotnet 10+)
+
+**Git hygiene**
+- Branch groups: gone / merged / stale / no-upstream / ahead-behind
+- One-click prune/clean for selected repo or all repos
+
+**Dashboard**
+- Repo health scoring (README/license/CI/tests/dependency freshness)
+- Activity snapshot with package metadata
+
+**Editor tools**
+- **Toggle Quotes** (`Ctrl+'`) with per-language chars
+- **Unicode substitutions** lint + format with quick-fix actions
+
+**Quality of life**
+- Live filters with presets (workspace/global scope)
+- Shared state across windows
+- No telemetry
+
+## First-run setup
+
+1) Open a folder **or** configure scan roots: **ForgeFlow: Configure Project Scan Roots**  
+2) (Optional) Add PowerShell profiles: **ForgeFlow: Run (Choose Profile)** → save as default  
+3) (Optional) Configure dashboard tokens: **ForgeFlow: Configure Dashboard Tokens**
 
 ## Quick Start
 
@@ -51,44 +88,35 @@ ForgeFlow keeps project discovery, git hygiene, PowerShell automation, and a lig
 
 ## Commands
 
-- ForgeFlow: Run
-- ForgeFlow: Run Last / Run History / Save Run Preset
-- ForgeFlow: Reset External PowerShell Session
-- ForgeFlow: Export Diagnostics (JSON)
-- ForgeFlow: Run (Choose Profile)
-- ForgeFlow: Run Integrated / External / Run as Admin (External)
-- ForgeFlow: Run Recent Entry / Save Recent Entry as Preset / Remove Recent Entry
-- ForgeFlow: Clear Recent Runs for Project
-- ForgeFlow: Run Recent for Project
-- ForgeFlow: Run Recent (Pick Project)
-- ForgeFlow: Save Recent Run as Preset (Project)
-- ForgeFlow: Save Multiple Recent Runs as Presets (Project)
-- ForgeFlow: Open in Browser / Open in Browser (Choose)
-- ForgeFlow: Open in Default App
-- ForgeFlow: Open in Visual Studio (Windows, .sln)
-- ForgeFlow: Open in Terminal / Run Project / Git Clean Project
-- ForgeFlow: Run Project Preset / Delete Project Preset
-- ForgeFlow: Open to the Side / Rename / Delete / New File / New Folder
-- ForgeFlow: Open Dashboard / Refresh Dashboard
-- ForgeFlow: Configure Dashboard Tokens
-- ForgeFlow: Save/Apply/Delete Filter Presets (Files/Projects/Git/Dashboard)
-- ForgeFlow: Toggle Filter Scope (Workspace/Global)
-- ForgeFlow: Set Favorites View Mode
-- ForgeFlow: Git: Refresh / Select Project / Prune Remotes / Delete Merged or Gone Branches
-- ForgeFlow: Configure Project Identity
-- ForgeFlow: Configure Project Scan Roots
-- ForgeFlow: Switch Project (current/new/add to workspace)
-- ForgeFlow: Open in New Window / Add to Workspace
-- ForgeFlow: Set Project Run Target / Working Directory
-- ForgeFlow: Set Project Tags / Clear Project Tags / Rename Project Tag
-- ForgeFlow: Set Project Sort Mode
-- ForgeFlow: Set Project Sort Direction
-- ForgeFlow: Git: Set Branch Sort Mode / Direction / Filter
-- ForgeFlow: Git: Prune Remotes (All Projects)
-- ForgeFlow: Git: Delete Merged/Gone Branches (All Projects)
-- ForgeFlow: Git: Configure Project Overrides / Clean Project
-- ForgeFlow: Git: Preview Clean Project
-- ForgeFlow: Toggle Layout (Compact / Expanded)
+Open the Command Palette and type **ForgeFlow**. Key groups:
+
+**Files**
+- Open / Open to the Side / Rename / Delete / New File / New Folder
+- Copy Path / Copy Relative Path / Copy / Cut / Paste
+- Pin to Favorites / Pin to Workspace / Favorites View Mode
+
+**Projects**
+- Configure Scan Roots / Refresh / Switch Project / Open in New Window
+- Set Tags / Rename Tag / Entry Points / Run Project / Run Preset
+
+**Run & PowerShell**
+- Run / Run (Choose Profile) / Run Integrated / Run External / Run as Admin
+- Run History / Save Preset / Clear History / Reset External Session
+- Set Default PowerShell Profile
+
+**Git**
+- Select Project / Refresh / Prune Remotes / Delete Merged or Gone Branches
+- Configure Project Overrides / Preview Clean Project / Clean Project
+
+**Dashboard**
+- Open / Refresh / Configure Tokens
+
+**Browser**
+- Open in Browser / Open in Browser (Choose) / Set Preferred Browser
+
+**Layout & filters**
+- Toggle Layout (Compact / Expanded)
+- Focus/Clear filter + Save/Apply/Delete filter presets (Files/Projects/Git/Dashboard)
 
 ## Configuration
 
@@ -155,6 +183,7 @@ Re-run `npm run compile` after changes, then reload VS Code.
 - `Alt+B` → Open current file in browser (extensions configurable via `forgeflow.browser.fileExtensions`)
 - `Shift+Alt+B` → Choose browser
 - `Ctrl+Shift+Alt+F` / `Cmd+Shift+Alt+F` → Focus ForgeFlow filter for the current view
+- `Ctrl+'` / `Cmd+'` → Toggle Quotes (ForgeFlow)
 
 ## Notes
 

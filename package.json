@@ -17,12 +17,24 @@
   "engines": {
     "vscode": "^1.107.0"
   },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "categories": [
     "Other",
     "Programming Languages",
     "SCM Providers"
   ],
   "main": "./out/extension.js",
+  "files": [
+    "out/extension.js",
+    "out/extension.js.map",
+    "resources/**",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "package.json"
+  ],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -146,6 +158,24 @@
         "category": "ForgeFlow"
       },
       {
+        "command": "forgeflow.files.copy",
+        "title": "Copy",
+        "shortTitle": "Copy",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.files.cut",
+        "title": "Cut",
+        "shortTitle": "Cut",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.files.paste",
+        "title": "Paste",
+        "shortTitle": "Paste",
+        "category": "ForgeFlow"
+      },
+      {
         "command": "forgeflow.files.rename",
         "title": "Rename",
         "shortTitle": "Rename...",
@@ -173,6 +203,12 @@
         "command": "forgeflow.files.filter",
         "title": "Filter Files",
         "icon": "$(search)",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.files.refresh",
+        "title": "Refresh Files",
+        "icon": "$(refresh)",
         "category": "ForgeFlow"
       },
       {
@@ -310,7 +346,10 @@
         "command": "forgeflow.projects.openInVisualStudio",
         "title": "Open Project in Visual Studio",
         "shortTitle": "Open in Visual Studio",
-        "icon": "$(window)",
+        "icon": {
+          "light": "resources/icons/open-sln-light.svg",
+          "dark": "resources/icons/open-sln-dark.svg"
+        },
         "category": "ForgeFlow"
       },
       {
@@ -323,6 +362,11 @@
         "command": "forgeflow.projects.refresh",
         "title": "Refresh Projects",
         "icon": "$(refresh)",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.projects.configureOrRefresh",
+        "title": "Configure or Refresh Projects",
         "category": "ForgeFlow"
       },
       {
@@ -567,6 +611,16 @@
         }
       },
       {
+        "command": "forgeflow.run.setDefaultProfile",
+        "title": "Set Default PowerShell Profile",
+        "shortTitle": "Set Default Profile",
+        "category": "ForgeFlow",
+        "icon": {
+          "light": "resources/icons/profile-light.svg",
+          "dark": "resources/icons/profile-dark.svg"
+        }
+      },
+      {
         "command": "forgeflow.run.integrated",
         "title": "Run Integrated",
         "shortTitle": "Run Integrated",
@@ -590,6 +644,10 @@
         "command": "forgeflow.run.external.chooseProfile",
         "title": "Run External (Choose Profile)",
         "shortTitle": "Run External (Choose Profile)",
+        "icon": {
+          "light": "resources/icons/profile-light.svg",
+          "dark": "resources/icons/profile-dark.svg"
+        },
         "category": "ForgeFlow"
       },
       {
@@ -606,6 +664,10 @@
         "command": "forgeflow.run.externalAdmin.chooseProfile",
         "title": "Run as Admin (Choose Profile)",
         "shortTitle": "Run as Admin (Choose Profile)",
+        "icon": {
+          "light": "resources/icons/profile-admin-light.svg",
+          "dark": "resources/icons/profile-admin-dark.svg"
+        },
         "category": "ForgeFlow"
       },
       {
@@ -781,7 +843,10 @@
         "command": "forgeflow.openInBrowser",
         "title": "Open in Browser",
         "shortTitle": "Open in Browser",
-        "icon": "$(globe)",
+        "icon": {
+          "light": "resources/icons/open-html-light.svg",
+          "dark": "resources/icons/open-html-dark.svg"
+        },
         "category": "ForgeFlow"
       },
       {
@@ -794,14 +859,27 @@
         "command": "forgeflow.openInBrowser.choose",
         "title": "Open in Browser (Choose)",
         "shortTitle": "Open in Browser...",
-        "icon": "$(globe)",
+        "icon": {
+          "light": "resources/icons/open-html-light.svg",
+          "dark": "resources/icons/open-html-dark.svg"
+        },
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.openInBrowser.setPreferred",
+        "title": "Set Preferred Browser",
+        "shortTitle": "Set Preferred Browser",
+        "icon": "$(settings-gear)",
         "category": "ForgeFlow"
       },
       {
         "command": "forgeflow.openInVisualStudio",
         "title": "Open in Visual Studio",
         "shortTitle": "Open in Visual Studio",
-        "icon": "$(window)",
+        "icon": {
+          "light": "resources/icons/open-sln-light.svg",
+          "dark": "resources/icons/open-sln-dark.svg"
+        },
         "category": "ForgeFlow"
       },
       {
@@ -1051,10 +1129,78 @@
         "command": "forgeflow.modules.cleanup",
         "title": "Modules: Cleanup",
         "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.toggleQuotes",
+        "title": "Toggle Quote",
+        "category": "ForgeFlow"
       }
     ],
+    "configurationDefaults": {
+      "[typescript]": {
+        "forgeflow.toggleQuotes.chars": [
+          "\"",
+          "'",
+          "`"
+        ]
+      },
+      "[javascript]": {
+        "forgeflow.toggleQuotes.chars": [
+          "\"",
+          "'",
+          "`"
+        ]
+      },
+      "[typescriptreact]": {
+        "forgeflow.toggleQuotes.chars": [
+          "\"",
+          "'",
+          "`"
+        ]
+      },
+      "[javascriptreact]": {
+        "forgeflow.toggleQuotes.chars": [
+          "\"",
+          "'",
+          "`"
+        ]
+      },
+      "[svelte]": {
+        "forgeflow.toggleQuotes.chars": [
+          "\"",
+          "'",
+          "`"
+        ]
+      },
+      "[vue]": {
+        "forgeflow.toggleQuotes.chars": [
+          "\"",
+          "'",
+          "`"
+        ]
+      },
+      "[markdown]": {
+        "forgeflow.toggleQuotes.chars": [
+          "\"",
+          "'",
+          "`"
+        ]
+      },
+      "[go]": {
+        "forgeflow.toggleQuotes.chars": [
+          "\"",
+          "'",
+          "`"
+        ]
+      }
+    },
     "menus": {
       "view/title": [
+        {
+          "command": "forgeflow.files.refresh",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel)",
+          "group": "navigation"
+        },
         {
           "command": "forgeflow.files.filter",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel)",
@@ -1216,6 +1362,13 @@
           "group": "navigation@5"
         }
       ],
+      "editor/title/context": [
+        {
+          "command": "forgeflow.files.pinFavorite",
+          "when": "resourceScheme == file",
+          "group": "navigation"
+        }
+      ],
       "view/item/context": [
         {
           "command": "forgeflow.run",
@@ -1229,22 +1382,35 @@
         {
           "command": "forgeflow.openInBrowser",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile && resourceExtname =~ /\\.(html?|svg|md)$/",
-          "group": "1_open@7"
+          "group": "1_open@7",
+          "icon": {
+            "light": "resources/icons/open-html-light.svg",
+            "dark": "resources/icons/open-html-dark.svg"
+          }
         },
         {
           "command": "forgeflow.openInBrowser.choose",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile && resourceExtname =~ /\\.(html?|svg|md)$/",
-          "group": "1_open@8"
+          "group": "1_open@8",
+          "icon": {
+            "light": "resources/icons/open-html-light.svg",
+            "dark": "resources/icons/open-html-dark.svg"
+          }
         },
         {
           "command": "forgeflow.openInDefaultApp",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile",
-          "group": "1_open@6"
+          "group": "1_open@6",
+          "icon": "$(link-external)"
         },
         {
           "command": "forgeflow.openInVisualStudio",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile && resourceExtname == .sln && isWindows",
-          "group": "1_open@9"
+          "group": "1_open@9",
+          "icon": {
+            "light": "resources/icons/open-sln-light.svg",
+            "dark": "resources/icons/open-sln-dark.svg"
+          }
         },
         {
           "command": "forgeflow.run.integrated",
@@ -1267,7 +1433,11 @@
         {
           "command": "forgeflow.run.external.chooseProfile",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile && resourceExtname == .ps1",
-          "group": "5_forgeflow@12b"
+          "group": "5_forgeflow@12b",
+          "icon": {
+            "light": "resources/icons/profile-light.svg",
+            "dark": "resources/icons/profile-dark.svg"
+          }
         },
         {
           "command": "forgeflow.run.externalAdmin",
@@ -1281,7 +1451,11 @@
         {
           "command": "forgeflow.run.externalAdmin.chooseProfile",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile && resourceExtname == .ps1 && isWindows",
-          "group": "5_forgeflow@13b"
+          "group": "5_forgeflow@13b",
+          "icon": {
+            "light": "resources/icons/profile-admin-light.svg",
+            "dark": "resources/icons/profile-admin-dark.svg"
+          }
         },
         {
           "command": "forgeflow.run",
@@ -1295,22 +1469,35 @@
         {
           "command": "forgeflow.openInBrowser",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceExtname =~ /\\.(html?|svg|md)$/",
-          "group": "1_open@7"
+          "group": "1_open@7",
+          "icon": {
+            "light": "resources/icons/open-html-light.svg",
+            "dark": "resources/icons/open-html-dark.svg"
+          }
         },
         {
           "command": "forgeflow.openInBrowser.choose",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceExtname =~ /\\.(html?|svg|md)$/",
-          "group": "1_open@8"
+          "group": "1_open@8",
+          "icon": {
+            "light": "resources/icons/open-html-light.svg",
+            "dark": "resources/icons/open-html-dark.svg"
+          }
         },
         {
           "command": "forgeflow.openInDefaultApp",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite",
-          "group": "1_open@6"
+          "group": "1_open@6",
+          "icon": "$(link-external)"
         },
         {
           "command": "forgeflow.openInVisualStudio",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceExtname == .sln && isWindows",
-          "group": "1_open@9"
+          "group": "1_open@9",
+          "icon": {
+            "light": "resources/icons/open-sln-light.svg",
+            "dark": "resources/icons/open-sln-dark.svg"
+          }
         },
         {
           "command": "forgeflow.run.integrated",
@@ -1333,7 +1520,11 @@
         {
           "command": "forgeflow.run.external.chooseProfile",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceExtname == .ps1",
-          "group": "5_forgeflow@12b"
+          "group": "5_forgeflow@12b",
+          "icon": {
+            "light": "resources/icons/profile-light.svg",
+            "dark": "resources/icons/profile-dark.svg"
+          }
         },
         {
           "command": "forgeflow.run.externalAdmin",
@@ -1347,7 +1538,11 @@
         {
           "command": "forgeflow.run.externalAdmin.chooseProfile",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceExtname == .ps1 && isWindows",
-          "group": "5_forgeflow@13b"
+          "group": "5_forgeflow@13b",
+          "icon": {
+            "light": "resources/icons/profile-admin-light.svg",
+            "dark": "resources/icons/profile-admin-dark.svg"
+          }
         },
         {
           "command": "forgeflow.run.setFavoriteProfile",
@@ -1398,6 +1593,16 @@
           "group": "1_open@2"
         },
         {
+          "command": "forgeflow.files.openWith",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile",
+          "group": "1_open@3"
+        },
+        {
+          "command": "forgeflow.files.openInTerminal",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile",
+          "group": "1_open@4"
+        },
+        {
           "command": "forgeflow.files.revealInOs",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile",
           "group": "1_open@5"
@@ -1405,12 +1610,27 @@
         {
           "command": "forgeflow.files.copyPath",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile",
-          "group": "2_clipboard@1"
+          "group": "2_clipboard@2"
         },
         {
           "command": "forgeflow.files.copyRelativePath",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile",
-          "group": "2_clipboard@2"
+          "group": "2_clipboard@3"
+        },
+        {
+          "command": "forgeflow.files.copy",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile",
+          "group": "2_clipboard@1"
+        },
+        {
+          "command": "forgeflow.files.cut",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile",
+          "group": "2_clipboard@0"
+        },
+        {
+          "command": "forgeflow.files.paste",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile",
+          "group": "2_clipboard@4"
         },
         {
           "command": "forgeflow.files.rename",
@@ -1455,12 +1675,27 @@
         {
           "command": "forgeflow.files.copyPath",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite",
-          "group": "2_clipboard@1"
+          "group": "2_clipboard@2"
         },
         {
           "command": "forgeflow.files.copyRelativePath",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite",
-          "group": "2_clipboard@2"
+          "group": "2_clipboard@3"
+        },
+        {
+          "command": "forgeflow.files.copy",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite",
+          "group": "2_clipboard@1"
+        },
+        {
+          "command": "forgeflow.files.cut",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite",
+          "group": "2_clipboard@0"
+        },
+        {
+          "command": "forgeflow.files.paste",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite",
+          "group": "2_clipboard@4"
         },
         {
           "command": "forgeflow.files.rename",
@@ -1565,17 +1800,27 @@
         {
           "command": "forgeflow.files.copyPath",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowWorkspaceRoot",
-          "group": "2_clipboard@1"
+          "group": "2_clipboard@2"
         },
         {
           "command": "forgeflow.files.copyRelativePath",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowWorkspaceRoot",
-          "group": "2_clipboard@2"
+          "group": "2_clipboard@3"
         },
         {
-          "command": "forgeflow.files.copyPath",
+          "command": "forgeflow.files.copy",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowWorkspaceRoot",
           "group": "2_clipboard@1"
+        },
+        {
+          "command": "forgeflow.files.cut",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowWorkspaceRoot",
+          "group": "2_clipboard@0"
+        },
+        {
+          "command": "forgeflow.files.paste",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowWorkspaceRoot",
+          "group": "2_clipboard@4"
         },
         {
           "command": "forgeflow.projects.open",
@@ -1744,22 +1989,35 @@
         {
           "command": "forgeflow.openInBrowser",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectEntry && resourceExtname =~ /\\.(html?|svg|md)$/",
-          "group": "1_open@7"
+          "group": "1_open@7",
+          "icon": {
+            "light": "resources/icons/open-html-light.svg",
+            "dark": "resources/icons/open-html-dark.svg"
+          }
         },
         {
           "command": "forgeflow.openInBrowser.choose",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectEntry && resourceExtname =~ /\\.(html?|svg|md)$/",
-          "group": "1_open@8"
+          "group": "1_open@8",
+          "icon": {
+            "light": "resources/icons/open-html-light.svg",
+            "dark": "resources/icons/open-html-dark.svg"
+          }
         },
         {
           "command": "forgeflow.openInDefaultApp",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectEntry",
-          "group": "1_open@6"
+          "group": "1_open@6",
+          "icon": "$(link-external)"
         },
         {
           "command": "forgeflow.openInVisualStudio",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectEntry && resourceExtname == .sln && isWindows",
-          "group": "1_open@9"
+          "group": "1_open@9",
+          "icon": {
+            "light": "resources/icons/open-sln-light.svg",
+            "dark": "resources/icons/open-sln-dark.svg"
+          }
         },
         {
           "command": "forgeflow.files.openToSide",
@@ -1817,7 +2075,11 @@
         {
           "command": "forgeflow.run.external.chooseProfile",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectEntry && resourceExtname == .ps1",
-          "group": "5_forgeflow@12b"
+          "group": "5_forgeflow@12b",
+          "icon": {
+            "light": "resources/icons/profile-light.svg",
+            "dark": "resources/icons/profile-dark.svg"
+          }
         },
         {
           "command": "forgeflow.run.externalAdmin",
@@ -1831,7 +2093,11 @@
         {
           "command": "forgeflow.run.externalAdmin.chooseProfile",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectEntry && resourceExtname == .ps1 && isWindows",
-          "group": "5_forgeflow@13b"
+          "group": "5_forgeflow@13b",
+          "icon": {
+            "light": "resources/icons/profile-admin-light.svg",
+            "dark": "resources/icons/profile-admin-dark.svg"
+          }
         },
         {
           "command": "forgeflow.run",
@@ -1845,22 +2111,35 @@
         {
           "command": "forgeflow.openInBrowser",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectPinned && resourceExtname =~ /\\.(html?|svg|md)$/",
-          "group": "1_open@7"
+          "group": "1_open@7",
+          "icon": {
+            "light": "resources/icons/open-html-light.svg",
+            "dark": "resources/icons/open-html-dark.svg"
+          }
         },
         {
           "command": "forgeflow.openInBrowser.choose",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectPinned && resourceExtname =~ /\\.(html?|svg|md)$/",
-          "group": "1_open@8"
+          "group": "1_open@8",
+          "icon": {
+            "light": "resources/icons/open-html-light.svg",
+            "dark": "resources/icons/open-html-dark.svg"
+          }
         },
         {
           "command": "forgeflow.openInDefaultApp",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectPinned",
-          "group": "1_open@6"
+          "group": "1_open@6",
+          "icon": "$(link-external)"
         },
         {
           "command": "forgeflow.openInVisualStudio",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectPinned && resourceExtname == .sln && isWindows",
-          "group": "1_open@9"
+          "group": "1_open@9",
+          "icon": {
+            "light": "resources/icons/open-sln-light.svg",
+            "dark": "resources/icons/open-sln-dark.svg"
+          }
         },
         {
           "command": "forgeflow.files.openToSide",
@@ -1923,7 +2202,11 @@
         {
           "command": "forgeflow.run.external.chooseProfile",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectPinned && resourceExtname == .ps1",
-          "group": "5_forgeflow@12b"
+          "group": "5_forgeflow@12b",
+          "icon": {
+            "light": "resources/icons/profile-light.svg",
+            "dark": "resources/icons/profile-dark.svg"
+          }
         },
         {
           "command": "forgeflow.run.externalAdmin",
@@ -1937,7 +2220,11 @@
         {
           "command": "forgeflow.run.externalAdmin.chooseProfile",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectPinned && resourceExtname == .ps1 && isWindows",
-          "group": "5_forgeflow@13b"
+          "group": "5_forgeflow@13b",
+          "icon": {
+            "light": "resources/icons/profile-admin-light.svg",
+            "dark": "resources/icons/profile-admin-dark.svg"
+          }
         },
         {
           "command": "forgeflow.run.chooseProfile",
@@ -1985,12 +2272,20 @@
         {
           "command": "forgeflow.openInBrowser",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectBrowseItem && resourceExtname =~ /\\.(html?|svg|md)$/",
-          "group": "1_open@7"
+          "group": "1_open@7",
+          "icon": {
+            "light": "resources/icons/open-html-light.svg",
+            "dark": "resources/icons/open-html-dark.svg"
+          }
         },
         {
           "command": "forgeflow.openInBrowser.choose",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectBrowseItem && resourceExtname =~ /\\.(html?|svg|md)$/",
-          "group": "1_open@8"
+          "group": "1_open@8",
+          "icon": {
+            "light": "resources/icons/open-html-light.svg",
+            "dark": "resources/icons/open-html-dark.svg"
+          }
         },
         {
           "command": "forgeflow.openInDefaultApp",
@@ -2000,7 +2295,11 @@
         {
           "command": "forgeflow.openInVisualStudio",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectBrowseItem && resourceExtname == .sln && isWindows",
-          "group": "1_open@9"
+          "group": "1_open@9",
+          "icon": {
+            "light": "resources/icons/open-sln-light.svg",
+            "dark": "resources/icons/open-sln-dark.svg"
+          }
         },
         {
           "command": "forgeflow.projects.addEntryPoint",
@@ -2154,7 +2453,11 @@
         {
           "command": "forgeflow.run.external.chooseProfile",
           "when": "resourceExtname == .ps1",
-          "group": "navigation"
+          "group": "navigation",
+          "icon": {
+            "light": "resources/icons/profile-light.svg",
+            "dark": "resources/icons/profile-dark.svg"
+          }
         },
         {
           "command": "forgeflow.run.externalAdmin",
@@ -2168,7 +2471,11 @@
         {
           "command": "forgeflow.run.externalAdmin.chooseProfile",
           "when": "resourceExtname == .ps1 && isWindows",
-          "group": "navigation"
+          "group": "navigation",
+          "icon": {
+            "light": "resources/icons/profile-admin-light.svg",
+            "dark": "resources/icons/profile-admin-dark.svg"
+          }
         },
         {
           "command": "forgeflow.run.chooseProfile",
@@ -2193,6 +2500,16 @@
         "when": "editorTextFocus"
       },
       {
+        "command": "forgeflow.toggleQuotes",
+        "key": "ctrl+'",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "forgeflow.toggleQuotes",
+        "key": "cmd+'",
+        "when": "isMac && editorTextFocus"
+      },
+      {
         "command": "forgeflow.dashboard.focusFilter",
         "key": "ctrl+shift+alt+f",
         "when": "view == forgeflow.dashboard"
@@ -2210,6 +2527,51 @@
       {
         "command": "forgeflow.files.focusFilter",
         "key": "cmd+shift+alt+f",
+        "when": "isMac && (view == forgeflow.files || view == forgeflow.files.panel)"
+      },
+      {
+        "command": "forgeflow.files.rename",
+        "key": "f2",
+        "when": "view == forgeflow.files || view == forgeflow.files.panel"
+      },
+      {
+        "command": "forgeflow.files.delete",
+        "key": "delete",
+        "when": "view == forgeflow.files || view == forgeflow.files.panel"
+      },
+      {
+        "command": "forgeflow.files.delete",
+        "key": "cmd+backspace",
+        "when": "isMac && (view == forgeflow.files || view == forgeflow.files.panel)"
+      },
+      {
+        "command": "forgeflow.files.copy",
+        "key": "ctrl+c",
+        "when": "view == forgeflow.files || view == forgeflow.files.panel"
+      },
+      {
+        "command": "forgeflow.files.cut",
+        "key": "ctrl+x",
+        "when": "view == forgeflow.files || view == forgeflow.files.panel"
+      },
+      {
+        "command": "forgeflow.files.paste",
+        "key": "ctrl+v",
+        "when": "view == forgeflow.files || view == forgeflow.files.panel"
+      },
+      {
+        "command": "forgeflow.files.copy",
+        "key": "cmd+c",
+        "when": "isMac && (view == forgeflow.files || view == forgeflow.files.panel)"
+      },
+      {
+        "command": "forgeflow.files.cut",
+        "key": "cmd+x",
+        "when": "isMac && (view == forgeflow.files || view == forgeflow.files.panel)"
+      },
+      {
+        "command": "forgeflow.files.paste",
+        "key": "cmd+v",
         "when": "isMac && (view == forgeflow.files || view == forgeflow.files.panel)"
       },
       {
@@ -2422,6 +2784,15 @@
           "minimum": 0,
           "maximum": 10000
         },
+        "forgeflow.projects.gitResolveMode": {
+          "type": "string",
+          "description": "Choose which .git to use when multiple exist in the ancestor chain.",
+          "enum": [
+            "closest",
+            "outermost"
+          ],
+          "default": "closest"
+        },
         "forgeflow.powershell.profiles": {
           "type": "array",
           "description": "PowerShell profiles available for running scripts.",
@@ -2626,9 +2997,14 @@
             "chrome",
             "chromium",
             "firefox",
-            "firefox-dev"
+            "firefox-dev",
+            "custom"
           ],
           "default": "default"
+        },
+        "forgeflow.browser.customPath": {
+          "type": "string",
+          "description": "Custom browser executable path when preferred is set to custom."
         },
         "forgeflow.browser.fileExtensions": {
           "type": "array",
@@ -2721,14 +3097,68 @@
           "type": "boolean",
           "description": "Show git branch summary badges in the Projects view.",
           "default": true
+        },
+        "forgeflow.toggleQuotes.chars": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "\"",
+            "'"
+          ],
+          "description": "The quote characters to toggle between.",
+          "scope": "language-overridable"
+        },
+        "forgeflow.unicodeSubstitutions.rules": {
+          "description": "Linting rules for correcting invalid unicode",
+          "scope": "window",
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "default": [
+            {
+              "invalid": "\\u058A",
+              "valid": "\\u002D",
+              "message": "Armenian hyphen should be a hyphen."
+            }
+          ]
+        },
+        "forgeflow.unicodeSubstitutions.enableDefaultRules": {
+          "description": "Enable or Disable linting using default rules",
+          "type": [
+            "boolean",
+            "object"
+          ],
+          "default": true
+        },
+        "forgeflow.unicodeSubstitutions.enableFormatting": {
+          "description": "Enable or Disable formatting",
+          "type": [
+            "boolean",
+            "object"
+          ],
+          "default": true
+        },
+        "forgeflow.unicodeSubstitutions.enabledLanguageIds": {
+          "type": "array",
+          "scope": "window",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "*"
+          ],
+          "description": "Specify file types to lint."
         }
       }
     }
   },
   "scripts": {
-    "compile": "tsc -p tsconfig.json",
+    "compile": "node scripts/bundle.cjs",
     "compile:test": "tsc -p tsconfig.test.json",
-    "watch": "tsc -watch -p tsconfig.json",
+    "watch": "node scripts/bundle.cjs --watch",
     "lint": "eslint . && npm run lint:package",
     "lint:package": "node scripts/validate-package.cjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -2753,9 +3183,14 @@
     "@typescript-eslint/eslint-plugin": "^8.52.0",
     "@typescript-eslint/parser": "^8.52.0",
     "@vscode/vsce": "^3.7.1",
+    "esbuild": "^0.25.10",
     "c8": "^10.1.3",
     "eslint": "^9.39.2",
     "mocha": "^11.7.5",
     "typescript": "^5.9.3"
+  },
+  "overrides": {
+    "diff": "^8.0.3",
+    "lodash": "^4.17.22"
   }
 }

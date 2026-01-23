@@ -177,6 +177,9 @@ export async function fetchGitHubLatestRelease(repo: string, token?: string, sig
       signal
     });
 
+    if (response.status === 404) {
+      return undefined;
+    }
     if (!response.ok) {
       const rateLimited = response.status === 429 || (response.status === 403 && response.headers.get('x-ratelimit-remaining') === '0');
       const unauthorized = response.status === 401 || response.status === 403;

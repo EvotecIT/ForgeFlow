@@ -44,6 +44,11 @@ if (activationEvents.length > 0) {
   }
 }
 
+const vscodeignorePath = path.join(__dirname, '..', '.vscodeignore');
+if (Array.isArray(pkg.files) && pkg.files.length > 0 && fs.existsSync(vscodeignorePath)) {
+  errors.push('Both ".vscodeignore" and "files" are present. VSCE does not support using both.');
+}
+
 const validCategories = new Set([
   'AI',
   'Azure',

@@ -3,7 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 
-export type BrowserTarget = 'default' | 'edge' | 'chrome' | 'chromium' | 'firefox' | 'firefox-dev';
+export type BrowserTarget = 'default' | 'edge' | 'chrome' | 'chromium' | 'firefox' | 'firefox-dev' | 'custom';
 
 interface SpawnCommand {
   command: string;
@@ -35,6 +35,16 @@ export async function openFileInBrowser(filePath: string, browser: BrowserTarget
 
 export async function openUrlInBrowser(url: string, browser: BrowserTarget = 'default'): Promise<void> {
   if (browser === 'default') {
+    await vscode.env.openExternal(vscode.Uri.parse(url));
+    return;
+  }
+  if (browser === 'custom') {
+    const config = vscode.workspace.getConfiguration('forgeflow');
+    const customPath = config.get<string>('browser.customPath');
+    if (customPath) {
+      await spawnDetached({ command: customPath, args: [url] });
+      return;
+    }
     await vscode.env.openExternal(vscode.Uri.parse(url));
     return;
   }

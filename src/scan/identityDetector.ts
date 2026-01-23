@@ -91,10 +91,15 @@ async function detectRepositoryInfo(projectPath: string, maxDepth: number): Prom
 async function resolveGitConfigPath(projectPath: string, maxDepth: number): Promise<string | undefined> {
   let current = projectPath;
   const depthLimit = Math.max(0, maxDepth);
+  const resolveMode = getForgeFlowSettings().projectGitResolveMode;
+  let fallback: string | undefined;
   for (let depth = 0; depth <= depthLimit; depth += 1) {
     const config = await resolveGitConfigAt(current);
     if (config) {
-      return config;
+      if (resolveMode === 'closest') {
+        return config;
+      }
+      fallback = config;
     }
     const parent = path.dirname(current);
     if (parent === current) {
@@ -102,7 +107,7 @@ async function resolveGitConfigPath(projectPath: string, maxDepth: number): Prom
     }
     current = parent;
   }
-  return undefined;
+  return fallback;
 }
 
 async function resolveGitConfigAt(projectPath: string): Promise<string | undefined> {

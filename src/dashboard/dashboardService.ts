@@ -123,13 +123,19 @@ export class DashboardService {
           ])
           : [undefined, undefined];
 
-        const githubStatus = resolveProviderStatus([gitHub, gitHubPrs, gitHubRelease]);
-        const gitlabStatus = resolveProviderStatus([gitLab, gitLabMrs]);
-        const azureStatus = resolveProviderStatus([azureRepo, azurePrs, azureCommit]);
+        const githubStatus = resolveProviderStatus([gitHub]);
+        const gitlabStatus = resolveProviderStatus([gitLab]);
+        const azureStatus = resolveProviderStatus([azureRepo]);
         const providerStatus = provider === 'github'
           ? githubStatus
           : (provider === 'gitlab' ? gitlabStatus : (provider === 'azure' ? azureStatus : 'unknown'));
         const remoteOk = providerStatus === 'ok';
+        const githubRepoOk = isProviderOk(gitHub);
+        const gitLabOk = isProviderOk(gitLab);
+        const gitHubPrsOk = isProviderOk(gitHubPrs);
+        const gitLabMrsOk = isProviderOk(gitLabMrs);
+        const azurePrsOk = isProviderOk(azurePrs);
+        const gitHubReleaseOk = isProviderOk(gitHubRelease);
         const activitySource = (provider === 'github' && githubStatus === 'ok' ? gitHub?.pushedAt : undefined)
           ?? (provider === 'gitlab' && gitlabStatus === 'ok' ? gitLab?.lastActivity : undefined)
           ?? (provider === 'azure' && azureStatus === 'ok' ? azureCommit?.lastCommit : undefined)
@@ -137,25 +143,27 @@ export class DashboardService {
         const activityTimestamp = activitySource ? Date.parse(activitySource) : 0;
         const activity = activitySource ? formatRelative(activitySource) : 'n/a';
         const issues = remoteOk
-          ? (gitHub ? String(gitHub.issues) : (gitLab ? String(gitLab.issues) : 'n/a'))
+          ? (githubRepoOk ? String(gitHub?.issues ?? 0) : (gitLabOk ? String(gitLab?.issues ?? 0) : 'n/a'))
           : 'n/a';
         const prCount = remoteOk
-          ? (gitHubPrs
-            ? String(gitHubPrs.openPrs)
-            : (gitLabMrs ? String(gitLabMrs.openMrs) : (azurePrs ? String(azurePrs.openPrs) : 'n/a')))
+          ? (gitHubPrsOk
+            ? String(gitHubPrs?.openPrs ?? 0)
+            : (gitLabMrsOk
+              ? String(gitLabMrs?.openMrs ?? 0)
+              : (azurePrsOk ? String(azurePrs?.openPrs ?? 0) : 'n/a')))
           : 'n/a';
         const stars = remoteOk
-          ? (gitHub ? String(gitHub.stars) : (gitLab ? String(gitLab.stars) : 'n/a'))
+          ? (githubRepoOk ? String(gitHub?.stars ?? 0) : (gitLabOk ? String(gitLab?.stars ?? 0) : 'n/a'))
           : 'n/a';
         const version = psGallery?.version
           ?? nuget?.version
           ?? identity.vscodeExtensionVersion
-          ?? gitHubRelease?.tag
+          ?? (gitHubReleaseOk ? gitHubRelease?.tag : undefined)
           ?? detectedInfo?.moduleVersion
           ?? 'n/a';
         const released = psGallery?.released
           ?? nuget?.released
-          ?? gitHubRelease?.publishedAt
+          ?? (gitHubReleaseOk ? gitHubRelease?.publishedAt : undefined)
           ?? 'n/a';
         const archived = (githubStatus === 'ok' ? gitHub?.archived : undefined)
           ?? (gitlabStatus === 'ok' ? gitLab?.archived : undefined)
@@ -428,6 +436,13 @@ function resolveProviderStatus(sources: Array<{ rateLimited?: boolean; unauthori
     return 'error';
   }
   return 'ok';
+}
+
+function isProviderOk(source: { rateLimited?: boolean; unauthorized?: boolean; requestFailed?: boolean } | undefined): boolean {
+  if (!source) {
+    return false;
+  }
+  return !source.rateLimited && !source.unauthorized && !source.requestFailed;
 }
 
 function resolveRepoUrl(identity: { repositoryUrl?: string; repositoryProvider?: string; repositoryPath?: string; githubRepo?: string }): string | undefined {

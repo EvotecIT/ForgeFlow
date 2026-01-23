@@ -13,16 +13,16 @@ if (-not (Test-Path -LiteralPath $packagePath)) {
 Push-Location $repoRoot
 try {
     $nodeExe = (Get-Command node -ErrorAction Stop).Source
-    $tscPath = Join-Path $repoRoot 'node_modules/typescript/bin/tsc'
     $vsceBin = Join-Path $repoRoot 'node_modules/.bin/vsce.cmd'
     if (-not (Test-Path -LiteralPath $vsceBin)) {
         $vsceBin = Join-Path $repoRoot 'node_modules/.bin/vsce'
     }
     $vsceMain = Join-Path $repoRoot 'node_modules/@vscode/vsce/out/main.js'
+    $esbuildPath = Join-Path $repoRoot 'node_modules/esbuild'
 
     $nodeModules = Join-Path $repoRoot 'node_modules'
     $installNeeded = (-not (Test-Path -LiteralPath $nodeModules)) -or
-        (-not (Test-Path -LiteralPath $tscPath)) -or
+        (-not (Test-Path -LiteralPath $esbuildPath)) -or
         (-not (Test-Path -LiteralPath $vsceBin) -and -not (Test-Path -LiteralPath $vsceMain))
 
     if ($installNeeded) {
@@ -30,15 +30,15 @@ try {
         npm install --include=dev
     }
 
-    if (-not (Test-Path -LiteralPath $tscPath)) {
-        throw "TypeScript compiler not found at $tscPath. Run npm install."
+    if (-not (Test-Path -LiteralPath $esbuildPath)) {
+        throw "esbuild not found at $esbuildPath. Run npm install."
     }
     if (-not (Test-Path -LiteralPath $vsceBin) -and -not (Test-Path -LiteralPath $vsceMain)) {
         throw "VSCE not found in node_modules. Run npm install."
     }
 
     Write-Host "Building ForgeFlow VSIX..." -ForegroundColor Cyan
-    & $nodeExe $tscPath -p tsconfig.json
+    npm run compile
     if (Test-Path -LiteralPath $vsceBin) {
         & $vsceBin package --allow-missing-repository
     } else {

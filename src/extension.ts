@@ -46,12 +46,16 @@ import { buildPresetFromEntry } from './run/runPresets';
 import { detectProjectIdentity } from './scan/identityDetector';
 import type { ProjectSortMode, SortDirection } from './util/config';
 import { getForgeFlowSettings } from './util/config';
-import { readDirectory, statPath } from './util/fs';
+import { pathExists, readDirectory, statPath } from './util/fs';
 import { openFileInBrowser, openFileInDefaultApp, openInVisualStudio, type BrowserTarget } from './util/open';
 import { baseName } from './util/path';
 import { maybeRunOnboarding, runOnboarding } from './onboarding/onboarding';
+import { registerToggleQuotes } from './editor/toggleQuotes';
+import { registerUnicodeSubstitutions } from './editor/unicodeSubstitutions';
+import { stableIdFromPath } from './util/ids';
 
 let runByFileTerminal: vscode.Terminal | undefined;
+let fileClipboard: { mode: 'copy' | 'cut'; paths: string[] } | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const logger = new ForgeFlowLogger();
@@ -78,6 +82,59 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const gitWatchService = new GitWatchService(projectsStore, gitCommitCacheStore, logger);
   const layoutMode = layoutStore.getMode();
   void vscode.commands.executeCommand('setContext', 'forgeflow.layout', layoutMode);
+  let filesRefreshTimer: NodeJS.Timeout | undefined;
+  const scheduleFilesRefresh = (): void => {
+    if (filesRefreshTimer) {
+      clearTimeout(filesRefreshTimer);
+    }
+    filesRefreshTimer = setTimeout(() => {
+      filesProvider.refresh();
+    }, 200);
+  };
+  const shouldIgnoreFileEvent = (uri: vscode.Uri): boolean => {
+    const fsPath = uri.fsPath;
+    const gitSegment = `${path.sep}.git${path.sep}`;
+    return fsPath === `${path.sep}.git`
+      || fsPath.endsWith(`${path.sep}.git`)
+      || fsPath.includes(gitSegment);
+  };
+  const fileWatchers = new Map<string, vscode.FileSystemWatcher>();
+  const syncFileWatchers = (): void => {
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    const activeRoots = new Set<string>();
+    for (const folder of folders) {
+      const key = folder.uri.fsPath;
+      activeRoots.add(key);
+      if (fileWatchers.has(key)) {
+        continue;
+      }
+      const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(folder, '**/*'));
+      watcher.onDidCreate((uri) => {
+        if (!shouldIgnoreFileEvent(uri)) {
+          scheduleFilesRefresh();
+        }
+      });
+      watcher.onDidChange((uri) => {
+        if (!shouldIgnoreFileEvent(uri)) {
+          scheduleFilesRefresh();
+        }
+      });
+      watcher.onDidDelete((uri) => {
+        if (!shouldIgnoreFileEvent(uri)) {
+          scheduleFilesRefresh();
+        }
+      });
+      fileWatchers.set(key, watcher);
+      context.subscriptions.push(watcher);
+    }
+
+    for (const [key, watcher] of fileWatchers.entries()) {
+      if (!activeRoots.has(key)) {
+        watcher.dispose();
+        fileWatchers.delete(key);
+      }
+    }
+  };
 
   const filesProvider = new FilesViewProvider(favoritesStore, filesFilterStore);
   const projectsProvider = new ProjectsViewProvider(
@@ -103,8 +160,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const projectsWebviewProvider = new ProjectsWebviewProvider(projectsProvider, projectsStore, dashboardProvider);
   const projectsWebviewPanelProvider = new ProjectsWebviewProvider(projectsProvider, projectsStore, dashboardProvider);
 
-  const filesView = vscode.window.createTreeView('forgeflow.files', { treeDataProvider: filesProvider });
-  const filesPanelView = vscode.window.createTreeView('forgeflow.files.panel', { treeDataProvider: filesProvider });
+  const filesView = vscode.window.createTreeView('forgeflow.files', { treeDataProvider: filesProvider, canSelectMany: true });
+  const filesPanelView = vscode.window.createTreeView('forgeflow.files.panel', { treeDataProvider: filesProvider, canSelectMany: true });
   const projectsView = vscode.window.createTreeView('forgeflow.projects', { treeDataProvider: projectsProvider });
   const projectsPanelView = vscode.window.createTreeView('forgeflow.projects.panel', { treeDataProvider: projectsProvider });
   const gitView = vscode.window.createTreeView('forgeflow.git', { treeDataProvider: gitProvider });
@@ -151,6 +208,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   updateProjectsFilterMessage();
   updateGitFilterMessage();
 
+  syncFileWatchers();
+
   context.subscriptions.push(
     filesProvider.onDidChangeTreeData(() => updateFilesFilterMessage()),
     projectsProvider.onDidChangeTreeData(() => updateProjectsFilterMessage()),
@@ -172,6 +231,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     gitWatchService,
     runHistoryStore
   );
+
+  registerToggleQuotes(context);
+  registerUnicodeSubstitutions(context);
   context.subscriptions.push(
     runHistoryStore.onDidChange(() => {
       projectsProvider.refresh();
@@ -219,9 +281,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   context.subscriptions.push(
+    vscode.workspace.onDidCreateFiles(() => scheduleFilesRefresh()),
+    vscode.workspace.onDidDeleteFiles(() => scheduleFilesRefresh()),
+    vscode.workspace.onDidRenameFiles(() => scheduleFilesRefresh()),
+    vscode.workspace.onDidChangeWorkspaceFolders(() => {
+      syncFileWatchers();
+      scheduleFilesRefresh();
+    })
+  );
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('forgeflow.files.open', async (target?: unknown) => {
-      const filePath = extractPath(target);
-      if (filePath) {
+      const targets = collectSelectedPaths(target, filesView, filesPanelView);
+      if (targets.length === 0) {
+        return;
+      }
+      if (targets.length > 1) {
+        vscode.window.setStatusBarMessage(`ForgeFlow: Opening ${targets.length} items.`, 2000);
+      }
+      for (const filePath of targets) {
         await openPath(filePath);
       }
     }),
@@ -232,6 +310,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         minChars: getForgeFlowSettings().filtersFilesMinChars,
         onChange: (value) => filesProvider.setFilter(value)
       });
+    }),
+    vscode.commands.registerCommand('forgeflow.files.refresh', async () => {
+      filesProvider.refresh();
     }),
     vscode.commands.registerCommand('forgeflow.files.focusFilter', async () => {
       await openLiveFilterInput({
@@ -264,77 +345,155 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       filesProvider.setFilter('');
     }),
     vscode.commands.registerCommand('forgeflow.files.openToSide', async (target?: unknown) => {
-      const filePath = resolveTargetPath(target);
-      if (!filePath) {
+      const targets = collectSelectedPaths(target, filesView, filesPanelView);
+      if (targets.length === 0) {
         return;
       }
-      await openPathToSide(filePath);
+      for (const filePath of targets) {
+        await openPathToSide(filePath);
+      }
     }),
     vscode.commands.registerCommand('forgeflow.files.openWith', async (target?: unknown) => {
-      const filePath = resolveTargetPath(target);
-      if (!filePath) {
+      const targets = collectSelectedPaths(target, filesView, filesPanelView);
+      if (targets.length === 0) {
         return;
       }
-      await openWith(filePath);
+      if (targets.length > 1) {
+        vscode.window.showWarningMessage('ForgeFlow: Open With supports a single selection.');
+        return;
+      }
+      await openWith(targets[0]!);
     }),
     vscode.commands.registerCommand('forgeflow.files.openInTerminal', async (target?: unknown) => {
-      const filePath = resolveTargetPath(target);
-      if (!filePath) {
+      const targets = collectSelectedPaths(target, filesView, filesPanelView);
+      if (targets.length === 0) {
         return;
       }
-      await openInTerminal(filePath);
+      await openInTerminal(targets[0]!);
     }),
     vscode.commands.registerCommand('forgeflow.files.revealInOs', async (target?: unknown) => {
-      const filePath = extractPath(target);
-      if (filePath) {
+      const targets = collectSelectedPaths(target, filesView, filesPanelView);
+      if (targets.length === 0) {
+        return;
+      }
+      for (const filePath of targets) {
         await revealPath(filePath);
       }
     }),
     vscode.commands.registerCommand('forgeflow.files.copyPath', async (target?: unknown) => {
-      const filePath = resolveTargetPath(target);
-      if (!filePath) {
+      const targets = collectSelectedPaths(target, filesView, filesPanelView);
+      if (targets.length === 0) {
         return;
       }
-      await copyPathToClipboard(filePath);
+      if (targets.length === 1) {
+        await copyPathToClipboard(targets[0]!);
+        return;
+      }
+      await vscode.env.clipboard.writeText(targets.join('\n'));
+      vscode.window.setStatusBarMessage('ForgeFlow: Paths copied.', 2000);
     }),
     vscode.commands.registerCommand('forgeflow.files.copyRelativePath', async (target?: unknown) => {
-      const filePath = resolveTargetPath(target);
-      if (!filePath) {
+      const targets = collectSelectedPaths(target, filesView, filesPanelView);
+      if (targets.length === 0) {
         return;
       }
-      await copyRelativePathToClipboard(filePath);
+      if (targets.length === 1) {
+        await copyRelativePathToClipboard(targets[0]!);
+        return;
+      }
+      const relPaths: string[] = [];
+      let outside = 0;
+      for (const filePath of targets) {
+        const uri = vscode.Uri.file(filePath);
+        const folder = vscode.workspace.getWorkspaceFolder(uri);
+        if (!folder) {
+          relPaths.push(filePath);
+          outside += 1;
+          continue;
+        }
+        relPaths.push(path.relative(folder.uri.fsPath, filePath));
+      }
+      await vscode.env.clipboard.writeText(relPaths.join('\n'));
+      if (outside > 0) {
+        vscode.window.showWarningMessage('ForgeFlow: Some items are outside the workspace; absolute paths were used.');
+      }
+      vscode.window.setStatusBarMessage('ForgeFlow: Relative paths copied.', 2000);
+    }),
+    vscode.commands.registerCommand('forgeflow.files.copy', async (target?: unknown) => {
+      const targets = collectSelectedPaths(target, filesView, filesPanelView);
+      if (targets.length === 0) {
+        return;
+      }
+      fileClipboard = { mode: 'copy', paths: targets };
+      vscode.window.setStatusBarMessage(`ForgeFlow: Copied ${targets.length} item(s).`, 2000);
+    }),
+    vscode.commands.registerCommand('forgeflow.files.cut', async (target?: unknown) => {
+      const targets = collectSelectedPaths(target, filesView, filesPanelView);
+      if (targets.length === 0) {
+        return;
+      }
+      fileClipboard = { mode: 'cut', paths: targets };
+      vscode.window.setStatusBarMessage(`ForgeFlow: Cut ${targets.length} item(s).`, 2000);
+    }),
+    vscode.commands.registerCommand('forgeflow.files.paste', async (target?: unknown) => {
+      if (!fileClipboard || fileClipboard.paths.length === 0) {
+        vscode.window.showWarningMessage('ForgeFlow: Clipboard is empty.');
+        return;
+      }
+      const baseDir = await resolveBaseDirectory(target);
+      if (!baseDir) {
+        return;
+      }
+      await pastePaths(baseDir, fileClipboard);
+      if (fileClipboard.mode === 'cut') {
+        fileClipboard = undefined;
+      }
+      filesProvider.refresh();
+      await projectsProvider.refresh();
     }),
     vscode.commands.registerCommand('forgeflow.files.pinWorkspaceFavorite', async (target?: unknown) => {
-      const filePath = resolveTargetPath(target);
-      if (!filePath) {
+      const targets = collectSelectedPaths(target, filesView, filesPanelView);
+      if (targets.length === 0) {
         return;
       }
-      await favoritesStore.pinToWorkspace(filePath);
+      for (const filePath of targets) {
+        await favoritesStore.pinToWorkspace(filePath);
+      }
       filesProvider.refresh();
     }),
     vscode.commands.registerCommand('forgeflow.files.unpinWorkspaceFavorite', async (target?: unknown) => {
-      const filePath = resolveTargetPath(target);
-      if (!filePath) {
+      const targets = collectSelectedPaths(target, filesView, filesPanelView);
+      if (targets.length === 0) {
         return;
       }
-      await favoritesStore.unpinFromWorkspace(filePath);
+      for (const filePath of targets) {
+        await favoritesStore.unpinFromWorkspace(filePath);
+      }
       filesProvider.refresh();
     }),
     vscode.commands.registerCommand('forgeflow.files.rename', async (target?: unknown) => {
-      const filePath = resolveTargetPath(target);
-      if (!filePath) {
+      const targets = collectSelectedPaths(target, filesView, filesPanelView);
+      if (targets.length === 0) {
         return;
       }
-      await renamePath(filePath);
+      if (targets.length > 1) {
+        vscode.window.showWarningMessage('ForgeFlow: Rename supports a single selection.');
+        return;
+      }
+      await renamePath(targets[0]!);
       filesProvider.refresh();
       await projectsProvider.refresh();
     }),
     vscode.commands.registerCommand('forgeflow.files.delete', async (target?: unknown) => {
-      const filePath = resolveTargetPath(target);
-      if (!filePath) {
+      const targets = collectSelectedPaths(target, filesView, filesPanelView);
+      if (targets.length === 0) {
         return;
       }
-      await deletePath(filePath);
+      if (targets.length === 1) {
+        await deletePath(targets[0]!);
+      } else {
+        await deletePaths(targets);
+      }
       filesProvider.refresh();
       await projectsProvider.refresh();
     }),
@@ -361,7 +520,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await runPath(filePath, runService, projectsStore, favoritesStore, runHistoryStore, undefined);
     }),
     vscode.commands.registerCommand('forgeflow.files.pinFavorite', async (target?: unknown) => {
-      const filePath = extractPath(target);
+      const filePath = extractPath(target) ?? getActiveEditorPath();
       if (filePath) {
         await pinFavorite(filePath, favoritesStore);
         filesProvider.refresh();
@@ -445,6 +604,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand('forgeflow.projects.refresh', async () => {
       await projectsProvider.refresh(true);
+    }),
+    vscode.commands.registerCommand('forgeflow.projects.configureOrRefresh', async () => {
+      await configureOrRefreshScanRoots(projectsProvider);
     }),
     vscode.commands.registerCommand('forgeflow.projects.configureScanRoots', async () => {
       await configureScanRoots(projectsProvider);
@@ -653,6 +815,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       const filePath = extractPath(target);
       await runPath(filePath, runService, projectsStore, favoritesStore, runHistoryStore, undefined, profileId);
+    }),
+    vscode.commands.registerCommand('forgeflow.run.setDefaultProfile', async () => {
+      const profileId = await chooseProfileId(true);
+      if (profileId === undefined) {
+        return;
+      }
+      const config = vscode.workspace.getConfiguration('forgeflow');
+      await config.update('powershell.defaultProfileId', profileId ?? undefined, vscode.ConfigurationTarget.Global);
+      const label = profileId ? 'Default profile updated.' : 'Default profile cleared.';
+      vscode.window.setStatusBarMessage(`ForgeFlow: ${label}`, 3000);
     }),
     vscode.commands.registerCommand('forgeflow.run.setProjectProfile', async (target?: unknown) => {
       const project = extractProject(target);
@@ -906,6 +1078,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
       const browser = getForgeFlowSettings().browserPreferred;
+      if (browser === 'custom') {
+        const ok = await ensureCustomBrowserPath();
+        if (!ok) {
+          return;
+        }
+      }
       await openFileInBrowser(filePath, browser);
     }),
     vscode.commands.registerCommand('forgeflow.openInBrowser.shortcut', async () => {
@@ -929,7 +1107,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (!browser) {
         return;
       }
+      if (browser === 'custom') {
+        const ok = await ensureCustomBrowserPath();
+        if (!ok) {
+          return;
+        }
+      }
       await openFileInBrowser(filePath, browser);
+    }),
+    vscode.commands.registerCommand('forgeflow.openInBrowser.setPreferred', async () => {
+      const browser = await pickBrowserTarget();
+      if (!browser) {
+        return;
+      }
+      const config = vscode.workspace.getConfiguration('forgeflow');
+      if (browser === 'custom') {
+        const ok = await ensureCustomBrowserPath();
+        if (!ok) {
+          return;
+        }
+      }
+      await config.update('browser.preferred', browser, vscode.ConfigurationTarget.Global);
+      vscode.window.setStatusBarMessage('ForgeFlow: Preferred browser updated.', 3000);
     }),
     vscode.commands.registerCommand('forgeflow.openInVisualStudio', async (target?: unknown) => {
       const filePath = resolveTargetPath(target);
@@ -1360,6 +1559,71 @@ async function deletePath(targetPath: string): Promise<void> {
     return;
   }
   await vscode.workspace.fs.delete(vscode.Uri.file(targetPath), { recursive: true, useTrash: true });
+}
+
+async function deletePaths(targetPaths: string[]): Promise<void> {
+  const confirmation = await vscode.window.showWarningMessage(
+    `ForgeFlow: Delete ${targetPaths.length} items?`,
+    { modal: true },
+    'Delete'
+  );
+  if (confirmation !== 'Delete') {
+    return;
+  }
+  for (const targetPath of targetPaths) {
+    await vscode.workspace.fs.delete(vscode.Uri.file(targetPath), { recursive: true, useTrash: true });
+  }
+}
+
+async function pastePaths(baseDirectory: string, clipboard: { mode: 'copy' | 'cut'; paths: string[] }): Promise<void> {
+  let completed = 0;
+  for (const sourcePath of clipboard.paths) {
+    const targetDirectory = baseDirectory;
+    const sourceStat = await statPath(sourcePath);
+    if (sourceStat?.type === vscode.FileType.Directory && isWithin(sourcePath, targetDirectory)) {
+      const label = clipboard.mode === 'copy' ? 'copy' : 'move';
+      vscode.window.showWarningMessage(`ForgeFlow: Cannot ${label} a folder into its own subfolder.`);
+      continue;
+    }
+    const targetPath = await buildUniqueTargetPath(targetDirectory, sourcePath);
+    if (!targetPath) {
+      continue;
+    }
+    if (clipboard.mode === 'copy') {
+      await vscode.workspace.fs.copy(vscode.Uri.file(sourcePath), vscode.Uri.file(targetPath), { overwrite: false });
+    } else {
+      if (normalizeFsPath(sourcePath) === normalizeFsPath(targetPath)) {
+        continue;
+      }
+      await vscode.workspace.fs.rename(vscode.Uri.file(sourcePath), vscode.Uri.file(targetPath), { overwrite: false });
+    }
+    completed += 1;
+  }
+  if (completed > 0) {
+    const label = clipboard.mode === 'copy' ? 'Pasted' : 'Moved';
+    vscode.window.setStatusBarMessage(`ForgeFlow: ${label} ${completed} item(s).`, 3000);
+  }
+}
+
+async function buildUniqueTargetPath(targetDirectory: string, sourcePath: string): Promise<string | undefined> {
+  const baseName = path.basename(sourcePath);
+  let candidate = path.join(targetDirectory, baseName);
+  if (!(await pathExists(candidate))) {
+    return candidate;
+  }
+  const ext = path.extname(baseName);
+  const name = path.basename(baseName, ext);
+  let index = 1;
+  while (index < 1000) {
+    const suffix = index === 1 ? ' - Copy' : ` - Copy ${index}`;
+    candidate = path.join(targetDirectory, `${name}${suffix}${ext}`);
+    if (!(await pathExists(candidate))) {
+      return candidate;
+    }
+    index += 1;
+  }
+  vscode.window.showWarningMessage(`ForgeFlow: Unable to find a free name for ${baseName}.`);
+  return undefined;
 }
 
 async function createNewFile(baseDirectory: string): Promise<void> {
@@ -2634,6 +2898,10 @@ async function chooseProfileId(allowClear = false): Promise<string | null | unde
       clear: true
     });
   }
+  items.push({
+    label: '$(plus) Add custom profile...',
+    description: 'Choose a PowerShell executable'
+  });
   for (const profile of allProfiles) {
     const icon = profileKindIcon(profile.kind);
     const label = icon ? `$(${icon}) ${profile.label}` : profile.label;
@@ -2652,7 +2920,55 @@ async function chooseProfileId(allowClear = false): Promise<string | null | unde
   if (picked.clear) {
     return null;
   }
+  if (!picked.id && picked.label.includes('Add custom profile')) {
+    const customId = await createCustomProfile();
+    return customId ?? undefined;
+  }
   return picked.id;
+}
+
+async function createCustomProfile(): Promise<string | undefined> {
+  const exePath = await pickExecutablePath('Select PowerShell executable');
+  if (!exePath) {
+    return undefined;
+  }
+  const defaultLabel = path.basename(exePath);
+  const label = await vscode.window.showInputBox({
+    title: 'Profile label',
+    prompt: 'Label for the custom profile',
+    value: defaultLabel
+  });
+  if (!label) {
+    return undefined;
+  }
+  const profile: PowerShellProfile = {
+    id: `custom-${stableIdFromPath(exePath)}`,
+    label,
+    kind: 'custom',
+    executablePath: exePath
+  };
+  const config = vscode.workspace.getConfiguration('forgeflow');
+  const profiles = config.get<PowerShellProfile[]>('powershell.profiles', []);
+  const nextProfiles = profiles.some((existing) => existing.id === profile.id)
+    ? profiles.map((existing) => (existing.id === profile.id ? profile : existing))
+    : [...profiles, profile];
+  await config.update('powershell.profiles', nextProfiles, vscode.ConfigurationTarget.Global);
+  vscode.window.setStatusBarMessage('ForgeFlow: Custom PowerShell profile added.', 3000);
+  return profile.id;
+}
+
+async function pickExecutablePath(title: string): Promise<string | undefined> {
+  const filters = process.platform === 'win32'
+    ? { Executable: ['exe', 'cmd', 'bat'] }
+    : undefined;
+  const selection = await vscode.window.showOpenDialog({
+    title,
+    canSelectFiles: true,
+    canSelectFolders: false,
+    canSelectMany: false,
+    filters
+  });
+  return selection?.[0]?.fsPath;
 }
 
 async function pickExternalSessionTarget(): Promise<{ profileId?: string; label?: string } | undefined> {
@@ -3021,6 +3337,40 @@ async function configureScanRoots(provider: ProjectsViewProvider): Promise<void>
   await config.update('projects.scanRoots', roots, vscode.ConfigurationTarget.Global);
   await provider.refresh();
   vscode.window.showInformationMessage(`ForgeFlow: ${roots.length} project root(s) configured.`);
+}
+
+async function configureOrRefreshScanRoots(provider: ProjectsViewProvider): Promise<void> {
+  const settings = getForgeFlowSettings();
+  const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+  const hasConfiguredRoots = settings.projectScanRoots.length > 0;
+  const hasWorkspaceRoots = workspaceFolders.length > 0;
+
+  const options: Array<{ label: string; value: 'configure' | 'refresh' | 'settings' }> = [];
+  if (!hasConfiguredRoots || !hasWorkspaceRoots) {
+    options.push({ label: 'Configure scan roots', value: 'configure' });
+  }
+  options.push({ label: 'Refresh projects', value: 'refresh' });
+  options.push({ label: 'Open settings (JSON)', value: 'settings' });
+
+  if (options.length === 1 || (!hasConfiguredRoots && !hasWorkspaceRoots)) {
+    await configureScanRoots(provider);
+    return;
+  }
+
+  const pick = await vscode.window.showQuickPick(options, { placeHolder: 'Projects: Next action' });
+  if (!pick) {
+    return;
+  }
+
+  if (pick.value === 'configure') {
+    await configureScanRoots(provider);
+    return;
+  }
+  if (pick.value === 'settings') {
+    await vscode.commands.executeCommand('workbench.action.openSettingsJson');
+    return;
+  }
+  await provider.refresh(true);
 }
 
 async function configureSortMode(provider: ProjectsViewProvider): Promise<void> {
@@ -3769,7 +4119,8 @@ async function pickBrowserTarget(): Promise<BrowserTarget | undefined> {
     { label: 'Google Chrome', value: 'chrome' },
     { label: 'Chromium', value: 'chromium' },
     { label: 'Firefox', value: 'firefox' },
-    { label: 'Firefox Developer Edition', value: 'firefox-dev', description: 'macOS name differs' }
+    { label: 'Firefox Developer Edition', value: 'firefox-dev', description: 'macOS name differs' },
+    { label: 'Custom Browser Path', value: 'custom' }
   ];
   const pick = await vscode.window.showQuickPick(options, { placeHolder: 'Open in browser' });
   return pick?.value;
@@ -3791,8 +4142,47 @@ function extractPath(target: unknown): string | undefined {
   return undefined;
 }
 
+function getActiveEditorPath(): string | undefined {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    return undefined;
+  }
+  const uri = editor.document.uri;
+  return uri.scheme === 'file' ? uri.fsPath : undefined;
+}
+
+async function ensureCustomBrowserPath(): Promise<boolean> {
+  const config = vscode.workspace.getConfiguration('forgeflow');
+  const existing = config.get<string>('browser.customPath');
+  if (existing && existing.trim().length > 0) {
+    return true;
+  }
+  const picked = await pickExecutablePath('Select browser executable');
+  if (!picked) {
+    return false;
+  }
+  await config.update('browser.customPath', picked, vscode.ConfigurationTarget.Global);
+  return true;
+}
+
 function resolveTargetPath(target: unknown): string | undefined {
   return extractPath(target) ?? vscode.window.activeTextEditor?.document.uri.fsPath;
+}
+
+function collectSelectedPaths(
+  target: unknown,
+  filesView: vscode.TreeView<unknown>,
+  filesPanelView: vscode.TreeView<unknown>
+): string[] {
+  const selection = filesView.selection.length > 0 ? filesView.selection : filesPanelView.selection;
+  const selectedPaths = selection
+    .map((item) => extractPath(item))
+    .filter((value): value is string => Boolean(value));
+  if (selectedPaths.length > 0) {
+    return [...new Set(selectedPaths)];
+  }
+  const targetPath = resolveTargetPath(target);
+  return targetPath ? [targetPath] : [];
 }
 
 async function resolveBaseDirectory(target: unknown): Promise<string | undefined> {

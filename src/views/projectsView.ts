@@ -386,7 +386,7 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
       if (roots.length === 0) {
         return [
           ...(tagsNode ? [tagsNode] : []),
-          new ProjectHintNode('Select project roots to scan', 'forgeflow.projects.configureScanRoots')
+          new ProjectHintNode('Select project roots to scan', 'forgeflow.projects.configureOrRefresh')
         ];
       }
       if (this.isScanning) {
@@ -419,7 +419,7 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
       if (this.projects.length === 0) {
         return [
           ...(tagsNode ? [tagsNode] : []),
-          new ProjectHintNode('No projects found. Refresh or adjust scan roots.', 'forgeflow.projects.refresh')
+          new ProjectHintNode('No projects found. Refresh or adjust scan roots.', 'forgeflow.projects.configureOrRefresh')
         ];
       }
       const minChars = getForgeFlowSettings().filtersProjectsMinChars;

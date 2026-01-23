@@ -18,6 +18,7 @@ export interface ForgeFlowSettings {
   projectGitWatchMode: 'off' | 'workspace' | 'favorites' | 'all';
   projectGitWatchMaxRepos: number;
   projectGitWatchDebounceMs: number;
+  projectGitResolveMode: 'closest' | 'outermost';
   projectEntryPointScanDepth: number;
   projectEntryPointPreferredFolders: string[];
   projectEntryPointFileNames: string[];
@@ -51,8 +52,9 @@ export interface ForgeFlowSettings {
   filtersDashboardMinChars: number;
   filtersFilesMaxDepth: number;
   filtersMatchMode: 'substring' | 'fuzzy';
-  browserPreferred: 'default' | 'edge' | 'chrome' | 'chromium' | 'firefox' | 'firefox-dev';
+  browserPreferred: 'default' | 'edge' | 'chrome' | 'chromium' | 'firefox' | 'firefox-dev' | 'custom';
   browserFileExtensions: string[];
+  browserCustomPath?: string;
   dashboardHideArchived: boolean;
   dashboardAutoRefreshMinutes: number;
   dashboardHealthEnabled: boolean;
@@ -91,6 +93,7 @@ export function getForgeFlowSettings(): ForgeFlowSettings {
     projectGitWatchMode: config.get<'off' | 'workspace' | 'favorites' | 'all'>('projects.gitWatch', 'off'),
     projectGitWatchMaxRepos: config.get<number>('projects.gitWatchMaxRepos', 150),
     projectGitWatchDebounceMs: config.get<number>('projects.gitWatchDebounceMs', 1000),
+    projectGitResolveMode: config.get<'closest' | 'outermost'>('projects.gitResolveMode', 'closest'),
     projectEntryPointScanDepth: config.get<number>('projects.entryPointScanDepth', 2),
     projectEntryPointPreferredFolders: config.get<string[]>('projects.entryPointPreferredFolders', [
       'build',
@@ -149,8 +152,9 @@ export function getForgeFlowSettings(): ForgeFlowSettings {
     filtersDashboardMinChars: config.get<number>('filters.dashboard.minChars', 2),
     filtersFilesMaxDepth: config.get<number>('filters.files.maxDepth', 2),
     filtersMatchMode: config.get<'substring' | 'fuzzy'>('filters.matchMode', 'substring'),
-    browserPreferred: config.get<'default' | 'edge' | 'chrome' | 'chromium' | 'firefox' | 'firefox-dev'>('browser.preferred', 'default'),
+    browserPreferred: config.get<'default' | 'edge' | 'chrome' | 'chromium' | 'firefox' | 'firefox-dev' | 'custom'>('browser.preferred', 'default'),
     browserFileExtensions: config.get<string[]>('browser.fileExtensions', ['html', 'htm', 'md', 'svg']),
+    browserCustomPath: config.get<string>('browser.customPath'),
     dashboardHideArchived: config.get<boolean>('dashboard.hideArchived', false),
     dashboardAutoRefreshMinutes: config.get<number>('dashboard.autoRefreshMinutes', 2),
     dashboardHealthEnabled: config.get<boolean>('dashboard.health.enabled', true),
