@@ -592,8 +592,8 @@
       },
       {
         "command": "forgeflow.run",
-        "title": "Run",
-        "shortTitle": "Run",
+        "title": "Run (Default Profile)",
+        "shortTitle": "Run (Default)",
         "category": "ForgeFlow",
         "icon": {
           "light": "resources/icons/run-light.svg",
@@ -621,8 +621,22 @@
         }
       },
       {
+        "command": "forgeflow.powershell.addProfile",
+        "title": "Add PowerShell Profile",
+        "shortTitle": "Add Profile",
+        "icon": "$(terminal-powershell)",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.powershell.manageProfiles",
+        "title": "Manage PowerShell Profiles",
+        "shortTitle": "Manage Profiles",
+        "icon": "$(settings-gear)",
+        "category": "ForgeFlow"
+      },
+      {
         "command": "forgeflow.run.integrated",
-        "title": "Run Integrated",
+        "title": "Run Integrated (Default Profile)",
         "shortTitle": "Run Integrated",
         "icon": {
           "light": "resources/icons/run-terminal-light.svg",
@@ -632,7 +646,7 @@
       },
       {
         "command": "forgeflow.run.external",
-        "title": "Run External",
+        "title": "Run External (Default Profile)",
         "shortTitle": "Run External",
         "icon": {
           "light": "resources/icons/run-external-light.svg",
@@ -652,7 +666,7 @@
       },
       {
         "command": "forgeflow.run.externalAdmin",
-        "title": "Run as Admin (External)",
+        "title": "Run as Admin (Default Profile)",
         "shortTitle": "Run as Admin",
         "icon": {
           "light": "resources/icons/run-admin-light.svg",
@@ -2433,15 +2447,6 @@
           }
         },
         {
-          "command": "forgeflow.run.integrated",
-          "when": "resourceExtname == .ps1",
-          "group": "navigation",
-          "icon": {
-            "light": "resources/icons/run-terminal-light.svg",
-            "dark": "resources/icons/run-terminal-dark.svg"
-          }
-        },
-        {
           "command": "forgeflow.run.external",
           "when": "resourceExtname == .ps1",
           "group": "navigation",
@@ -2451,30 +2456,12 @@
           }
         },
         {
-          "command": "forgeflow.run.external.chooseProfile",
-          "when": "resourceExtname == .ps1",
-          "group": "navigation",
-          "icon": {
-            "light": "resources/icons/profile-light.svg",
-            "dark": "resources/icons/profile-dark.svg"
-          }
-        },
-        {
           "command": "forgeflow.run.externalAdmin",
           "when": "resourceExtname == .ps1 && isWindows",
           "group": "navigation",
           "icon": {
             "light": "resources/icons/run-admin-light.svg",
             "dark": "resources/icons/run-admin-dark.svg"
-          }
-        },
-        {
-          "command": "forgeflow.run.externalAdmin.chooseProfile",
-          "when": "resourceExtname == .ps1 && isWindows",
-          "group": "navigation",
-          "icon": {
-            "light": "resources/icons/profile-admin-light.svg",
-            "dark": "resources/icons/profile-admin-dark.svg"
           }
         },
         {
@@ -2795,7 +2782,7 @@
         },
         "forgeflow.powershell.profiles": {
           "type": "array",
-          "description": "PowerShell profiles available for running scripts.",
+          "markdownDescription": "Custom PowerShell profiles available for running scripts. Built-in profiles are always available. Use [Add PowerShell Profile](command:forgeflow.powershell.addProfile) or [Manage PowerShell Profiles](command:forgeflow.powershell.manageProfiles).",
           "default": [],
           "items": {
             "type": "object",
@@ -2828,7 +2815,7 @@
         },
         "forgeflow.powershell.defaultProfileId": {
           "type": "string",
-          "description": "Default PowerShell profile ID."
+          "markdownDescription": "Default PowerShell profile ID. Use [Set Default PowerShell Profile](command:forgeflow.run.setDefaultProfile) to choose from available profiles."
         },
         "forgeflow.run.defaultTarget": {
           "type": "string",
@@ -2904,6 +2891,11 @@
             "type"
           ],
           "default": "time"
+        },
+        "forgeflow.run.showProfileToast": {
+          "type": "boolean",
+          "description": "Show a status bar message with the resolved PowerShell profile when running scripts.",
+          "default": true
         },
         "forgeflow.run.byFile.enabled": {
           "type": "boolean",
@@ -3111,7 +3103,7 @@
           "scope": "language-overridable"
         },
         "forgeflow.unicodeSubstitutions.rules": {
-          "description": "Linting rules for correcting invalid unicode",
+          "markdownDescription": "Linting rules for correcting invalid unicode. Advanced setting; edit in settings.json to add custom rules.",
           "scope": "window",
           "type": "array",
           "items": {
@@ -3126,24 +3118,20 @@
           ]
         },
         "forgeflow.unicodeSubstitutions.enableDefaultRules": {
-          "description": "Enable or Disable linting using default rules",
-          "type": [
-            "boolean",
-            "object"
-          ],
-          "default": true
+          "description": "Enable linting using default rules.",
+          "type": "boolean",
+          "default": true,
+          "scope": "language-overridable"
         },
         "forgeflow.unicodeSubstitutions.enableFormatting": {
-          "description": "Enable or Disable formatting",
-          "type": [
-            "boolean",
-            "object"
-          ],
-          "default": true
+          "description": "Enable formatting fixes for unicode substitutions.",
+          "type": "boolean",
+          "default": true,
+          "scope": "language-overridable"
         },
         "forgeflow.unicodeSubstitutions.enabledLanguageIds": {
           "type": "array",
-          "scope": "window",
+          "scope": "language-overridable",
           "items": {
             "type": "string"
           },

@@ -47,7 +47,7 @@ All settings live under the `forgeflow` namespace.
 ## PowerShell
 - `forgeflow.powershell.profiles` (array)
   - Custom profiles. Built-in profiles are always available.
-  - Use **ForgeFlow: Run (Choose Profile)** and pick **Add custom profile...** to auto-fill.
+  - Use **ForgeFlow: Add PowerShell Profile** or **ForgeFlow: Manage PowerShell Profiles** to auto-fill.
 - `forgeflow.powershell.defaultProfileId` (string)
   - Default profile when no override is set.
 
@@ -72,6 +72,8 @@ All settings live under the `forgeflow` namespace.
   - Maximum number of recent runs shown per project.
 - `forgeflow.run.history.perProjectSortMode` ("time" | "label" | "type")
   - Sorting for recent runs shown per project.
+- `forgeflow.run.showProfileToast` (boolean)
+  - Show which PowerShell profile was used (status bar).
 
 ## Files
 - `forgeflow.files.favorites.viewMode` ("workspace" | "all" | "pinned")

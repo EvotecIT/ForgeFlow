@@ -45,6 +45,7 @@ export interface ForgeFlowSettings {
   runHistoryMaxItems: number;
   runHistoryPerProjectMaxItems: number;
   runHistoryPerProjectSortMode: 'time' | 'label' | 'type';
+  runShowProfileToast: boolean;
   filtersScope: 'workspace' | 'global';
   filtersProjectsMinChars: number;
   filtersFilesMinChars: number;
@@ -145,6 +146,7 @@ export function getForgeFlowSettings(): ForgeFlowSettings {
     runHistoryMaxItems: config.get<number>('run.history.maxItems', 50),
     runHistoryPerProjectMaxItems: config.get<number>('run.history.perProjectMaxItems', 6),
     runHistoryPerProjectSortMode: config.get<'time' | 'label' | 'type'>('run.history.perProjectSortMode', 'time'),
+    runShowProfileToast: config.get<boolean>('run.showProfileToast', true),
     filtersScope: config.get<'workspace' | 'global'>('filters.scope', 'workspace'),
     filtersProjectsMinChars: config.get<number>('filters.projects.minChars', 2),
     filtersFilesMinChars: config.get<number>('filters.files.minChars', 2),

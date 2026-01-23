@@ -77,7 +77,7 @@ Layout modes:
 ## First-run setup
 
 1) Open a folder **or** configure scan roots: **ForgeFlow: Configure Project Scan Roots**  
-2) (Optional) Add PowerShell profiles: **ForgeFlow: Run (Choose Profile)** → save as default  
+2) (Optional) Add PowerShell profiles: **ForgeFlow: Add PowerShell Profile** (or **Manage PowerShell Profiles**)  
 3) (Optional) Configure dashboard tokens: **ForgeFlow: Configure Dashboard Tokens**
 
 ## Quick Start
@@ -102,7 +102,7 @@ Open the Command Palette and type **ForgeFlow**. Key groups:
 **Run & PowerShell**
 - Run / Run (Choose Profile) / Run Integrated / Run External / Run as Admin
 - Run History / Save Preset / Clear History / Reset External Session
-- Set Default PowerShell Profile
+- Set Default PowerShell Profile / Add PowerShell Profile / Manage PowerShell Profiles
 
 **Git**
 - Select Project / Refresh / Prune Remotes / Delete Merged or Gone Branches

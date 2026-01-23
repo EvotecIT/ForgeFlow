@@ -39,6 +39,25 @@ export class RunService implements vscode.Disposable {
     }
 
     const target = request.target ?? settings.runDefaultTarget;
+    const targetLabel = target === 'integrated'
+      ? 'Integrated'
+      : target === 'external'
+        ? 'External'
+        : 'Admin (External)';
+    const profileDetail = profile.kind === 'custom' && profile.executablePath
+      ? `${profile.label} (${profile.executablePath})`
+      : profile.label;
+    if (settings.runShowProfileToast) {
+      const reason = this.resolveProfileReason(
+        request.profileId,
+        request.filePath,
+        request.projectId,
+        settings.powershellProfiles,
+        settings.defaultProfileId
+      );
+      const reasonSuffix = reason ? ` — ${reason}` : '';
+      vscode.window.setStatusBarMessage(`ForgeFlow: Run ${targetLabel} (${profileDetail})${reasonSuffix}.`, 3000);
+    }
     if (target === 'integrated') {
       await this.runIntegrated(
         request,
@@ -109,6 +128,39 @@ export class RunService implements vscode.Disposable {
     }
 
     return allProfiles[0];
+  }
+
+  private resolveProfileReason(
+    explicitProfileId: string | undefined,
+    filePath: string,
+    projectId: string | undefined,
+    profiles: PowerShellProfile[],
+    defaultProfileId?: string
+  ): string | undefined {
+    const allProfiles = getAllProfiles(profiles);
+    if (explicitProfileId && allProfiles.some((p) => p.id === explicitProfileId)) {
+      return 'explicit profile';
+    }
+
+    const normalizedFilePath = normalizePathForCompare(filePath);
+    const favoriteOverride = this.favoritesStore.list()
+      .find((item) => normalizePathForCompare(item.path) === normalizedFilePath)?.profileOverrideId;
+    if (favoriteOverride && allProfiles.some((p) => p.id === favoriteOverride)) {
+      return 'favorite override';
+    }
+
+    if (projectId) {
+      const project = this.projectsStore.list().find((item) => item.id === projectId);
+      if (project?.preferredRunProfileId && allProfiles.some((p) => p.id === project.preferredRunProfileId)) {
+        return 'project override';
+      }
+    }
+
+    if (defaultProfileId && allProfiles.some((p) => p.id === defaultProfileId)) {
+      return 'default profile';
+    }
+
+    return allProfiles.length > 0 ? 'first available profile' : undefined;
   }
 
   private async runIntegrated(
