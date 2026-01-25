@@ -26,8 +26,8 @@ ForgeFlow replaces the Explorer and project manager UI while laying the groundwo
 4. **RunService** resolves profiles and executes scripts safely.
 5. **DashboardService** aggregates GitHub/PowerShell Gallery/NuGet + local git data.
 
-## PowerForge Integration (Future)
-ForgeFlow exposes typed interfaces in `src/powerforge/contracts.ts`. The extension expects PowerForge to provide JSON responses on standard input/output. The expected contract is documented below.
+## PowerForge Integration
+ForgeFlow integrates with the PowerForge CLI for pipeline and dotnet publish workflows, and exposes a GUI to edit the JSON specs. The engine contract below remains the long-term plan for richer PowerForge APIs.
 
 ### EngineClient JSON Contract (Expected)
 The engine will support commands that return JSON payloads.

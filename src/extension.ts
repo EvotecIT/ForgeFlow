@@ -17,23 +17,16 @@ import { FilesFilterStore } from './store/filesFilterStore';
 import { ProjectsStore } from './store/projectsStore';
 import { TagsStore } from './store/tagsStore';
 import { TagFilterStore } from './store/tagFilterStore';
-import { FilterPresetStore, type FilterPresetScope } from './store/filterPresetStore';
+import { FilterPresetStore } from './store/filterPresetStore';
 import { GitCommitCacheStore } from './store/gitCommitCacheStore';
 import { RunHistoryStore } from './store/runHistoryStore';
 import { StateStore } from './store/stateStore';
 import { LayoutStore } from './store/layoutStore';
 import { GitFilterStore } from './store/gitFilterStore';
 import { FilesViewProvider } from './views/filesView';
-import type { PathNode } from './views/filesView';
 import { ProjectsViewProvider } from './views/projectsView';
 import { ProjectsWebviewProvider } from './views/projectsWebview';
-import type {
-  ProjectNodeWithEntry,
-  ProjectNodeWithHistory,
-  ProjectNodeWithPreset,
-  ProjectNodeWithPath,
-  ProjectNodeWithProject
-} from './views/projectsView';
+import { PowerForgeViewProvider } from './views/powerforge';
 import { DashboardViewProvider } from './views/dashboardView';
 import { GitViewProvider, isGitBranchNode, isGitProjectNode } from './views/gitView';
 import { ForgeFlowLogger } from './util/log';
@@ -44,18 +37,53 @@ import type { PowerShellProfile } from './models/run';
 import { renderCommandTemplate, quoteShellArg } from './run/runByFile';
 import { buildPresetFromEntry } from './run/runPresets';
 import { detectProjectIdentity } from './scan/identityDetector';
-import type { ProjectSortMode, SortDirection } from './util/config';
+import type { SortDirection } from './util/config';
 import { getForgeFlowSettings } from './util/config';
 import { pathExists, readDirectory, statPath } from './util/fs';
-import { openFileInBrowser, openFileInDefaultApp, openInVisualStudio, type BrowserTarget } from './util/open';
+import { openFileInBrowser, openFileInDefaultApp, openInVisualStudio } from './util/open';
 import { baseName } from './util/path';
-import { maybeRunOnboarding, runOnboarding } from './onboarding/onboarding';
+import { maybeRunOnboarding, openForgeFlowSelectedViews, runOnboarding } from './onboarding/onboarding';
 import { registerToggleQuotes } from './editor/toggleQuotes';
 import { registerUnicodeSubstitutions } from './editor/unicodeSubstitutions';
 import { stableIdFromPath } from './util/ids';
+import {
+  ensureCustomBrowserPath,
+  isBrowserFile,
+  pickBrowserTarget,
+  pickExecutablePath
+} from './extension/browserUtils';
+import {
+  buildFilterMessage,
+  deleteFilterPreset,
+  formatScopeLabel,
+  openLiveFilterInput,
+  pickFilterPreset,
+  saveFilterPreset,
+  setTreeViewMessage,
+  toggleFilterScope
+} from './extension/filters';
+import {
+  extractEntry,
+  extractHistoryEntry,
+  extractPath,
+  extractPreset,
+  extractProject,
+  isProjectHistory,
+  isProjectPreset,
+  resolveTargetPath
+} from './extension/selection';
+import { normalizeFsPath } from './extension/pathUtils';
+import {
+  findProjectByPath,
+  pickProject,
+  resolveProjectFromTarget
+} from './extension/projectUtils';
+import { registerFileCommands } from './extension/commands/files';
+import { registerProjectCommands } from './extension/commands/projects';
+import { openProject } from './extension/projects/actions';
 
 let runByFileTerminal: vscode.Terminal | undefined;
-let fileClipboard: { mode: 'copy' | 'cut'; paths: string[] } | undefined;
+let powerForgeTerminal: vscode.Terminal | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const logger = new ForgeFlowLogger();
@@ -159,6 +187,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const gitProvider = new GitViewProvider(projectsStore, gitService, gitStore, gitFilterStore, logger);
   const projectsWebviewProvider = new ProjectsWebviewProvider(projectsProvider, projectsStore, dashboardProvider);
   const projectsWebviewPanelProvider = new ProjectsWebviewProvider(projectsProvider, projectsStore, dashboardProvider);
+  const powerForgeViewProvider = new PowerForgeViewProvider(context, projectsStore);
+  const powerForgePanelProvider = new PowerForgeViewProvider(context, projectsStore);
 
   const filesView = vscode.window.createTreeView('forgeflow.files', { treeDataProvider: filesProvider, canSelectMany: true });
   const filesPanelView = vscode.window.createTreeView('forgeflow.files.panel', { treeDataProvider: filesProvider, canSelectMany: true });
@@ -226,6 +256,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.registerWebviewViewProvider('forgeflow.dashboard', dashboardProvider),
     vscode.window.registerWebviewViewProvider('forgeflow.projects.web', projectsWebviewProvider),
     vscode.window.registerWebviewViewProvider('forgeflow.projects.web.panel', projectsWebviewPanelProvider),
+    vscode.window.registerWebviewViewProvider('forgeflow.powerforge', powerForgeViewProvider),
+    vscode.window.registerWebviewViewProvider('forgeflow.powerforge.panel', powerForgePanelProvider),
     terminalManager,
     runService,
     gitWatchService,
@@ -245,6 +277,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.window.onDidCloseTerminal((terminal) => {
       if (terminal === runByFileTerminal) {
         runByFileTerminal = undefined;
+      }
+      if (terminal === powerForgeTerminal) {
+        powerForgeTerminal = undefined;
       }
     })
   );
@@ -290,290 +325,35 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     })
   );
 
+  registerFileCommands({
+    context,
+    filesProvider,
+    filesView,
+    filesPanelView,
+    projectsProvider,
+    favoritesStore,
+    filterPresetStore
+  });
+
   context.subscriptions.push(
-    vscode.commands.registerCommand('forgeflow.files.open', async (target?: unknown) => {
-      const targets = collectSelectedPaths(target, filesView, filesPanelView);
-      if (targets.length === 0) {
-        return;
-      }
-      if (targets.length > 1) {
-        vscode.window.setStatusBarMessage(`ForgeFlow: Opening ${targets.length} items.`, 2000);
-      }
-      for (const filePath of targets) {
-        await openPath(filePath);
-      }
-    }),
-    vscode.commands.registerCommand('forgeflow.files.filter', async () => {
-      await openLiveFilterInput({
-        title: 'Filter files',
-        value: filesProvider.getFilter(),
-        minChars: getForgeFlowSettings().filtersFilesMinChars,
-        onChange: (value) => filesProvider.setFilter(value)
-      });
-    }),
-    vscode.commands.registerCommand('forgeflow.files.refresh', async () => {
-      filesProvider.refresh();
-    }),
-    vscode.commands.registerCommand('forgeflow.files.focusFilter', async () => {
-      await openLiveFilterInput({
-        title: 'Filter files',
-        value: filesProvider.getFilter(),
-        minChars: getForgeFlowSettings().filtersFilesMinChars,
-        onChange: (value) => filesProvider.setFilter(value)
-      });
-    }),
-    vscode.commands.registerCommand('forgeflow.files.saveFilterPreset', async () => {
-      await saveFilterPreset('files', filesProvider.getFilter(), filterPresetStore);
-    }),
-    vscode.commands.registerCommand('forgeflow.files.applyFilterPreset', async () => {
-      const preset = await pickFilterPreset('files', filterPresetStore);
-      if (!preset) {
-        return;
-      }
-      filesProvider.setFilter(preset.value);
-    }),
-    vscode.commands.registerCommand('forgeflow.files.deleteFilterPreset', async () => {
-      await deleteFilterPreset('files', filterPresetStore);
-    }),
     vscode.commands.registerCommand('forgeflow.filters.toggleScope', async () => {
       await toggleFilterScope(filesProvider, projectsProvider, gitProvider, dashboardProvider, dashboardFilterStore, tagFilterStore);
-    }),
-    vscode.commands.registerCommand('forgeflow.files.setFavoritesViewMode', async () => {
-      await configureFavoritesViewMode(filesProvider);
-    }),
-    vscode.commands.registerCommand('forgeflow.files.clearFilter', async () => {
-      filesProvider.setFilter('');
-    }),
-    vscode.commands.registerCommand('forgeflow.files.openToSide', async (target?: unknown) => {
-      const targets = collectSelectedPaths(target, filesView, filesPanelView);
-      if (targets.length === 0) {
-        return;
-      }
-      for (const filePath of targets) {
-        await openPathToSide(filePath);
-      }
-    }),
-    vscode.commands.registerCommand('forgeflow.files.openWith', async (target?: unknown) => {
-      const targets = collectSelectedPaths(target, filesView, filesPanelView);
-      if (targets.length === 0) {
-        return;
-      }
-      if (targets.length > 1) {
-        vscode.window.showWarningMessage('ForgeFlow: Open With supports a single selection.');
-        return;
-      }
-      await openWith(targets[0]!);
-    }),
-    vscode.commands.registerCommand('forgeflow.files.openInTerminal', async (target?: unknown) => {
-      const targets = collectSelectedPaths(target, filesView, filesPanelView);
-      if (targets.length === 0) {
-        return;
-      }
-      await openInTerminal(targets[0]!);
-    }),
-    vscode.commands.registerCommand('forgeflow.files.revealInOs', async (target?: unknown) => {
-      const targets = collectSelectedPaths(target, filesView, filesPanelView);
-      if (targets.length === 0) {
-        return;
-      }
-      for (const filePath of targets) {
-        await revealPath(filePath);
-      }
-    }),
-    vscode.commands.registerCommand('forgeflow.files.copyPath', async (target?: unknown) => {
-      const targets = collectSelectedPaths(target, filesView, filesPanelView);
-      if (targets.length === 0) {
-        return;
-      }
-      if (targets.length === 1) {
-        await copyPathToClipboard(targets[0]!);
-        return;
-      }
-      await vscode.env.clipboard.writeText(targets.join('\n'));
-      vscode.window.setStatusBarMessage('ForgeFlow: Paths copied.', 2000);
-    }),
-    vscode.commands.registerCommand('forgeflow.files.copyRelativePath', async (target?: unknown) => {
-      const targets = collectSelectedPaths(target, filesView, filesPanelView);
-      if (targets.length === 0) {
-        return;
-      }
-      if (targets.length === 1) {
-        await copyRelativePathToClipboard(targets[0]!);
-        return;
-      }
-      const relPaths: string[] = [];
-      let outside = 0;
-      for (const filePath of targets) {
-        const uri = vscode.Uri.file(filePath);
-        const folder = vscode.workspace.getWorkspaceFolder(uri);
-        if (!folder) {
-          relPaths.push(filePath);
-          outside += 1;
-          continue;
-        }
-        relPaths.push(path.relative(folder.uri.fsPath, filePath));
-      }
-      await vscode.env.clipboard.writeText(relPaths.join('\n'));
-      if (outside > 0) {
-        vscode.window.showWarningMessage('ForgeFlow: Some items are outside the workspace; absolute paths were used.');
-      }
-      vscode.window.setStatusBarMessage('ForgeFlow: Relative paths copied.', 2000);
-    }),
-    vscode.commands.registerCommand('forgeflow.files.copy', async (target?: unknown) => {
-      const targets = collectSelectedPaths(target, filesView, filesPanelView);
-      if (targets.length === 0) {
-        return;
-      }
-      fileClipboard = { mode: 'copy', paths: targets };
-      vscode.window.setStatusBarMessage(`ForgeFlow: Copied ${targets.length} item(s).`, 2000);
-    }),
-    vscode.commands.registerCommand('forgeflow.files.cut', async (target?: unknown) => {
-      const targets = collectSelectedPaths(target, filesView, filesPanelView);
-      if (targets.length === 0) {
-        return;
-      }
-      fileClipboard = { mode: 'cut', paths: targets };
-      vscode.window.setStatusBarMessage(`ForgeFlow: Cut ${targets.length} item(s).`, 2000);
-    }),
-    vscode.commands.registerCommand('forgeflow.files.paste', async (target?: unknown) => {
-      if (!fileClipboard || fileClipboard.paths.length === 0) {
-        vscode.window.showWarningMessage('ForgeFlow: Clipboard is empty.');
-        return;
-      }
-      const baseDir = await resolveBaseDirectory(target);
-      if (!baseDir) {
-        return;
-      }
-      await pastePaths(baseDir, fileClipboard);
-      if (fileClipboard.mode === 'cut') {
-        fileClipboard = undefined;
-      }
-      filesProvider.refresh();
-      await projectsProvider.refresh();
-    }),
-    vscode.commands.registerCommand('forgeflow.files.pinWorkspaceFavorite', async (target?: unknown) => {
-      const targets = collectSelectedPaths(target, filesView, filesPanelView);
-      if (targets.length === 0) {
-        return;
-      }
-      for (const filePath of targets) {
-        await favoritesStore.pinToWorkspace(filePath);
-      }
-      filesProvider.refresh();
-    }),
-    vscode.commands.registerCommand('forgeflow.files.unpinWorkspaceFavorite', async (target?: unknown) => {
-      const targets = collectSelectedPaths(target, filesView, filesPanelView);
-      if (targets.length === 0) {
-        return;
-      }
-      for (const filePath of targets) {
-        await favoritesStore.unpinFromWorkspace(filePath);
-      }
-      filesProvider.refresh();
-    }),
-    vscode.commands.registerCommand('forgeflow.files.rename', async (target?: unknown) => {
-      const targets = collectSelectedPaths(target, filesView, filesPanelView);
-      if (targets.length === 0) {
-        return;
-      }
-      if (targets.length > 1) {
-        vscode.window.showWarningMessage('ForgeFlow: Rename supports a single selection.');
-        return;
-      }
-      await renamePath(targets[0]!);
-      filesProvider.refresh();
-      await projectsProvider.refresh();
-    }),
-    vscode.commands.registerCommand('forgeflow.files.delete', async (target?: unknown) => {
-      const targets = collectSelectedPaths(target, filesView, filesPanelView);
-      if (targets.length === 0) {
-        return;
-      }
-      if (targets.length === 1) {
-        await deletePath(targets[0]!);
-      } else {
-        await deletePaths(targets);
-      }
-      filesProvider.refresh();
-      await projectsProvider.refresh();
-    }),
-    vscode.commands.registerCommand('forgeflow.files.newFile', async (target?: unknown) => {
-      const baseDir = await resolveBaseDirectory(target);
-      if (!baseDir) {
-        return;
-      }
-      await createNewFile(baseDir);
-      filesProvider.refresh();
-      await projectsProvider.refresh();
-    }),
-    vscode.commands.registerCommand('forgeflow.files.newFolder', async (target?: unknown) => {
-      const baseDir = await resolveBaseDirectory(target);
-      if (!baseDir) {
-        return;
-      }
-      await createNewFolder(baseDir);
-      filesProvider.refresh();
-      await projectsProvider.refresh();
-    }),
-    vscode.commands.registerCommand('forgeflow.files.run', async (target?: unknown) => {
-      const filePath = extractPath(target);
-      await runPath(filePath, runService, projectsStore, favoritesStore, runHistoryStore, undefined);
-    }),
-    vscode.commands.registerCommand('forgeflow.files.pinFavorite', async (target?: unknown) => {
-      const filePath = extractPath(target) ?? getActiveEditorPath();
-      if (filePath) {
-        await pinFavorite(filePath, favoritesStore);
-        filesProvider.refresh();
-      }
-    }),
-    vscode.commands.registerCommand('forgeflow.files.unpinFavorite', async (target?: unknown) => {
-      const filePath = extractPath(target);
-      if (filePath) {
-        await favoritesStore.remove(filePath);
-        filesProvider.refresh();
-      }
-    }),
-    vscode.commands.registerCommand('forgeflow.files.moveFavoriteUp', async (target?: unknown) => {
-      const filePath = extractPath(target);
-      if (filePath) {
-        await favoritesStore.move(filePath, 'up');
-        filesProvider.refresh();
-      }
-    }),
-    vscode.commands.registerCommand('forgeflow.files.moveFavoriteDown', async (target?: unknown) => {
-      const filePath = extractPath(target);
-      if (filePath) {
-        await favoritesStore.move(filePath, 'down');
-        filesProvider.refresh();
-      }
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.open', async (target?: unknown) => {
-      const project = extractProject(target);
-      if (project) {
-        await openProject(project, projectsStore);
-      }
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.openInNewWindow', async (target?: unknown) => {
-      const project = resolveProjectFromTarget(target, projectsStore);
-      if (!project) {
-        return;
-      }
-      await openProjectInNewWindow(project, projectsStore);
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.addToWorkspace', async (target?: unknown) => {
-      const project = resolveProjectFromTarget(target, projectsStore);
-      if (!project) {
-        return;
-      }
-      await addProjectToWorkspace(project, projectsStore);
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.openInTerminal', async (target?: unknown) => {
-      const project = resolveProjectFromTarget(target, projectsStore);
-      if (!project) {
-        return;
-      }
-      await openInTerminal(project.path);
-    }),
+    })
+  );
+
+  registerProjectCommands({
+    context,
+    projectsProvider,
+    projectsWebviewProvider,
+    projectsWebviewPanelProvider,
+    projectsStore,
+    tagsStore,
+    tagFilterStore,
+    filterPresetStore,
+    dashboardProvider
+  });
+
+  context.subscriptions.push(
     vscode.commands.registerCommand('forgeflow.projects.run', async (target?: unknown) => {
       const project = resolveProjectFromTarget(target, projectsStore);
       if (!project) {
@@ -591,218 +371,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
       await cleanSelectedProject(projectsStore, gitService, gitStore, gitProvider, projectsProvider, logger, project);
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.openInVisualStudio', async (target?: unknown) => {
-      const project = resolveProjectFromTarget(target, projectsStore);
-      if (!project) {
-        return;
-      }
-      await openProjectInVisualStudio(project, projectsProvider);
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.switch', async () => {
-      await switchProject(projectsStore, tagsStore);
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.refresh', async () => {
-      await projectsProvider.refresh(true);
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.configureOrRefresh', async () => {
-      await configureOrRefreshScanRoots(projectsProvider);
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.configureScanRoots', async () => {
-      await configureScanRoots(projectsProvider);
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.setSortMode', async () => {
-      await configureSortMode(projectsProvider);
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.setSortDirection', async () => {
-      await configureSortDirection(projectsProvider);
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.filter', async () => {
-      await configureProjectFilter(projectsProvider);
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.search', async () => {
-      await searchProjectsQuickPick(projectsStore, tagsStore);
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.focusFilter', async () => {
-      await configureProjectFilter(projectsProvider);
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.web.focusFilter', async () => {
-      await projectsWebviewProvider.focusFilter();
-      await projectsWebviewPanelProvider.focusFilter();
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.saveFilterPreset', async () => {
-      await saveFilterPreset('projects', projectsProvider.getFilter(), filterPresetStore);
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.applyFilterPreset', async () => {
-      const preset = await pickFilterPreset('projects', filterPresetStore);
-      if (!preset) {
-        return;
-      }
-      projectsProvider.setFilter(preset.value);
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.deleteFilterPreset', async () => {
-      await deleteFilterPreset('projects', filterPresetStore);
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.clearFilter', async () => {
-      projectsProvider.setFilter('');
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.toggleFavoritesOnly', async () => {
-      await projectsProvider.toggleFavoritesOnly();
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.loadMore', async () => {
-      projectsProvider.loadMore();
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.pinFavorite', async (target?: unknown) => {
-      const project = extractProject(target);
-      if (project) {
-        await projectsStore.addFavorite(project.id);
-        await projectsProvider.refresh();
-      }
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.unpinFavorite', async (target?: unknown) => {
-      const project = extractProject(target);
-      if (project) {
-        await projectsStore.removeFavorite(project.id);
-        await projectsProvider.refresh();
-      }
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.setTags', async (target?: unknown) => {
-      await setProjectTags(target, projectsStore, tagsStore, projectsProvider, dashboardProvider);
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.clearTags', async (target?: unknown) => {
-      await clearProjectTags(target, projectsStore, tagsStore, projectsProvider, dashboardProvider);
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.renameTag', async () => {
-      await renameProjectTag(tagsStore, projectsProvider, dashboardProvider);
-    }),
-    vscode.commands.registerCommand('forgeflow.tags.toggleFilter', async (tag?: unknown) => {
-      const targetTag = typeof tag === 'string' ? tag : await pickTagForFilter(tagsStore);
-      if (!targetTag) {
-        return;
-      }
-      await projectsProvider.toggleTagFilter(targetTag);
-      await dashboardProvider.applyTagFilter(projectsProvider.getTagFilter(), false);
-    }),
-    vscode.commands.registerCommand('forgeflow.tags.clearFilter', async () => {
-      await projectsProvider.setTagFilter([]);
-      await dashboardProvider.applyTagFilter([], false);
-    }),
-    vscode.commands.registerCommand('forgeflow.tags.savePreset', async () => {
-      await saveTagPreset(tagFilterStore, projectsProvider);
-    }),
-    vscode.commands.registerCommand('forgeflow.tags.applyPreset', async () => {
-      const applied = await applyTagPreset(tagFilterStore);
-      if (applied) {
-        await projectsProvider.setTagFilter(applied.tags);
-        await dashboardProvider.applyTagFilter(applied.tags, false);
-      }
-    }),
-    vscode.commands.registerCommand('forgeflow.tags.deletePreset', async () => {
-      await deleteTagPreset(tagFilterStore);
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.moveFavoriteUp', async (target?: unknown) => {
-      const project = extractProject(target);
-      if (project) {
-        await projectsStore.moveFavorite(project.id, 'up');
-        await projectsProvider.refresh();
-      }
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.moveFavoriteDown', async (target?: unknown) => {
-      const project = extractProject(target);
-      if (project) {
-        await projectsStore.moveFavorite(project.id, 'down');
-        await projectsProvider.refresh();
-      }
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.openEntryPoint', async (target?: unknown) => {
-      const entry = extractEntry(target);
-      if (entry) {
-        if (entry.kind === 'task') {
-          await openPath(entry.path);
-          return;
-        }
-        await openPath(entry.path);
-      }
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.addEntryPoint', async (target?: unknown) => {
-      const itemPath = extractPath(target);
-      if (!itemPath) {
-        return;
-      }
-      const project = findProjectByPath(projectsStore.list(), itemPath);
-      if (!project) {
-        return;
-      }
-      const overrides = project.entryPointOverrides ?? [];
-      if (!overrides.includes(itemPath)) {
-        await projectsStore.updateEntryPointOverrides(project.id, [...overrides, itemPath]);
-        projectsProvider.invalidateEntryPointCache(project.id);
-        await projectsProvider.refresh();
-      }
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.removeEntryPoint', async (target?: unknown) => {
-      const entry = extractEntry(target);
-      const itemPath = entry?.path ?? extractPath(target);
-      if (!itemPath) {
-        return;
-      }
-      const project = findProjectByPath(projectsStore.list(), itemPath);
-      if (!project) {
-        return;
-      }
-      const overrides = project.entryPointOverrides ?? [];
-      if (!overrides.includes(itemPath)) {
-        vscode.window.showInformationMessage('ForgeFlow: Entry point is auto-detected.');
-        return;
-      }
-      await projectsStore.updateEntryPointOverrides(project.id, overrides.filter((item) => item !== itemPath));
-      projectsProvider.invalidateEntryPointCache(project.id);
-      await projectsProvider.refresh();
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.pinItem', async (target?: unknown) => {
-      const entry = extractEntry(target);
-      if (!entry) {
-        return;
-      }
-      const project = findProjectByPath(projectsStore.list(), entry.path);
-      if (!project) {
-        return;
-      }
-      const pinned = project.pinnedItems.includes(entry.path)
-        ? project.pinnedItems
-        : [...project.pinnedItems, entry.path];
-      await projectsStore.updatePinnedItems(project.id, pinned);
-      await projectsProvider.refresh();
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.unpinItem', async (target?: unknown) => {
-      const itemPath = extractPath(target);
-      if (!itemPath) {
-        return;
-      }
-      const project = findProjectByPath(projectsStore.list(), itemPath);
-      if (!project) {
-        return;
-      }
-      const pinned = project.pinnedItems.filter((item) => item !== itemPath);
-      await projectsStore.updatePinnedItems(project.id, pinned);
-      await projectsProvider.refresh();
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.movePinnedItemUp', async (target?: unknown) => {
-      const itemPath = extractPath(target);
-      if (!itemPath) {
-        return;
-      }
-      await movePinnedItem(itemPath, 'up', projectsStore, projectsProvider);
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.movePinnedItemDown', async (target?: unknown) => {
-      const itemPath = extractPath(target);
-      if (!itemPath) {
-        return;
-      }
-      await movePinnedItem(itemPath, 'down', projectsStore, projectsProvider);
-    }),
-    vscode.commands.registerCommand('forgeflow.projects.manageEntryPoints', async (target?: unknown) => {
-      await manageEntryPoints(target, projectsStore, projectsProvider);
     }),
     vscode.commands.registerCommand('forgeflow.run', async (target?: unknown) => {
       const filePath = extractPath(target);
@@ -901,6 +469,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       const filePath = extractPath(target);
       await runPath(filePath, runService, projectsStore, favoritesStore, runHistoryStore, 'externalAdmin', profileId);
+    }),
+    vscode.commands.registerCommand('forgeflow.powerforge.plan', async (target?: unknown) => {
+      await runPowerForgePipeline('plan', target, projectsStore);
+    }),
+    vscode.commands.registerCommand('forgeflow.powerforge.pipeline', async (target?: unknown) => {
+      await runPowerForgePipeline('pipeline', target, projectsStore);
+    }),
+    vscode.commands.registerCommand('forgeflow.powerforge.dotnetPublish', async (target?: unknown) => {
+      await runPowerForgeDotNetPublish('publish', target, projectsStore);
+    }),
+    vscode.commands.registerCommand('forgeflow.powerforge.dotnetPublish.plan', async (target?: unknown) => {
+      await runPowerForgeDotNetPublish('plan', target, projectsStore);
+    }),
+    vscode.commands.registerCommand('forgeflow.powerforge.dotnetPublish.validate', async (target?: unknown) => {
+      await runPowerForgeDotNetPublish('validate', target, projectsStore);
+    }),
+    vscode.commands.registerCommand('forgeflow.powerforge.refresh', async () => {
+      await powerForgeViewProvider.refresh();
+      await powerForgePanelProvider.refresh();
     }),
     vscode.commands.registerCommand('forgeflow.run.last', async () => {
       await runLastHistoryEntry(runHistoryStore, runService, projectsStore);
@@ -1184,6 +771,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('forgeflow.onboarding.start', async () => {
       await runOnboarding(stateStore, context);
     }),
+    vscode.commands.registerCommand('forgeflow.views.openSelected', async () => {
+      await openForgeFlowSelectedViews(stateStore);
+    }),
     vscode.commands.registerCommand('forgeflow.diagnostics.export', async () => {
       await exportDiagnostics(projectsStore, favoritesStore, tagsStore, runHistoryStore, gitStore, tokenStore);
     }),
@@ -1449,6 +1039,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.workspace.onDidChangeWorkspaceFolders(async () => {
       filesProvider.refresh();
       await projectsProvider.refresh();
+      await powerForgeViewProvider.refresh();
+      await powerForgePanelProvider.refresh();
     }),
     vscode.workspace.onDidChangeConfiguration(async (event) => {
       if (event.affectsConfiguration('forgeflow.projects')) {
@@ -1494,509 +1086,6 @@ export function deactivate(): void {
   // handled by disposables
 }
 
-async function openPath(targetPath: string): Promise<void> {
-  const stat = await statPath(targetPath);
-  if (stat?.type === vscode.FileType.Directory) {
-    await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(targetPath), false);
-    return;
-  }
-  await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(targetPath));
-}
-
-async function openPathToSide(targetPath: string): Promise<void> {
-  const stat = await statPath(targetPath);
-  if (stat?.type === vscode.FileType.Directory) {
-    vscode.window.showWarningMessage('ForgeFlow: Open to Side is only available for files.');
-    return;
-  }
-  await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(targetPath), {
-    viewColumn: vscode.ViewColumn.Beside,
-    preview: false
-  });
-}
-
-async function openWith(targetPath: string): Promise<void> {
-  const uri = vscode.Uri.file(targetPath);
-  await vscode.commands.executeCommand('workbench.action.openWith', uri);
-}
-
-async function openInTerminal(targetPath: string): Promise<void> {
-  const stat = await statPath(targetPath);
-  const cwd = stat?.type === vscode.FileType.Directory ? targetPath : path.dirname(targetPath);
-  const terminal = vscode.window.createTerminal({ name: 'ForgeFlow', cwd });
-  terminal.show(true);
-}
-
-async function revealPath(targetPath: string): Promise<void> {
-  await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(targetPath));
-}
-
-async function renamePath(targetPath: string): Promise<void> {
-  await vscode.commands.executeCommand('renameFile', vscode.Uri.file(targetPath));
-}
-
-async function copyPathToClipboard(targetPath: string): Promise<void> {
-  await vscode.env.clipboard.writeText(targetPath);
-  vscode.window.setStatusBarMessage('ForgeFlow: Path copied.', 2000);
-}
-
-async function copyRelativePathToClipboard(targetPath: string): Promise<void> {
-  const uri = vscode.Uri.file(targetPath);
-  const folder = vscode.workspace.getWorkspaceFolder(uri);
-  if (!folder) {
-    await copyPathToClipboard(targetPath);
-    vscode.window.showWarningMessage('ForgeFlow: File is outside the workspace, copied absolute path.');
-    return;
-  }
-  const relative = path.relative(folder.uri.fsPath, targetPath);
-  await vscode.env.clipboard.writeText(relative);
-  vscode.window.setStatusBarMessage('ForgeFlow: Relative path copied.', 2000);
-}
-
-async function deletePath(targetPath: string): Promise<void> {
-  const stat = await statPath(targetPath);
-  const label = stat?.type === vscode.FileType.Directory ? 'folder' : 'file';
-  const confirmation = await vscode.window.showWarningMessage(
-    `ForgeFlow: Delete ${label} "${path.basename(targetPath)}"?`,
-    { modal: true },
-    'Delete'
-  );
-  if (confirmation !== 'Delete') {
-    return;
-  }
-  await vscode.workspace.fs.delete(vscode.Uri.file(targetPath), { recursive: true, useTrash: true });
-}
-
-async function deletePaths(targetPaths: string[]): Promise<void> {
-  const confirmation = await vscode.window.showWarningMessage(
-    `ForgeFlow: Delete ${targetPaths.length} items?`,
-    { modal: true },
-    'Delete'
-  );
-  if (confirmation !== 'Delete') {
-    return;
-  }
-  for (const targetPath of targetPaths) {
-    await vscode.workspace.fs.delete(vscode.Uri.file(targetPath), { recursive: true, useTrash: true });
-  }
-}
-
-async function pastePaths(baseDirectory: string, clipboard: { mode: 'copy' | 'cut'; paths: string[] }): Promise<void> {
-  let completed = 0;
-  for (const sourcePath of clipboard.paths) {
-    const targetDirectory = baseDirectory;
-    const sourceStat = await statPath(sourcePath);
-    if (sourceStat?.type === vscode.FileType.Directory && isWithin(sourcePath, targetDirectory)) {
-      const label = clipboard.mode === 'copy' ? 'copy' : 'move';
-      vscode.window.showWarningMessage(`ForgeFlow: Cannot ${label} a folder into its own subfolder.`);
-      continue;
-    }
-    const targetPath = await buildUniqueTargetPath(targetDirectory, sourcePath);
-    if (!targetPath) {
-      continue;
-    }
-    if (clipboard.mode === 'copy') {
-      await vscode.workspace.fs.copy(vscode.Uri.file(sourcePath), vscode.Uri.file(targetPath), { overwrite: false });
-    } else {
-      if (normalizeFsPath(sourcePath) === normalizeFsPath(targetPath)) {
-        continue;
-      }
-      await vscode.workspace.fs.rename(vscode.Uri.file(sourcePath), vscode.Uri.file(targetPath), { overwrite: false });
-    }
-    completed += 1;
-  }
-  if (completed > 0) {
-    const label = clipboard.mode === 'copy' ? 'Pasted' : 'Moved';
-    vscode.window.setStatusBarMessage(`ForgeFlow: ${label} ${completed} item(s).`, 3000);
-  }
-}
-
-async function buildUniqueTargetPath(targetDirectory: string, sourcePath: string): Promise<string | undefined> {
-  const baseName = path.basename(sourcePath);
-  let candidate = path.join(targetDirectory, baseName);
-  if (!(await pathExists(candidate))) {
-    return candidate;
-  }
-  const ext = path.extname(baseName);
-  const name = path.basename(baseName, ext);
-  let index = 1;
-  while (index < 1000) {
-    const suffix = index === 1 ? ' - Copy' : ` - Copy ${index}`;
-    candidate = path.join(targetDirectory, `${name}${suffix}${ext}`);
-    if (!(await pathExists(candidate))) {
-      return candidate;
-    }
-    index += 1;
-  }
-  vscode.window.showWarningMessage(`ForgeFlow: Unable to find a free name for ${baseName}.`);
-  return undefined;
-}
-
-async function createNewFile(baseDirectory: string): Promise<void> {
-  const name = await vscode.window.showInputBox({ prompt: 'New file name', value: '' });
-  if (!name) {
-    return;
-  }
-  const target = path.join(baseDirectory, name);
-  await vscode.workspace.fs.writeFile(vscode.Uri.file(target), new Uint8Array());
-  await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(target));
-}
-
-async function createNewFolder(baseDirectory: string): Promise<void> {
-  const name = await vscode.window.showInputBox({ prompt: 'New folder name', value: '' });
-  if (!name) {
-    return;
-  }
-  const target = path.join(baseDirectory, name);
-  await vscode.workspace.fs.createDirectory(vscode.Uri.file(target));
-}
-
-async function pinFavorite(targetPath: string, store: FavoritesStore): Promise<void> {
-  const stat = await statPath(targetPath);
-  const kind = stat?.type === vscode.FileType.Directory ? 'folder' : 'file';
-  await store.add({ path: targetPath, kind });
-}
-
-async function openProject(project: Project, store: ProjectsStore): Promise<void> {
-  await store.updateLastOpened(project.id, Date.now());
-  await store.updateLastActivity(project.id, Date.now());
-  await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(project.path), false);
-}
-
-async function openProjectInNewWindow(project: Project, store: ProjectsStore): Promise<void> {
-  await store.updateLastOpened(project.id, Date.now());
-  await store.updateLastActivity(project.id, Date.now());
-  await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(project.path), true);
-}
-
-async function addProjectToWorkspace(project: Project, store: ProjectsStore): Promise<void> {
-  const folders = vscode.workspace.workspaceFolders ?? [];
-  const resolved = path.resolve(project.path);
-  if (folders.some((folder) => path.resolve(folder.uri.fsPath) === resolved)) {
-    vscode.window.showWarningMessage('ForgeFlow: Project is already in the workspace.');
-    return;
-  }
-  const success = vscode.workspace.updateWorkspaceFolders(folders.length, 0, {
-    uri: vscode.Uri.file(project.path),
-    name: project.name
-  });
-  if (!success) {
-    vscode.window.showWarningMessage('ForgeFlow: Unable to add project to workspace.');
-    return;
-  }
-  await store.updateLastOpened(project.id, Date.now());
-  await store.updateLastActivity(project.id, Date.now());
-}
-
-async function switchProject(store: ProjectsStore, tagsStore: TagsStore): Promise<void> {
-  const projects = store.list();
-  if (projects.length === 0) {
-    vscode.window.showWarningMessage('ForgeFlow: No projects available. Configure scan roots first.');
-    return;
-  }
-  const items = projects.map((project) => {
-    const tags = tagsStore.getTags(project.id);
-    return {
-      label: project.name,
-      description: project.path,
-      detail: tags.length > 0 ? `Tags: ${tags.join(', ')}` : undefined,
-      project
-    };
-  });
-  const pick = await vscode.window.showQuickPick(items, {
-    placeHolder: 'Select a project to open',
-    matchOnDescription: true,
-    matchOnDetail: true
-  });
-  if (!pick) {
-    return;
-  }
-
-  const actionPick = await vscode.window.showQuickPick<{ label: string; action: 'current' | 'new' | 'add' }>([
-    { label: 'Open in current window', action: 'current' },
-    { label: 'Open in new window', action: 'new' },
-    { label: 'Add to workspace', action: 'add' }
-  ], { placeHolder: 'How should the project be opened?' });
-  if (!actionPick) {
-    return;
-  }
-
-  await openProjectWithAction(store, pick.project, actionPick.action);
-}
-
-async function searchProjectsQuickPick(store: ProjectsStore, tagsStore: TagsStore): Promise<void> {
-  const projects = store.list();
-  if (projects.length === 0) {
-    vscode.window.showWarningMessage('ForgeFlow: No projects available. Configure scan roots first.');
-    return;
-  }
-  const openNewButton: vscode.QuickInputButton = {
-    iconPath: new vscode.ThemeIcon('window'),
-    tooltip: 'Open in new window'
-  };
-  const addWorkspaceButton: vscode.QuickInputButton = {
-    iconPath: new vscode.ThemeIcon('add'),
-    tooltip: 'Add to workspace'
-  };
-  const items = projects.map((project) => {
-    const tags = tagsStore.getTags(project.id);
-    return {
-      label: project.name,
-      description: project.path,
-      detail: tags.length > 0 ? `Tags: ${tags.join(', ')}` : undefined,
-      buttons: [openNewButton, addWorkspaceButton],
-      project
-    };
-  });
-
-  await new Promise<void>((resolve) => {
-    const quickPick = vscode.window.createQuickPick<(vscode.QuickPickItem & { project: Project })>();
-    quickPick.title = 'Search projects';
-    quickPick.placeholder = 'Type to filter projects';
-    quickPick.matchOnDescription = true;
-    quickPick.matchOnDetail = true;
-    quickPick.items = items;
-    quickPick.onDidTriggerItemButton(async (event) => {
-      const action = event.button === openNewButton ? 'new' : 'add';
-      await openProjectWithAction(store, event.item.project, action);
-      quickPick.hide();
-    });
-    quickPick.onDidAccept(async () => {
-      const [selection] = quickPick.selectedItems;
-      if (selection) {
-        await openProjectWithAction(store, selection.project, 'current');
-      }
-      quickPick.hide();
-    });
-    quickPick.onDidHide(() => {
-      quickPick.dispose();
-      resolve();
-    });
-    quickPick.show();
-  });
-}
-
-async function openProjectWithAction(store: ProjectsStore, project: Project, action: 'current' | 'new' | 'add'): Promise<void> {
-  await store.updateLastOpened(project.id, Date.now());
-  await store.updateLastActivity(project.id, Date.now());
-
-  if (action === 'add') {
-    const existing = vscode.workspace.workspaceFolders ?? [];
-    const alreadyOpen = existing.some((folder) => normalizeFsPath(folder.uri.fsPath) === normalizeFsPath(project.path));
-    if (alreadyOpen) {
-      vscode.window.showInformationMessage('ForgeFlow: Project is already in the workspace.');
-      return;
-    }
-    if (existing.length === 0) {
-      await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(project.path), false);
-      return;
-    }
-    vscode.workspace.updateWorkspaceFolders(existing.length, null, {
-      uri: vscode.Uri.file(project.path),
-      name: project.name
-    });
-    return;
-  }
-
-  const forceNewWindow = action === 'new';
-  await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(project.path), forceNewWindow);
-}
-
-async function setProjectTags(
-  target: unknown,
-  projectsStore: ProjectsStore,
-  tagsStore: TagsStore,
-  projectsProvider: ProjectsViewProvider,
-  dashboardProvider: DashboardViewProvider
-): Promise<void> {
-  const project = resolveProjectTarget(target, projectsStore);
-  if (!project) {
-    vscode.window.showWarningMessage('ForgeFlow: No project selected.');
-    return;
-  }
-  const existing = tagsStore.getTags(project.id);
-  const allTags = listAllTags(tagsStore);
-  const value = existing.join(', ');
-  const placeHolder = allTags.length > 0 ? `Existing tags: ${allTags.join(', ')}` : 'tag1, tag2';
-  const input = await vscode.window.showInputBox({
-    prompt: `Tags for ${project.name} (comma-separated)`,
-    value,
-    placeHolder
-  });
-  if (input === undefined) {
-    return;
-  }
-  const tags = normalizeTags(input);
-  await tagsStore.setTags(project.id, tags);
-  await projectsProvider.refresh();
-  await dashboardProvider.refresh();
-}
-
-async function clearProjectTags(
-  target: unknown,
-  projectsStore: ProjectsStore,
-  tagsStore: TagsStore,
-  projectsProvider: ProjectsViewProvider,
-  dashboardProvider: DashboardViewProvider
-): Promise<void> {
-  const project = resolveProjectTarget(target, projectsStore);
-  if (!project) {
-    vscode.window.showWarningMessage('ForgeFlow: No project selected.');
-    return;
-  }
-  await tagsStore.setTags(project.id, []);
-  await projectsProvider.refresh();
-  await dashboardProvider.refresh();
-}
-
-async function renameProjectTag(
-  tagsStore: TagsStore,
-  projectsProvider: ProjectsViewProvider,
-  dashboardProvider: DashboardViewProvider
-): Promise<void> {
-  const allTags = listAllTags(tagsStore);
-  if (allTags.length === 0) {
-    vscode.window.showInformationMessage('ForgeFlow: No tags to rename.');
-    return;
-  }
-  const pick = await vscode.window.showQuickPick(allTags.map((tag) => ({ label: tag })), {
-    placeHolder: 'Select a tag to rename'
-  });
-  if (!pick) {
-    return;
-  }
-  const next = await vscode.window.showInputBox({
-    prompt: `Rename tag "${pick.label}" to`,
-    value: pick.label
-  });
-  if (!next || pick.label === next) {
-    return;
-  }
-  await tagsStore.renameTag(pick.label, next);
-  await projectsProvider.refresh();
-  await dashboardProvider.refresh();
-}
-
-function resolveProjectTarget(target: unknown, store: ProjectsStore): Project | undefined {
-  const project = extractProject(target);
-  if (project) {
-    return project;
-  }
-  const targetPath = resolveTargetPath(target);
-  if (!targetPath) {
-    return undefined;
-  }
-  return findProjectByPath(store.list(), targetPath);
-}
-
-function normalizeTags(input: string): string[] {
-  const raw = input
-    .split(',')
-    .map((value) => value.trim())
-    .filter(Boolean);
-  const deduped = new Map<string, string>();
-  raw.forEach((tag) => {
-    const key = tag.toLowerCase();
-    if (!deduped.has(key)) {
-      deduped.set(key, tag);
-    }
-  });
-  return Array.from(deduped.values());
-}
-
-function listAllTags(tagsStore: TagsStore): string[] {
-  const map = tagsStore.getAll();
-  const deduped = new Map<string, string>();
-  Object.values(map).forEach((entry) => {
-    entry.tags.forEach((tag) => {
-      const key = tag.toLowerCase();
-      if (!deduped.has(key)) {
-        deduped.set(key, tag);
-      }
-    });
-  });
-  return Array.from(deduped.values()).sort((a, b) => a.localeCompare(b));
-}
-
-async function pickTagForFilter(tagsStore: TagsStore): Promise<string | undefined> {
-  const tags = listAllTags(tagsStore);
-  if (tags.length === 0) {
-    vscode.window.showWarningMessage('ForgeFlow: No tags available to filter.');
-    return undefined;
-  }
-  const pick = await vscode.window.showQuickPick(tags, { placeHolder: 'Select a tag to toggle' });
-  return pick ?? undefined;
-}
-
-async function saveTagPreset(tagFilterStore: TagFilterStore, projectsProvider: ProjectsViewProvider): Promise<void> {
-  const tags = projectsProvider.getTagFilter();
-  if (tags.length === 0) {
-    vscode.window.showWarningMessage('ForgeFlow: No active tag filters to save.');
-    return;
-  }
-  const name = await vscode.window.showInputBox({
-    prompt: 'Name the tag preset',
-    placeHolder: 'e.g. client-work or ci-pipelines'
-  });
-  if (!name) {
-    return;
-  }
-  await tagFilterStore.savePreset(name, tags);
-  vscode.window.setStatusBarMessage(`ForgeFlow: Saved tag preset "${name}".`, 3000);
-}
-
-async function applyTagPreset(tagFilterStore: TagFilterStore): Promise<{ name: string; tags: string[] } | undefined> {
-  const presets = tagFilterStore.getPresets();
-  if (presets.length === 0) {
-    vscode.window.showWarningMessage('ForgeFlow: No tag presets saved.');
-    return undefined;
-  }
-  const pick = await vscode.window.showQuickPick(
-    presets.map((preset) => ({
-      label: preset.name,
-      description: preset.tags.join(', ')
-    })),
-    { placeHolder: 'Select a tag preset' }
-  );
-  if (!pick) {
-    return undefined;
-  }
-  const preset = presets.find((entry) => entry.name === pick.label);
-  return preset;
-}
-
-async function deleteTagPreset(tagFilterStore: TagFilterStore): Promise<void> {
-  const presets = tagFilterStore.getPresets();
-  if (presets.length === 0) {
-    vscode.window.showWarningMessage('ForgeFlow: No tag presets saved.');
-    return;
-  }
-  const pick = await vscode.window.showQuickPick(
-    presets.map((preset) => ({
-      label: preset.name,
-      description: preset.tags.join(', ')
-    })),
-    { placeHolder: 'Select a tag preset to delete' }
-  );
-  if (!pick) {
-    return;
-  }
-  await tagFilterStore.deletePreset(pick.label);
-  vscode.window.setStatusBarMessage(`ForgeFlow: Deleted tag preset "${pick.label}".`, 3000);
-}
-
-function resolveProjectFromTarget(target: unknown, projectsStore: ProjectsStore): Project | undefined {
-  const direct = extractProject(target);
-  if (direct) {
-    return direct;
-  }
-  const targetPath = extractPath(target);
-  if (!targetPath) {
-    return undefined;
-  }
-  return findProjectByPath(projectsStore.list(), targetPath);
-}
-
 async function runProjectEntryPoint(
   project: Project,
   projectsProvider: ProjectsViewProvider,
@@ -2033,124 +1122,12 @@ async function runProjectEntryPoint(
   await runPath(pick.entry.path, runService, projectsStore, favoritesStore, runHistoryStore, undefined);
 }
 
-async function openProjectInVisualStudio(project: Project, projectsProvider: ProjectsViewProvider): Promise<void> {
-  const groups = await projectsProvider.getEntryPointGroups(project);
-  const entries = [...groups.entryPoints, ...groups.buildScripts];
-  const solutions = entries.filter((entry) => path.extname(entry.path).toLowerCase() === '.sln');
-  if (solutions.length === 0) {
-    vscode.window.showWarningMessage('ForgeFlow: No .sln file found for this project.');
-    return;
-  }
-  const first = solutions[0];
-  if (!first) {
-    return;
-  }
-  let target = first;
-  if (solutions.length > 1) {
-    const pick = await vscode.window.showQuickPick(
-      solutions.map((entry) => ({
-        label: entry.label,
-        description: entry.path,
-        entry
-      })),
-      { placeHolder: `Select solution for ${project.name}` }
-    );
-    if (!pick) {
-      return;
-    }
-    target = pick.entry;
-  }
-  await openInVisualStudio(target.path);
-}
-
-async function saveFilterPreset(scope: FilterPresetScope, value: string, store: FilterPresetStore): Promise<void> {
-  const name = await vscode.window.showInputBox({
-    prompt: `Name the ${scope} filter preset`,
-    placeHolder: 'e.g. services or auth-errors'
-  });
-  if (!name) {
-    return;
-  }
-  await store.savePreset(scope, name, value);
-  vscode.window.setStatusBarMessage(`ForgeFlow: Saved ${scope} filter preset "${name}".`, 3000);
-}
-
-async function pickFilterPreset(
-  scope: FilterPresetScope,
-  store: FilterPresetStore
-): Promise<{ name: string; value: string } | undefined> {
-  const presets = store.getPresets(scope);
-  if (presets.length === 0) {
-    vscode.window.showWarningMessage(`ForgeFlow: No ${scope} filter presets saved.`);
-    return undefined;
-  }
-  const pick = await vscode.window.showQuickPick(
-    presets.map((preset) => ({
-      label: preset.name,
-      description: preset.value || '∅'
-    })),
-    { placeHolder: `Select a ${scope} filter preset` }
-  );
-  if (!pick) {
-    return undefined;
-  }
-  return presets.find((preset) => preset.name === pick.label);
-}
-
-async function deleteFilterPreset(scope: FilterPresetScope, store: FilterPresetStore): Promise<void> {
-  const presets = store.getPresets(scope);
-  if (presets.length === 0) {
-    vscode.window.showWarningMessage(`ForgeFlow: No ${scope} filter presets saved.`);
-    return;
-  }
-  const pick = await vscode.window.showQuickPick(
-    presets.map((preset) => ({
-      label: preset.name,
-      description: preset.value || '∅'
-    })),
-    { placeHolder: `Select a ${scope} filter preset to delete` }
-  );
-  if (!pick) {
-    return;
-  }
-  await store.deletePreset(scope, pick.label);
-  vscode.window.setStatusBarMessage(`ForgeFlow: Deleted ${scope} filter preset "${pick.label}".`, 3000);
-}
-
 async function toggleLayout(layoutStore: LayoutStore): Promise<void> {
   const current = layoutStore.getMode();
   const next = current === 'compact' ? 'expanded' : 'compact';
   await layoutStore.setMode(next);
   await vscode.commands.executeCommand('setContext', 'forgeflow.layout', next);
   vscode.window.setStatusBarMessage(`ForgeFlow layout: ${next}`, 2000);
-}
-
-async function toggleFilterScope(
-  filesProvider: FilesViewProvider,
-  projectsProvider: ProjectsViewProvider,
-  gitProvider: GitViewProvider,
-  dashboardProvider: DashboardViewProvider,
-  dashboardFilterStore: DashboardFilterStore,
-  tagFilterStore: TagFilterStore
-): Promise<void> {
-  const config = vscode.workspace.getConfiguration('forgeflow');
-  const current = config.get<'workspace' | 'global'>('filters.scope', 'workspace');
-  const next = current === 'workspace' ? 'global' : 'workspace';
-  const filesFilter = filesProvider.getFilter();
-  const projectsFilter = projectsProvider.getFilter();
-  const gitFilter = gitProvider.getFilter();
-  const dashboardFilter = dashboardFilterStore.getFilter();
-  const tagFilter = tagFilterStore.getFilter();
-
-  await config.update('filters.scope', next, vscode.ConfigurationTarget.Global);
-
-  filesProvider.setFilter(filesFilter);
-  projectsProvider.setFilter(projectsFilter);
-  gitProvider.setFilter(gitFilter);
-  await dashboardProvider.applyFilter(dashboardFilter);
-  await projectsProvider.setTagFilter(tagFilter);
-  await dashboardProvider.applyTagFilter(tagFilter, false, true);
-  vscode.window.setStatusBarMessage(`ForgeFlow filters: ${next} scope`, 2500);
 }
 
 async function runPath(
@@ -2372,6 +1349,272 @@ async function runShellCommand(command: string, workingDirectory: string | undef
     terminal.sendText(`cd ${quoteShellArg(workingDirectory)}`, true);
   }
   terminal.sendText(command, true);
+}
+
+async function runPowerForgePipeline(
+  mode: 'plan' | 'pipeline',
+  target: unknown,
+  projectsStore: ProjectsStore
+): Promise<void> {
+  const resolved = await resolvePowerForgeConfig('pipeline', target, projectsStore);
+  if (!resolved) {
+    return;
+  }
+  const { configPath, projectRoot } = resolved;
+  const launcher = await resolvePowerForgeLauncher(projectRoot);
+  const args = [
+    mode,
+    '--config',
+    configPath,
+    '--output',
+    'json'
+  ];
+  if (projectRoot) {
+    args.push('--project-root', projectRoot);
+  }
+  const commandLine = buildShellCommandLine(launcher.command, [...launcher.args, ...args]);
+  await runPowerForgeCommand(commandLine, projectRoot ?? path.dirname(configPath));
+}
+
+async function runPowerForgeDotNetPublish(
+  mode: 'publish' | 'plan' | 'validate',
+  target: unknown,
+  projectsStore: ProjectsStore
+): Promise<void> {
+  const resolved = await resolvePowerForgeConfig('dotnetpublish', target, projectsStore);
+  if (!resolved) {
+    return;
+  }
+  const { configPath, projectRoot } = resolved;
+  const launcher = await resolvePowerForgeLauncher(projectRoot);
+  const args = [
+    'dotnet',
+    'publish',
+    '--config',
+    configPath,
+    '--output',
+    'json'
+  ];
+  if (mode === 'plan') {
+    args.push('--plan');
+  } else if (mode === 'validate') {
+    args.push('--validate');
+  }
+  if (projectRoot) {
+    args.push('--project-root', projectRoot);
+  }
+  const commandLine = buildShellCommandLine(launcher.command, [...launcher.args, ...args]);
+  await runPowerForgeCommand(commandLine, projectRoot ?? path.dirname(configPath));
+}
+
+type PowerForgeConfigKind = 'pipeline' | 'dotnetpublish';
+
+interface PowerForgeConfigSelection {
+  configPath: string;
+  projectRoot?: string;
+}
+
+interface PowerForgeLauncher {
+  command: string;
+  args: string[];
+}
+
+const POWERFORGE_PIPELINE_CONFIGS = [
+  'powerforge.json',
+  'powerforge.pipeline.json',
+  path.join('.powerforge', 'pipeline.json')
+];
+const POWERFORGE_DOTNETPUBLISH_CONFIGS = [
+  'powerforge.dotnetpublish.json',
+  'powerforge.dotnet.publish.json'
+];
+
+function isPowerForgePipelineConfig(filePath: string): boolean {
+  const name = path.basename(filePath).toLowerCase();
+  return name === 'powerforge.json' || name === 'powerforge.pipeline.json';
+}
+
+function isPowerForgeDotNetPublishConfig(filePath: string): boolean {
+  const name = path.basename(filePath).toLowerCase();
+  return name === 'powerforge.dotnetpublish.json' || name === 'powerforge.dotnet.publish.json';
+}
+
+async function resolvePowerForgeConfig(
+  kind: PowerForgeConfigKind,
+  target: unknown,
+  projectsStore: ProjectsStore
+): Promise<PowerForgeConfigSelection | undefined> {
+  const targetPath = resolveTargetPath(target);
+  let projectRoot = resolveProjectFromTarget(target, projectsStore)?.path;
+  if (targetPath) {
+    const stat = await statPath(targetPath);
+    if (stat?.type === vscode.FileType.Directory) {
+      if (!projectRoot) {
+        projectRoot = targetPath;
+      }
+    } else if (stat?.type === vscode.FileType.File) {
+      if (kind === 'pipeline' && isPowerForgePipelineConfig(targetPath)) {
+        return { configPath: targetPath, projectRoot: projectRoot ?? path.dirname(targetPath) };
+      }
+      if (kind === 'dotnetpublish' && isPowerForgeDotNetPublishConfig(targetPath)) {
+        return { configPath: targetPath, projectRoot: projectRoot ?? path.dirname(targetPath) };
+      }
+      if (!projectRoot) {
+        projectRoot = path.dirname(targetPath);
+      }
+    }
+  }
+
+  if (!projectRoot) {
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    if (folders.length === 1) {
+      projectRoot = folders[0]?.uri.fsPath;
+    } else if (folders.length > 1) {
+      const pick = await vscode.window.showQuickPick(
+        folders.map((folder) => ({ label: folder.name, description: folder.uri.fsPath, folder })),
+        { placeHolder: 'Select workspace folder' }
+      );
+      projectRoot = pick?.folder.uri.fsPath;
+    }
+  }
+
+  if (projectRoot) {
+    const candidates = await findPowerForgeConfigsInRoot(projectRoot, kind);
+    if (candidates.length === 1) {
+      const only = candidates[0];
+      if (only) {
+        return { configPath: only, projectRoot };
+      }
+    }
+    if (candidates.length > 1) {
+      const pick = await vscode.window.showQuickPick(
+        candidates.map((configPath) => ({
+          label: path.basename(configPath),
+          description: configPath,
+          configPath
+        })),
+        { placeHolder: 'Select PowerForge config' }
+      );
+      return pick ? { configPath: pick.configPath, projectRoot } : undefined;
+    }
+  }
+
+  const workspaceConfigs = await findPowerForgeConfigsInWorkspace(kind);
+  if (workspaceConfigs.length === 0) {
+    vscode.window.showWarningMessage('ForgeFlow: No PowerForge configuration found.');
+    return undefined;
+  }
+  const pick = await vscode.window.showQuickPick(
+    workspaceConfigs.map((configPath) => ({
+      label: path.basename(configPath),
+      description: configPath,
+      configPath
+    })),
+    { placeHolder: 'Select PowerForge config' }
+  );
+  if (!pick) {
+    return undefined;
+  }
+  const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(pick.configPath));
+  return { configPath: pick.configPath, projectRoot: folder?.uri.fsPath };
+}
+
+async function findPowerForgeConfigsInRoot(root: string, kind: PowerForgeConfigKind): Promise<string[]> {
+  const names = kind === 'pipeline' ? POWERFORGE_PIPELINE_CONFIGS : POWERFORGE_DOTNETPUBLISH_CONFIGS;
+  const results: string[] = [];
+  for (const name of names) {
+    const candidate = path.join(root, name);
+    if (await pathExists(candidate)) {
+      results.push(candidate);
+    }
+  }
+  return results;
+}
+
+async function findPowerForgeConfigsInWorkspace(kind: PowerForgeConfigKind): Promise<string[]> {
+  const patterns = kind === 'pipeline'
+    ? ['**/powerforge.json', '**/powerforge.pipeline.json', '**/.powerforge/pipeline.json']
+    : ['**/powerforge.dotnetpublish.json', '**/powerforge.dotnet.publish.json'];
+  const exclude = '**/{node_modules,.git,Artifacts,Artefacts,bin,obj}/**';
+  const uris = (
+    await Promise.all(patterns.map((pattern) => vscode.workspace.findFiles(pattern, exclude)))
+  ).flat();
+  const unique = new Map<string, string>();
+  for (const uri of uris) {
+    unique.set(uri.fsPath, uri.fsPath);
+  }
+  return [...unique.values()];
+}
+
+async function resolvePowerForgeLauncher(projectRoot?: string): Promise<PowerForgeLauncher> {
+  const settings = getForgeFlowSettings();
+  const configured = settings.powerforgeCliPath?.trim();
+  if (configured) {
+    if (await pathExists(configured)) {
+      return { command: configured, args: [] };
+    }
+    vscode.window.showWarningMessage(`ForgeFlow: PowerForge CLI path not found: ${configured}`);
+  }
+
+  if (projectRoot) {
+    const artifact = await findPowerForgeBinary(projectRoot);
+    if (artifact) {
+      return { command: artifact, args: [] };
+    }
+    const cliProject = path.join(projectRoot, 'PowerForge.Cli', 'PowerForge.Cli.csproj');
+    if (await pathExists(cliProject)) {
+      return { command: 'dotnet', args: ['run', '--project', cliProject, '--'] };
+    }
+  }
+
+  return { command: process.platform === 'win32' ? 'powerforge.exe' : 'powerforge', args: [] };
+}
+
+async function findPowerForgeBinary(projectRoot: string): Promise<string | undefined> {
+  const base = path.join(projectRoot, 'Artifacts', 'PowerForge');
+  if (!await pathExists(base)) {
+    return undefined;
+  }
+  const targetName = process.platform === 'win32' ? 'powerforge.exe' : 'powerforge';
+  return findFileRecursive(base, targetName, 4);
+}
+
+async function findFileRecursive(root: string, fileName: string, depth: number): Promise<string | undefined> {
+  if (depth < 0) {
+    return undefined;
+  }
+  const entries = await readDirectory(root);
+  for (const [name, type] of entries) {
+    const fullPath = path.join(root, name);
+    if (type === vscode.FileType.File && name.toLowerCase() === fileName.toLowerCase()) {
+      return fullPath;
+    }
+    if (type === vscode.FileType.Directory) {
+      const found = await findFileRecursive(fullPath, fileName, depth - 1);
+      if (found) {
+        return found;
+      }
+    }
+  }
+  return undefined;
+}
+
+function buildShellCommandLine(command: string, args: string[]): string {
+  const needsQuote = /\s/.test(command);
+  const commandPart = needsQuote
+    ? (process.platform === 'win32' ? `& ${quoteShellArg(command)}` : quoteShellArg(command))
+    : command;
+  const parts = [commandPart, ...args.map((arg) => quoteShellArg(arg))];
+  return parts.join(' ');
+}
+
+async function runPowerForgeCommand(commandLine: string, workingDirectory: string | undefined): Promise<void> {
+  const terminal = getPowerForgeTerminal(workingDirectory);
+  terminal.show(true);
+  if (workingDirectory) {
+    terminal.sendText(`cd ${quoteShellArg(workingDirectory)}`, true);
+  }
+  terminal.sendText(commandLine, true);
 }
 
 async function runLastHistoryEntry(
@@ -2879,18 +2122,17 @@ function getRunByFileTerminal(reuse: boolean, cwd?: string): vscode.Terminal {
   return terminal;
 }
 
-
-function findProjectByPath(projects: Project[], filePath: string): Project | undefined {
-  const resolved = normalizeFsPath(path.resolve(filePath));
-  return projects.find((project) => isWithin(normalizeFsPath(project.path), resolved));
+function getPowerForgeTerminal(cwd?: string): vscode.Terminal {
+  if (powerForgeTerminal) {
+    return powerForgeTerminal;
+  }
+  powerForgeTerminal = vscode.window.createTerminal({
+    name: 'ForgeFlow: PowerForge',
+    cwd: cwd
+  });
+  return powerForgeTerminal;
 }
 
-function isWithin(parent: string, child: string): boolean {
-  const compareParent = process.platform === 'win32' ? parent.toLowerCase() : parent;
-  const compareChild = process.platform === 'win32' ? child.toLowerCase() : child;
-  const relative = path.relative(compareParent, compareChild);
-  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
-}
 
 async function chooseProfileId(allowClear = false): Promise<string | null | undefined> {
   const config = vscode.workspace.getConfiguration('forgeflow');
@@ -2961,20 +2203,6 @@ async function createCustomProfile(): Promise<string | undefined> {
   await config.update('powershell.profiles', nextProfiles, vscode.ConfigurationTarget.Global);
   vscode.window.setStatusBarMessage('ForgeFlow: Custom PowerShell profile added.', 3000);
   return profile.id;
-}
-
-async function pickExecutablePath(title: string): Promise<string | undefined> {
-  const filters = process.platform === 'win32'
-    ? { Executable: ['exe', 'cmd', 'bat'] }
-    : undefined;
-  const selection = await vscode.window.showOpenDialog({
-    title,
-    canSelectFiles: true,
-    canSelectFolders: false,
-    canSelectMany: false,
-    filters
-  });
-  return selection?.[0]?.fsPath;
 }
 
 async function pickExternalSessionTarget(): Promise<{ profileId?: string; label?: string } | undefined> {
@@ -3175,142 +2403,6 @@ async function exportDiagnostics(
   vscode.window.setStatusBarMessage(`ForgeFlow: Diagnostics exported to ${uri.fsPath}`, 4000);
 }
 
-async function movePinnedItem(
-  itemPath: string,
-  direction: 'up' | 'down',
-  store: ProjectsStore,
-  provider: ProjectsViewProvider
-): Promise<void> {
-  const project = findProjectByPath(store.list(), itemPath);
-  if (!project) {
-    return;
-  }
-  const pinned = [...project.pinnedItems];
-  const index = pinned.indexOf(itemPath);
-  if (index === -1) {
-    return;
-  }
-  const targetIndex = direction === 'up' ? index - 1 : index + 1;
-  if (targetIndex < 0 || targetIndex >= pinned.length) {
-    return;
-  }
-  pinned.splice(index, 1);
-  pinned.splice(targetIndex, 0, itemPath);
-  await store.updatePinnedItems(project.id, pinned);
-  await provider.refresh();
-}
-
-interface EntryPointPick extends vscode.QuickPickItem {
-  path: string;
-}
-
-async function manageEntryPoints(
-  target: unknown,
-  store: ProjectsStore,
-  provider: ProjectsViewProvider
-): Promise<void> {
-  const projects = store.list();
-  const targetPath = extractPath(target);
-  const project = extractProject(target)
-    ?? (targetPath ? findProjectByPath(projects, targetPath) : undefined)
-    ?? await pickProject(projects, 'Select project to manage entry points');
-  if (!project) {
-    return;
-  }
-
-  const overrides = project.entryPointOverrides ?? [];
-  const picks = overrides.map((entryPath) => createEntryPointPick(project.path, entryPath));
-  const quickPick = vscode.window.createQuickPick<EntryPointPick>();
-  quickPick.title = `Manage Entry Points — ${project.name}`;
-  quickPick.placeholder = 'Select entry points to keep (use + to add more)';
-  quickPick.canSelectMany = true;
-  quickPick.items = picks;
-  quickPick.selectedItems = picks;
-  const addButton: vscode.QuickInputButton = {
-    iconPath: new vscode.ThemeIcon('add'),
-    tooltip: 'Add entry point'
-  };
-  quickPick.buttons = [addButton];
-
-  const disposables: vscode.Disposable[] = [];
-  const done = new Promise<void>((resolve) => {
-    disposables.push(
-      quickPick.onDidTriggerButton(async (button) => {
-        if (button !== addButton) {
-          return;
-        }
-        const picked = await vscode.window.showOpenDialog({
-          canSelectFiles: true,
-          canSelectFolders: false,
-          canSelectMany: true,
-          defaultUri: vscode.Uri.file(project.path),
-          title: `Add entry points for ${project.name}`
-        });
-        if (!picked || picked.length === 0) {
-          return;
-        }
-        const existing = new Set(quickPick.items.map((item) => item.path));
-        const nextItems = [...quickPick.items];
-        const nextSelected = new Set(quickPick.selectedItems.map((item) => item.path));
-        for (const uri of picked) {
-          const entryPath = uri.fsPath;
-          if (existing.has(entryPath)) {
-            nextSelected.add(entryPath);
-            continue;
-          }
-          const item = createEntryPointPick(project.path, entryPath);
-          nextItems.push(item);
-          nextSelected.add(entryPath);
-        }
-        quickPick.items = nextItems;
-        quickPick.selectedItems = nextItems.filter((item) => nextSelected.has(item.path));
-      }),
-      quickPick.onDidAccept(async () => {
-        const selected = quickPick.selectedItems.map((item) => item.path);
-        await store.updateEntryPointOverrides(project.id, selected);
-        provider.invalidateEntryPointCache(project.id);
-        await provider.refresh();
-        quickPick.hide();
-      }),
-      quickPick.onDidHide(() => {
-        resolve();
-      })
-    );
-  });
-
-  quickPick.show();
-  await done;
-  disposables.forEach((disposable) => disposable.dispose());
-}
-
-function createEntryPointPick(projectPath: string, entryPath: string): EntryPointPick {
-  const relative = path.relative(projectPath, entryPath);
-  const isRelative = relative && !relative.startsWith('..') && !path.isAbsolute(relative);
-  return {
-    label: path.basename(entryPath),
-    description: isRelative ? relative : entryPath,
-    detail: isRelative ? entryPath : undefined,
-    path: entryPath
-  };
-}
-
-async function pickProject(projects: Project[], placeHolder: string): Promise<Project | undefined> {
-  if (projects.length === 0) {
-    vscode.window.showInformationMessage('ForgeFlow: No projects available.');
-    return undefined;
-  }
-  const items = projects
-    .slice()
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map((project) => ({
-      label: project.name,
-      description: project.path,
-      project
-    }));
-  const pick = await vscode.window.showQuickPick(items, { placeHolder, matchOnDescription: true });
-  return pick?.project;
-}
-
 async function configureProjectIdentity(
   store: ProjectsStore,
   dashboardProvider: DashboardViewProvider
@@ -3419,198 +2511,6 @@ async function configureDashboardTokens(tokenStore: DashboardTokenStore): Promis
 
   const status = token.length > 0 ? 'saved' : 'cleared';
   vscode.window.showInformationMessage(`ForgeFlow: ${pick.label} ${status}.`);
-}
-
-async function configureScanRoots(provider: ProjectsViewProvider): Promise<void> {
-  const selection = await vscode.window.showOpenDialog({
-    canSelectFiles: false,
-    canSelectFolders: true,
-    canSelectMany: true,
-    openLabel: 'Select Project Roots'
-  });
-
-  if (!selection) {
-    return;
-  }
-
-  const roots = selection.map((uri) => uri.fsPath);
-  const config = vscode.workspace.getConfiguration('forgeflow');
-  await config.update('projects.scanRoots', roots, vscode.ConfigurationTarget.Global);
-  await provider.refresh();
-  vscode.window.showInformationMessage(`ForgeFlow: ${roots.length} project root(s) configured.`);
-}
-
-async function configureOrRefreshScanRoots(provider: ProjectsViewProvider): Promise<void> {
-  const settings = getForgeFlowSettings();
-  const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
-  const hasConfiguredRoots = settings.projectScanRoots.length > 0;
-  const hasWorkspaceRoots = workspaceFolders.length > 0;
-
-  const options: Array<{ label: string; value: 'configure' | 'refresh' | 'settings' }> = [];
-  if (!hasConfiguredRoots || !hasWorkspaceRoots) {
-    options.push({ label: 'Configure scan roots', value: 'configure' });
-  }
-  options.push({ label: 'Refresh projects', value: 'refresh' });
-  options.push({ label: 'Open settings (JSON)', value: 'settings' });
-
-  if (options.length === 1 || (!hasConfiguredRoots && !hasWorkspaceRoots)) {
-    await configureScanRoots(provider);
-    return;
-  }
-
-  const pick = await vscode.window.showQuickPick(options, { placeHolder: 'Projects: Next action' });
-  if (!pick) {
-    return;
-  }
-
-  if (pick.value === 'configure') {
-    await configureScanRoots(provider);
-    return;
-  }
-  if (pick.value === 'settings') {
-    await vscode.commands.executeCommand('workbench.action.openSettingsJson');
-    return;
-  }
-  await provider.refresh(true);
-}
-
-async function configureSortMode(provider: ProjectsViewProvider): Promise<void> {
-  const settings = getForgeFlowSettings();
-  const baseOptions = [
-    { label: 'Recent Opened', value: 'recentOpened' },
-    { label: 'Recent Modified', value: 'recentModified' },
-    { label: 'Alphabetical', value: 'alphabetical' },
-    { label: 'Last Active', value: 'lastActive' },
-    { label: 'Git Commit Time', value: 'gitCommit' }
-  ] as const;
-  const options: Array<{ label: string; value: ProjectSortMode; picked?: boolean }> = baseOptions.map((option) => ({
-    ...option,
-    picked: option.value === settings.projectSortMode
-  }));
-  const pick = await vscode.window.showQuickPick(options, { placeHolder: 'Select project sort mode' });
-  if (!pick) {
-    return;
-  }
-  const config = vscode.workspace.getConfiguration('forgeflow');
-  await config.update('projects.sortMode', pick.value, vscode.ConfigurationTarget.Global);
-  await provider.refresh();
-}
-
-async function configureSortDirection(provider: ProjectsViewProvider): Promise<void> {
-  const settings = getForgeFlowSettings();
-  const baseOptions = [
-    { label: 'Descending', value: 'desc' },
-    { label: 'Ascending', value: 'asc' }
-  ] as const;
-  const options: Array<{ label: string; value: SortDirection; picked?: boolean }> = baseOptions.map((option) => ({
-    ...option,
-    picked: option.value === settings.projectSortDirection
-  }));
-  const pick = await vscode.window.showQuickPick(options, { placeHolder: 'Select sort direction' });
-  if (!pick) {
-    return;
-  }
-  const config = vscode.workspace.getConfiguration('forgeflow');
-  await config.update('projects.sortDirection', pick.value, vscode.ConfigurationTarget.Global);
-  await provider.refresh();
-}
-
-async function configureFavoritesViewMode(provider: FilesViewProvider): Promise<void> {
-  const settings = getForgeFlowSettings();
-  const options: Array<{ label: string; value: 'workspace' | 'all' | 'pinned' }> = [
-    { label: 'Workspace (scoped)', value: 'workspace' },
-    { label: 'All favorites', value: 'all' },
-    { label: 'Pinned in workspace', value: 'pinned' }
-  ];
-  const pick = await vscode.window.showQuickPick(
-    options.map((option) => ({ ...option, picked: option.value === settings.filesFavoritesViewMode })),
-    { placeHolder: 'Select favorites view mode' }
-  );
-  if (!pick) {
-    return;
-  }
-  const config = vscode.workspace.getConfiguration('forgeflow');
-  await config.update('files.favorites.viewMode', pick.value, vscode.ConfigurationTarget.Global);
-  provider.refresh();
-}
-
-async function configureProjectFilter(provider: ProjectsViewProvider): Promise<void> {
-  await openLiveFilterInput({
-    title: 'Filter projects',
-    value: provider.getFilter(),
-    minChars: getForgeFlowSettings().filtersProjectsMinChars,
-    onChange: (value) => provider.setFilter(value)
-  });
-}
-
-function formatScopeLabel(scope: 'workspace' | 'global'): string {
-  return scope === 'global' ? 'Global' : 'Workspace';
-}
-
-function buildFilterMessage(options: {
-  filterText: string;
-  minChars: number;
-  focusCommand: string;
-  clearCommand?: string;
-  scopeLabel: string;
-  extraText?: string;
-  extraClearCommand?: string;
-}): string {
-  const trimmed = options.filterText.trim();
-  const hasFilter = trimmed.length > 0;
-  let filterLabel = hasFilter ? trimmed : '(none)';
-  if (hasFilter && options.minChars > 0 && trimmed.length < options.minChars) {
-    filterLabel += ` (inactive until ${options.minChars} chars)`;
-  }
-  const parts = [
-    `Filter: ${filterLabel}`,
-    `Scope: ${options.scopeLabel}`,
-    'Edit: Focus Filter'
-  ];
-  if (hasFilter && options.clearCommand) {
-    parts.push('Clear: Clear Filter');
-  }
-  if (options.extraText) {
-    parts.push(options.extraText);
-    if (options.extraClearCommand) {
-      parts.push('Clear Tags');
-    }
-  }
-  return parts.join(' | ');
-}
-
-function setTreeViewMessage(views: Array<vscode.TreeView<unknown>>, message: string | undefined): void {
-  for (const view of views) {
-    view.message = message;
-  }
-}
-
-async function openLiveFilterInput(options: {
-  title: string;
-  value: string;
-  minChars: number;
-  onChange: (value: string) => void;
-}): Promise<void> {
-  await new Promise<void>((resolve) => {
-    const input = vscode.window.createInputBox();
-    input.title = options.title;
-    input.value = options.value;
-    input.prompt = options.minChars > 0
-      ? `Type at least ${options.minChars} characters to activate filtering.`
-      : 'Type to filter.';
-    input.placeholder = 'Leave empty to clear filter';
-    input.onDidChangeValue((value) => {
-      options.onChange(value);
-    });
-    input.onDidAccept(() => {
-      input.hide();
-    });
-    input.onDidHide(() => {
-      input.dispose();
-      resolve();
-    });
-    input.show();
-  });
 }
 
 async function configureGitBranchSortMode(): Promise<void> {
@@ -4197,8 +3097,9 @@ function extractGitProject(
   if (target && isGitProjectNode(target)) {
     return target.project;
   }
-  if (isProject(target)) {
-    return target;
+  const direct = extractProject(target);
+  if (direct) {
+    return direct;
   }
   return getSelectedGitProject(projectsStore, provider);
 }
@@ -4211,217 +3112,6 @@ function extractGitBranch(target: unknown): string | undefined {
     return target.branch.name;
   }
   return undefined;
-}
-
-async function pickBrowserTarget(): Promise<BrowserTarget | undefined> {
-  const options: Array<{ label: string; value: BrowserTarget; description?: string }> = [
-    { label: 'Default Browser', value: 'default' },
-    { label: 'Microsoft Edge', value: 'edge', description: 'Windows/macOS/Linux (if installed)' },
-    { label: 'Google Chrome', value: 'chrome' },
-    { label: 'Chromium', value: 'chromium' },
-    { label: 'Firefox', value: 'firefox' },
-    { label: 'Firefox Developer Edition', value: 'firefox-dev', description: 'macOS name differs' },
-    { label: 'Custom Browser Path', value: 'custom' }
-  ];
-  const pick = await vscode.window.showQuickPick(options, { placeHolder: 'Open in browser' });
-  return pick?.value;
-}
-
-function extractPath(target: unknown): string | undefined {
-  if (typeof target === 'string') {
-    return target;
-  }
-  if (isPathNode(target)) {
-    return target.path;
-  }
-  if (target instanceof vscode.Uri) {
-    return target.fsPath;
-  }
-  if (isProjectEntry(target)) {
-    return target.entry.path;
-  }
-  return undefined;
-}
-
-function getActiveEditorPath(): string | undefined {
-  const editor = vscode.window.activeTextEditor;
-  if (!editor) {
-    return undefined;
-  }
-  const uri = editor.document.uri;
-  return uri.scheme === 'file' ? uri.fsPath : undefined;
-}
-
-async function ensureCustomBrowserPath(): Promise<boolean> {
-  const config = vscode.workspace.getConfiguration('forgeflow');
-  const existing = config.get<string>('browser.customPath');
-  if (existing && existing.trim().length > 0) {
-    return true;
-  }
-  const picked = await pickExecutablePath('Select browser executable');
-  if (!picked) {
-    return false;
-  }
-  await config.update('browser.customPath', picked, vscode.ConfigurationTarget.Global);
-  return true;
-}
-
-function resolveTargetPath(target: unknown): string | undefined {
-  return extractPath(target) ?? vscode.window.activeTextEditor?.document.uri.fsPath;
-}
-
-function collectSelectedPaths(
-  target: unknown,
-  filesView: vscode.TreeView<unknown>,
-  filesPanelView: vscode.TreeView<unknown>
-): string[] {
-  const selection = filesView.selection.length > 0 ? filesView.selection : filesPanelView.selection;
-  const selectedPaths = selection
-    .map((item) => extractPath(item))
-    .filter((value): value is string => Boolean(value));
-  if (selectedPaths.length > 0) {
-    return [...new Set(selectedPaths)];
-  }
-  const targetPath = resolveTargetPath(target);
-  return targetPath ? [targetPath] : [];
-}
-
-async function resolveBaseDirectory(target: unknown): Promise<string | undefined> {
-  const targetPath = resolveTargetPath(target);
-  if (targetPath) {
-    const stat = await statPath(targetPath);
-    if (stat?.type === vscode.FileType.Directory) {
-      return targetPath;
-    }
-    return path.dirname(targetPath);
-  }
-  const folders = vscode.workspace.workspaceFolders ?? [];
-  if (folders.length === 1) {
-    return folders[0]?.uri.fsPath;
-  }
-  if (folders.length > 1) {
-    const pick = await vscode.window.showQuickPick(
-      folders.map((folder) => ({ label: folder.name, description: folder.uri.fsPath, folder })),
-      { placeHolder: 'Select target folder' }
-    );
-    return pick?.folder.uri.fsPath;
-  }
-  vscode.window.showWarningMessage('ForgeFlow: No workspace folder available.');
-  return undefined;
-}
-
-function isBrowserFile(filePath: string, extensions: string[]): boolean {
-  const ext = path.extname(filePath).toLowerCase().replace('.', '');
-  if (!ext) {
-    return false;
-  }
-  return extensions.some((value) => value.replace('.', '').toLowerCase() === ext);
-}
-
-function extractProject(target: unknown): Project | undefined {
-  if (isProjectNode(target)) {
-    return target.project;
-  }
-  if (isProject(target)) {
-    return target;
-  }
-  return undefined;
-}
-
-function extractEntry(target: unknown): ProjectEntryPoint | undefined {
-  if (isProjectEntry(target)) {
-    return target.entry;
-  }
-  if (isEntryPoint(target)) {
-    return target;
-  }
-  return undefined;
-}
-
-function extractPreset(target: unknown): RunPreset | undefined {
-  if (isProjectPreset(target)) {
-    return target.preset;
-  }
-  if (isRunPreset(target)) {
-    return target;
-  }
-  return undefined;
-}
-
-function extractHistoryEntry(target: unknown): RunHistoryEntry | undefined {
-  if (isProjectHistory(target)) {
-    return target.entry;
-  }
-  if (isRunHistoryEntry(target)) {
-    return target;
-  }
-  return undefined;
-}
-
-function hasKey(value: unknown, key: string): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && key in value;
-}
-
-function isPathNode(value: unknown): value is PathNode | ProjectNodeWithPath {
-  return hasKey(value, 'path') && typeof value['path'] === 'string';
-}
-
-function isProjectNode(value: unknown): value is ProjectNodeWithProject {
-  if (!hasKey(value, 'project')) {
-    return false;
-  }
-  return isProject(value['project']);
-}
-
-function isProjectEntry(value: unknown): value is ProjectNodeWithEntry {
-  if (!hasKey(value, 'entry')) {
-    return false;
-  }
-  return isEntryPoint(value['entry']);
-}
-
-function isProjectPreset(value: unknown): value is ProjectNodeWithPreset {
-  if (!hasKey(value, 'preset') || !hasKey(value, 'project')) {
-    return false;
-  }
-  return isRunPreset(value['preset']) && isProject(value['project']);
-}
-
-function isProjectHistory(value: unknown): value is ProjectNodeWithHistory {
-  if (!hasKey(value, 'entry') || !hasKey(value, 'project')) {
-    return false;
-  }
-  return isRunHistoryEntry(value['entry']) && isProject(value['project']);
-}
-
-function isProject(value: unknown): value is Project {
-  return hasKey(value, 'id')
-    && hasKey(value, 'path')
-    && typeof value['id'] === 'string'
-    && typeof value['path'] === 'string';
-}
-
-function isEntryPoint(value: unknown): value is ProjectEntryPoint {
-  return hasKey(value, 'path')
-    && hasKey(value, 'label')
-    && typeof value['path'] === 'string'
-    && typeof value['label'] === 'string';
-}
-
-function isRunPreset(value: unknown): value is RunPreset {
-  return hasKey(value, 'id')
-    && hasKey(value, 'label')
-    && hasKey(value, 'kind')
-    && typeof value['id'] === 'string'
-    && typeof value['label'] === 'string';
-}
-
-function isRunHistoryEntry(value: unknown): value is RunHistoryEntry {
-  return hasKey(value, 'id')
-    && hasKey(value, 'label')
-    && hasKey(value, 'kind')
-    && typeof value['id'] === 'string'
-    && typeof value['label'] === 'string';
 }
 
 async function touchProjectActivity(
@@ -4441,17 +3131,6 @@ async function touchProjectActivity(
   if (settings.projectSortMode === 'lastActive') {
     await provider.refresh();
   }
-}
-
-function normalizeFsPath(value: string): string {
-  if (process.platform === 'win32') {
-    const match = /^\/([a-zA-Z]:)(\/.*)/.exec(value);
-    if (match) {
-      return `${match[1]}${match[2]}`.replace(/\//g, '\\');
-    }
-    return value.replace(/\//g, '\\');
-  }
-  return value;
 }
 
 async function resolveWorkingDirectory(

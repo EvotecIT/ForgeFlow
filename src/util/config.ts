@@ -13,6 +13,8 @@ export interface ForgeFlowSettings {
   identityScanDepth: number;
   identityPreferredFolders: string[];
   projectModifiedScanDepth: number;
+  projectModifiedIgnoreFolders: string[];
+  projectModifiedIgnoreFileExtensions: string[];
   projectGitCommitCacheMinutes: number;
   projectPageSize: number;
   projectGitWatchMode: 'off' | 'workspace' | 'favorites' | 'all';
@@ -56,6 +58,7 @@ export interface ForgeFlowSettings {
   browserPreferred: 'default' | 'edge' | 'chrome' | 'chromium' | 'firefox' | 'firefox-dev' | 'custom';
   browserFileExtensions: string[];
   browserCustomPath?: string;
+  powerforgeCliPath?: string;
   dashboardHideArchived: boolean;
   dashboardAutoRefreshMinutes: number;
   dashboardHealthEnabled: boolean;
@@ -89,6 +92,28 @@ export function getForgeFlowSettings(): ForgeFlowSettings {
       'sources'
     ]),
     projectModifiedScanDepth: config.get<number>('projects.modifiedScanDepth', 2),
+    projectModifiedIgnoreFolders: config.get<string[]>('projects.modifiedIgnoreFolders', [
+      '.git',
+      '.github',
+      '.vscode',
+      'node_modules',
+      'bin',
+      'obj',
+      'dist',
+      'out',
+      'artifacts',
+      'artefacts',
+      'packages',
+      'coverage',
+      'testresults',
+      'logs'
+    ]),
+    projectModifiedIgnoreFileExtensions: config.get<string[]>('projects.modifiedIgnoreFileExtensions', [
+      'log',
+      'tmp',
+      'cache',
+      'bak'
+    ]),
     projectGitCommitCacheMinutes: config.get<number>('projects.gitCommitCacheMinutes', 30),
     projectPageSize: config.get<number>('projects.pageSize', 200),
     projectGitWatchMode: config.get<'off' | 'workspace' | 'favorites' | 'all'>('projects.gitWatch', 'off'),
@@ -157,6 +182,7 @@ export function getForgeFlowSettings(): ForgeFlowSettings {
     browserPreferred: config.get<'default' | 'edge' | 'chrome' | 'chromium' | 'firefox' | 'firefox-dev' | 'custom'>('browser.preferred', 'default'),
     browserFileExtensions: config.get<string[]>('browser.fileExtensions', ['html', 'htm', 'md', 'svg']),
     browserCustomPath: config.get<string>('browser.customPath'),
+    powerforgeCliPath: config.get<string>('powerforge.cliPath'),
     dashboardHideArchived: config.get<boolean>('dashboard.hideArchived', false),
     dashboardAutoRefreshMinutes: config.get<number>('dashboard.autoRefreshMinutes', 2),
     dashboardHealthEnabled: config.get<boolean>('dashboard.health.enabled', true),

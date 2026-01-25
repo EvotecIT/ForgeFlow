@@ -49,6 +49,11 @@
           "id": "forgeflow-panel",
           "title": "ForgeFlow Dashboard",
           "icon": "resources/forgeflow-panel.svg"
+        },
+        {
+          "id": "forgeflow-powerforge-panel",
+          "title": "PowerForge",
+          "icon": "resources/forgeflow-dashboard.svg"
         }
       ]
     },
@@ -58,26 +63,33 @@
           "id": "forgeflow.files",
           "name": "ForgeFlow: Files",
           "icon": "resources/forgeflow-files.svg",
-          "when": "forgeflow.layout != expanded"
+          "when": "forgeflow.layout != expanded && config.forgeflow.views.files.enabled"
+        },
+        {
+          "id": "forgeflow.powerforge",
+          "name": "PowerForge: Manager",
+          "type": "webview",
+          "icon": "resources/forgeflow-dashboard.svg",
+          "when": "forgeflow.layout != expanded && config.forgeflow.views.powerforge.enabled"
         },
         {
           "id": "forgeflow.projects",
           "name": "ForgeFlow: Projects",
           "icon": "resources/forgeflow-projects.svg",
-          "when": "forgeflow.layout != expanded"
+          "when": "forgeflow.layout != expanded && config.forgeflow.views.projects.enabled"
         },
         {
           "id": "forgeflow.projects.web",
-          "name": "ForgeFlow: Projects (Web)",
+          "name": "ForgeFlow: Projects Web",
           "type": "webview",
           "icon": "resources/forgeflow-projects-web.svg",
-          "when": "forgeflow.layout != expanded"
+          "when": "forgeflow.layout != expanded && config.forgeflow.views.projectsWeb.enabled"
         },
         {
           "id": "forgeflow.git",
           "name": "ForgeFlow: Git",
           "icon": "resources/forgeflow-git.svg",
-          "when": "forgeflow.layout != expanded"
+          "when": "forgeflow.layout != expanded && config.forgeflow.views.git.enabled"
         }
       ],
       "forgeflow-panel": [
@@ -85,32 +97,42 @@
           "id": "forgeflow.dashboard",
           "name": "ForgeFlow: Dashboard",
           "type": "webview",
-          "icon": "resources/forgeflow-dashboard.svg"
+          "icon": "resources/forgeflow-dashboard.svg",
+          "when": "config.forgeflow.views.dashboard.enabled"
         },
         {
           "id": "forgeflow.files.panel",
-          "name": "ForgeFlow: Files",
+          "name": "ForgeFlow: Files (Panel)",
           "icon": "resources/forgeflow-files.svg",
-          "when": "forgeflow.layout == expanded"
+          "when": "forgeflow.layout == expanded && config.forgeflow.views.files.enabled"
         },
         {
           "id": "forgeflow.projects.panel",
-          "name": "ForgeFlow: Projects",
+          "name": "ForgeFlow: Projects (Panel)",
           "icon": "resources/forgeflow-projects.svg",
-          "when": "forgeflow.layout == expanded"
+          "when": "forgeflow.layout == expanded && config.forgeflow.views.projects.enabled"
         },
         {
           "id": "forgeflow.projects.web.panel",
-          "name": "ForgeFlow: Projects (Web)",
+          "name": "ForgeFlow: Projects Web (Panel)",
           "type": "webview",
           "icon": "resources/forgeflow-projects-web.svg",
-          "when": "forgeflow.layout == expanded"
+          "when": "forgeflow.layout == expanded && config.forgeflow.views.projectsWeb.enabled"
         },
         {
           "id": "forgeflow.git.panel",
-          "name": "ForgeFlow: Git",
+          "name": "ForgeFlow: Git (Panel)",
           "icon": "resources/forgeflow-git.svg",
-          "when": "forgeflow.layout == expanded"
+          "when": "forgeflow.layout == expanded && config.forgeflow.views.git.enabled"
+        }
+      ],
+      "forgeflow-powerforge-panel": [
+        {
+          "id": "forgeflow.powerforge.panel",
+          "name": "PowerForge: Manager (Panel)",
+          "type": "webview",
+          "icon": "resources/forgeflow-dashboard.svg",
+          "when": "forgeflow.layout == expanded && config.forgeflow.views.powerforge.enabled"
         }
       ]
     },
@@ -388,6 +410,13 @@
         "category": "ForgeFlow"
       },
       {
+        "command": "forgeflow.projects.toggleSortDirection",
+        "title": "Toggle Project Sort Direction",
+        "shortTitle": "Toggle Sort Direction",
+        "icon": "$(arrow-swap)",
+        "category": "ForgeFlow"
+      },
+      {
         "command": "forgeflow.projects.filter",
         "title": "Filter Projects",
         "icon": "$(filter)",
@@ -561,6 +590,12 @@
         "category": "ForgeFlow"
       },
       {
+        "command": "forgeflow.views.openSelected",
+        "title": "Open Selected ForgeFlow Views",
+        "shortTitle": "Open Selected Views",
+        "category": "ForgeFlow"
+      },
+      {
         "command": "forgeflow.diagnostics.export",
         "title": "Export Diagnostics (JSON)",
         "shortTitle": "Export Diagnostics",
@@ -682,6 +717,48 @@
           "light": "resources/icons/profile-admin-light.svg",
           "dark": "resources/icons/profile-admin-dark.svg"
         },
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.powerforge.plan",
+        "title": "PowerForge: Plan Pipeline",
+        "shortTitle": "Plan Pipeline",
+        "icon": "$(checklist)",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.powerforge.pipeline",
+        "title": "PowerForge: Run Pipeline",
+        "shortTitle": "Run Pipeline",
+        "icon": "$(play)",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.powerforge.dotnetPublish",
+        "title": "PowerForge: DotNet Publish",
+        "shortTitle": "DotNet Publish",
+        "icon": "$(package)",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.powerforge.dotnetPublish.plan",
+        "title": "PowerForge: DotNet Publish (Plan)",
+        "shortTitle": "DotNet Publish (Plan)",
+        "icon": "$(checklist)",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.powerforge.dotnetPublish.validate",
+        "title": "PowerForge: DotNet Publish (Validate)",
+        "shortTitle": "DotNet Publish (Validate)",
+        "icon": "$(check)",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.powerforge.refresh",
+        "title": "PowerForge: Refresh",
+        "shortTitle": "Refresh",
+        "icon": "$(refresh)",
         "category": "ForgeFlow"
       },
       {
@@ -1256,6 +1333,11 @@
           "group": "navigation@1"
         },
         {
+          "command": "forgeflow.powerforge.refresh",
+          "when": "(view == forgeflow.powerforge || view == forgeflow.powerforge.panel)",
+          "group": "navigation@1"
+        },
+        {
           "command": "forgeflow.projects.search",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel)",
           "group": "navigation@2"
@@ -1272,6 +1354,11 @@
         },
         {
           "command": "forgeflow.projects.setSortDirection",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel)",
+          "group": "navigation@6"
+        },
+        {
+          "command": "forgeflow.projects.toggleSortDirection",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel)",
           "group": "navigation@5"
         },
@@ -1472,6 +1559,31 @@
           }
         },
         {
+          "command": "forgeflow.powerforge.plan",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile && resourceFilename =~ /powerforge(\\.pipeline)?\\.json$/",
+          "group": "5_forgeflow@40"
+        },
+        {
+          "command": "forgeflow.powerforge.pipeline",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile && resourceFilename =~ /powerforge(\\.pipeline)?\\.json$/",
+          "group": "5_forgeflow@41"
+        },
+        {
+          "command": "forgeflow.powerforge.dotnetPublish.plan",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile && resourceFilename =~ /powerforge\\.dotnetpublish\\.json$/",
+          "group": "5_forgeflow@42"
+        },
+        {
+          "command": "forgeflow.powerforge.dotnetPublish",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile && resourceFilename =~ /powerforge\\.dotnetpublish\\.json$/",
+          "group": "5_forgeflow@43"
+        },
+        {
+          "command": "forgeflow.powerforge.dotnetPublish.validate",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile && resourceFilename =~ /powerforge\\.dotnetpublish\\.json$/",
+          "group": "5_forgeflow@44"
+        },
+        {
           "command": "forgeflow.run",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceExtname == .ps1",
           "group": "inline@1",
@@ -1557,6 +1669,31 @@
             "light": "resources/icons/profile-admin-light.svg",
             "dark": "resources/icons/profile-admin-dark.svg"
           }
+        },
+        {
+          "command": "forgeflow.powerforge.plan",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceFilename =~ /powerforge(\\.pipeline)?\\.json$/",
+          "group": "5_forgeflow@40"
+        },
+        {
+          "command": "forgeflow.powerforge.pipeline",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceFilename =~ /powerforge(\\.pipeline)?\\.json$/",
+          "group": "5_forgeflow@41"
+        },
+        {
+          "command": "forgeflow.powerforge.dotnetPublish.plan",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceFilename =~ /powerforge\\.dotnetpublish\\.json$/",
+          "group": "5_forgeflow@42"
+        },
+        {
+          "command": "forgeflow.powerforge.dotnetPublish",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceFilename =~ /powerforge\\.dotnetpublish\\.json$/",
+          "group": "5_forgeflow@43"
+        },
+        {
+          "command": "forgeflow.powerforge.dotnetPublish.validate",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceFilename =~ /powerforge\\.dotnetpublish\\.json$/",
+          "group": "5_forgeflow@44"
         },
         {
           "command": "forgeflow.run.setFavoriteProfile",
@@ -2114,6 +2251,31 @@
           }
         },
         {
+          "command": "forgeflow.powerforge.plan",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectEntry && resourceFilename =~ /powerforge(\\.pipeline)?\\.json$/",
+          "group": "5_forgeflow@40"
+        },
+        {
+          "command": "forgeflow.powerforge.pipeline",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectEntry && resourceFilename =~ /powerforge(\\.pipeline)?\\.json$/",
+          "group": "5_forgeflow@41"
+        },
+        {
+          "command": "forgeflow.powerforge.dotnetPublish.plan",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectEntry && resourceFilename =~ /powerforge\\.dotnetpublish\\.json$/",
+          "group": "5_forgeflow@42"
+        },
+        {
+          "command": "forgeflow.powerforge.dotnetPublish",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectEntry && resourceFilename =~ /powerforge\\.dotnetpublish\\.json$/",
+          "group": "5_forgeflow@43"
+        },
+        {
+          "command": "forgeflow.powerforge.dotnetPublish.validate",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectEntry && resourceFilename =~ /powerforge\\.dotnetpublish\\.json$/",
+          "group": "5_forgeflow@44"
+        },
+        {
           "command": "forgeflow.run",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectPinned && resourceExtname == .ps1",
           "group": "inline@1",
@@ -2241,6 +2403,31 @@
           }
         },
         {
+          "command": "forgeflow.powerforge.plan",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectPinned && resourceFilename =~ /powerforge(\\.pipeline)?\\.json$/",
+          "group": "5_forgeflow@40"
+        },
+        {
+          "command": "forgeflow.powerforge.pipeline",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectPinned && resourceFilename =~ /powerforge(\\.pipeline)?\\.json$/",
+          "group": "5_forgeflow@41"
+        },
+        {
+          "command": "forgeflow.powerforge.dotnetPublish.plan",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectPinned && resourceFilename =~ /powerforge\\.dotnetpublish\\.json$/",
+          "group": "5_forgeflow@42"
+        },
+        {
+          "command": "forgeflow.powerforge.dotnetPublish",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectPinned && resourceFilename =~ /powerforge\\.dotnetpublish\\.json$/",
+          "group": "5_forgeflow@43"
+        },
+        {
+          "command": "forgeflow.powerforge.dotnetPublish.validate",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectPinned && resourceFilename =~ /powerforge\\.dotnetpublish\\.json$/",
+          "group": "5_forgeflow@44"
+        },
+        {
           "command": "forgeflow.run.chooseProfile",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectEntry && resourceExtname == .ps1",
           "group": "inline@2",
@@ -2314,6 +2501,31 @@
             "light": "resources/icons/open-sln-light.svg",
             "dark": "resources/icons/open-sln-dark.svg"
           }
+        },
+        {
+          "command": "forgeflow.powerforge.plan",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectBrowseItem && resourceFilename =~ /powerforge(\\.pipeline)?\\.json$/",
+          "group": "5_forgeflow@40"
+        },
+        {
+          "command": "forgeflow.powerforge.pipeline",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectBrowseItem && resourceFilename =~ /powerforge(\\.pipeline)?\\.json$/",
+          "group": "5_forgeflow@41"
+        },
+        {
+          "command": "forgeflow.powerforge.dotnetPublish.plan",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectBrowseItem && resourceFilename =~ /powerforge\\.dotnetpublish\\.json$/",
+          "group": "5_forgeflow@42"
+        },
+        {
+          "command": "forgeflow.powerforge.dotnetPublish",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectBrowseItem && resourceFilename =~ /powerforge\\.dotnetpublish\\.json$/",
+          "group": "5_forgeflow@43"
+        },
+        {
+          "command": "forgeflow.powerforge.dotnetPublish.validate",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectBrowseItem && resourceFilename =~ /powerforge\\.dotnetpublish\\.json$/",
+          "group": "5_forgeflow@44"
         },
         {
           "command": "forgeflow.projects.addEntryPoint",
@@ -2522,6 +2734,21 @@
         "when": "(view == forgeflow.files || view == forgeflow.files.panel) && listFocus"
       },
       {
+        "command": "forgeflow.files.open",
+        "key": "enter",
+        "when": "(view == forgeflow.files || view == forgeflow.files.panel) && listFocus"
+      },
+      {
+        "command": "forgeflow.files.openToSide",
+        "key": "ctrl+enter",
+        "when": "(view == forgeflow.files || view == forgeflow.files.panel) && listFocus"
+      },
+      {
+        "command": "forgeflow.files.openToSide",
+        "key": "cmd+enter",
+        "when": "isMac && (view == forgeflow.files || view == forgeflow.files.panel) && listFocus"
+      },
+      {
         "command": "forgeflow.files.delete",
         "key": "delete",
         "when": "(view == forgeflow.files || view == forgeflow.files.panel) && listFocus"
@@ -2600,6 +2827,36 @@
           ],
           "default": "workspace"
         },
+        "forgeflow.views.files.enabled": {
+          "type": "boolean",
+          "description": "Show the ForgeFlow Files view.",
+          "default": true
+        },
+        "forgeflow.views.projects.enabled": {
+          "type": "boolean",
+          "description": "Show the ForgeFlow Projects view.",
+          "default": true
+        },
+        "forgeflow.views.projectsWeb.enabled": {
+          "type": "boolean",
+          "description": "Show the ForgeFlow Projects Web view.",
+          "default": true
+        },
+        "forgeflow.views.git.enabled": {
+          "type": "boolean",
+          "description": "Show the ForgeFlow Git view.",
+          "default": true
+        },
+        "forgeflow.views.dashboard.enabled": {
+          "type": "boolean",
+          "description": "Show the ForgeFlow Dashboard view.",
+          "default": true
+        },
+        "forgeflow.views.powerforge.enabled": {
+          "type": "boolean",
+          "description": "Show the PowerForge Manager view.",
+          "default": true
+        },
         "forgeflow.projects.scanRoots": {
           "type": "array",
           "description": "Roots to scan for projects.",
@@ -2620,6 +2877,42 @@
           "default": 2,
           "minimum": 0,
           "maximum": 60
+        },
+        "forgeflow.projects.modifiedIgnoreFolders": {
+          "type": "array",
+          "description": "Folder names to ignore when computing recent modified time (case-insensitive).",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            ".git",
+            ".github",
+            ".vscode",
+            "node_modules",
+            "bin",
+            "obj",
+            "dist",
+            "out",
+            "artifacts",
+            "artefacts",
+            "packages",
+            "coverage",
+            "testresults",
+            "logs"
+          ]
+        },
+        "forgeflow.projects.modifiedIgnoreFileExtensions": {
+          "type": "array",
+          "description": "File extensions to ignore when computing recent modified time (without dot, case-insensitive).",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "log",
+            "tmp",
+            "cache",
+            "bak"
+          ]
         },
         "forgeflow.projects.sortMode": {
           "type": "string",
@@ -2998,6 +3291,11 @@
           "type": "string",
           "description": "Custom browser executable path when preferred is set to custom."
         },
+        "forgeflow.powerforge.cliPath": {
+          "type": "string",
+          "description": "Path to the PowerForge CLI executable (powerforge or powerforge.exe). When empty, ForgeFlow will use the repo CLI project or PATH.",
+          "default": ""
+        },
         "forgeflow.browser.fileExtensions": {
           "type": "array",
           "description": "File extensions that trigger Alt+B browser open (without dots).",
@@ -3162,7 +3460,8 @@
     "install:insiders:auto:remove": "powershell -ExecutionPolicy Bypass -File scripts/auto-install-insiders.ps1 -Remove",
     "dev:install:insiders": "powershell -ExecutionPolicy Bypass -File scripts/dev-install.ps1",
     "dev:install:stable": "powershell -ExecutionPolicy Bypass -File scripts/dev-install.ps1 -Stable",
-    "prepublishOnly": "npm run compile"
+    "prepublishOnly": "npm run compile",
+    "check:loc": "node scripts/check-loc.cjs"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",

@@ -21,6 +21,8 @@ jobs:
       - name: Lint
         run: npm run lint
       - name: Typecheck
+      - name: Line count
+        run: npm run check:loc
         run: npm run typecheck
       - name: Coverage
         run: npm run test:coverage

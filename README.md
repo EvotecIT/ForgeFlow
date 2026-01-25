@@ -1,6 +1,6 @@
 # ForgeFlow - Unified Explorer, Projects, and Git Workflow for VS Code
 
-ForgeFlow is a VS Code extension that replaces the built-in Explorer and project manager with a unified workflow, adds PowerShell execution profiles, and provides a dashboard panel for project health and activity. It is designed to be the VS Code front-end for a future C# engine named **PowerForge**.
+ForgeFlow is a VS Code extension that replaces the built-in Explorer and project manager with a unified workflow, adds PowerShell execution profiles, provides a dashboard panel for project health and activity, and integrates with the **PowerForge** CLI for build/publish pipelines.
 
 🧭 Quick Links
 
@@ -114,6 +114,11 @@ Open the Command Palette and type **ForgeFlow**. Key groups:
 **Browser**
 - Open in Browser / Open in Browser (Choose) / Set Preferred Browser
 
+**PowerForge**
+- Plan Pipeline / Run Pipeline
+- DotNet Publish / DotNet Publish (Plan) / DotNet Publish (Validate)
+- PowerForge Manager view (edit pipeline/publish metadata + run commands)
+
 **Layout & filters**
 - Toggle Layout (Compact / Expanded)
 - Focus/Clear filter + Save/Apply/Delete filter presets (Files/Projects/Git/Dashboard)
@@ -188,7 +193,6 @@ Re-run `npm run compile` after changes, then reload VS Code.
 ## Notes
 
 - Windows-only elevation is supported via external PowerShell. On non-Windows platforms, elevation is disabled.
-- PowerForge integration is **not implemented**. See `docs/architecture.md` for the contract stub.
 
 ## License
 

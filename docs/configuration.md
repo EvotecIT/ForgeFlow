@@ -75,6 +75,10 @@ All settings live under the `forgeflow` namespace.
 - `forgeflow.run.showProfileToast` (boolean)
   - Show which PowerShell profile was used (status bar).
 
+## PowerForge
+- `forgeflow.powerforge.cliPath` (string)
+  - Path to the PowerForge CLI executable (`powerforge`/`powerforge.exe`). When empty, ForgeFlow tries the repo CLI project or PATH.
+
 ## Files
 - `forgeflow.files.favorites.viewMode` ("workspace" | "all" | "pinned")
   - Controls which favorites are shown in the Files view.

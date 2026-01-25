@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { spawnSync } from 'child_process';
 import type { StateStore } from '../store/stateStore';
+import { LayoutStore } from '../store/layoutStore';
 
 const ONBOARDING_KEY = 'forgeflow.onboarding.completed.v1';
 
@@ -36,8 +37,16 @@ export async function runOnboarding(
           await vscode.commands.executeCommand('forgeflow.projects.configureScanRoots');
           break;
         case 'openViews':
-          await vscode.commands.executeCommand('workbench.view.extension.forgeflow');
+          await openDefaultViews(stateStore);
           break;
+        case 'applyViews': {
+          const payload = message as { views?: ViewSelection; open?: boolean };
+          await applyViewSelection(payload.views);
+          if (payload.open) {
+            await openSelectedViews(stateStore, payload.views);
+          }
+          break;
+        }
         case 'openDashboard':
           await vscode.commands.executeCommand('forgeflow.dashboard.open');
           break;
@@ -91,9 +100,23 @@ export async function runOnboarding(
   });
 }
 
+export async function openForgeFlowSelectedViews(stateStore: StateStore): Promise<void> {
+  await openSelectedViews(stateStore, readOnboardingStatus().views);
+}
+
+interface ViewSelection {
+  files: boolean;
+  projects: boolean;
+  projectsWeb: boolean;
+  git: boolean;
+  dashboard: boolean;
+  powerforge: boolean;
+}
+
 interface OnboardingStatus {
   scanRootsConfigured: boolean;
   runByFileEnabled: boolean;
+  views: ViewSelection;
 }
 
 interface EnvironmentStatus {
@@ -111,6 +134,7 @@ function renderOnboardingHtml(
   const nonce = randomNonce();
   const scanBadge = status.scanRootsConfigured ? 'Done' : 'Pending';
   const runBadge = status.runByFileEnabled ? 'Enabled' : 'Disabled';
+  const viewChecks = status.views;
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -205,6 +229,21 @@ function renderOnboardingHtml(
       margin: 0;
       font-size: 14px;
     }
+    .view-grid {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+    .view-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--ff-border);
+      background: color-mix(in srgb, var(--ff-fg) 4%, transparent);
+      font-size: 12px;
+    }
     .actions {
       display: flex;
       flex-wrap: wrap;
@@ -281,11 +320,37 @@ function renderOnboardingHtml(
         </div>
       </div>
       <div class="step">
-        <h3>2) Open the ForgeFlow views</h3>
-        <p>Access Files, Projects, and Git from the ForgeFlow activity bar.</p>
+        <h3>2) Choose your views</h3>
+        <p>Pick which ForgeFlow views you want to show in this window.</p>
+        <div class="view-grid">
+          <label class="view-item">
+            <input type="checkbox" data-view="files" ${viewChecks.files ? 'checked' : ''} />
+            <span>Explorer (Files)</span>
+          </label>
+          <label class="view-item">
+            <input type="checkbox" data-view="projects" ${viewChecks.projects ? 'checked' : ''} />
+            <span>Projects</span>
+          </label>
+          <label class="view-item">
+            <input type="checkbox" data-view="projectsWeb" ${viewChecks.projectsWeb ? 'checked' : ''} />
+            <span>Projects Web</span>
+          </label>
+          <label class="view-item">
+            <input type="checkbox" data-view="git" ${viewChecks.git ? 'checked' : ''} />
+            <span>Git</span>
+          </label>
+          <label class="view-item">
+            <input type="checkbox" data-view="dashboard" ${viewChecks.dashboard ? 'checked' : ''} />
+            <span>Dashboard</span>
+          </label>
+          <label class="view-item">
+            <input type="checkbox" data-view="powerforge" ${viewChecks.powerforge ? 'checked' : ''} />
+            <span>PowerForge Manager</span>
+          </label>
+        </div>
         <div class="actions">
-          <button data-action="openViews">Open ForgeFlow view</button>
-          <button data-action="openDashboard">Open Dashboard</button>
+          <button data-action="applyViews">Save selection</button>
+          <button class="primary" data-action="applyViews" data-open="true">Save + Open views</button>
         </div>
       </div>
       <div class="step">
@@ -325,11 +390,27 @@ function renderOnboardingHtml(
   </div>
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
+    function getSelectedViews() {
+      const views = {};
+      document.querySelectorAll('[data-view]').forEach((input) => {
+        const checkbox = input;
+        const key = checkbox.getAttribute('data-view');
+        if (key) {
+          views[key] = checkbox.checked;
+        }
+      });
+      return views;
+    }
     document.querySelectorAll('[data-action]').forEach((button) => {
       button.addEventListener('click', () => {
         const action = button.getAttribute('data-action');
         if (action) {
-          vscode.postMessage({ type: action });
+          if (action === 'applyViews') {
+            const open = button.getAttribute('data-open') === 'true';
+            vscode.postMessage({ type: action, views: getSelectedViews(), open });
+          } else {
+            vscode.postMessage({ type: action });
+          }
         }
       });
     });
@@ -348,8 +429,82 @@ function readOnboardingStatus(): OnboardingStatus {
   const scanRoots = config.get<string[]>('projects.scanRoots', []);
   return {
     scanRootsConfigured: Array.isArray(scanRoots) && scanRoots.length > 0,
-    runByFileEnabled: config.get<boolean>('run.byFile.enabled', false)
+    runByFileEnabled: config.get<boolean>('run.byFile.enabled', false),
+    views: {
+      files: config.get<boolean>('views.files.enabled', true),
+      projects: config.get<boolean>('views.projects.enabled', true),
+      projectsWeb: config.get<boolean>('views.projectsWeb.enabled', true),
+      git: config.get<boolean>('views.git.enabled', true),
+      dashboard: config.get<boolean>('views.dashboard.enabled', true),
+      powerforge: config.get<boolean>('views.powerforge.enabled', true)
+    }
   };
+}
+
+async function applyViewSelection(views?: ViewSelection): Promise<void> {
+  if (!views) {
+    return;
+  }
+  const config = vscode.workspace.getConfiguration('forgeflow');
+  await config.update('views.files.enabled', !!views.files, vscode.ConfigurationTarget.Global);
+  await config.update('views.projects.enabled', !!views.projects, vscode.ConfigurationTarget.Global);
+  await config.update('views.projectsWeb.enabled', !!views.projectsWeb, vscode.ConfigurationTarget.Global);
+  await config.update('views.git.enabled', !!views.git, vscode.ConfigurationTarget.Global);
+  await config.update('views.dashboard.enabled', !!views.dashboard, vscode.ConfigurationTarget.Global);
+  await config.update('views.powerforge.enabled', !!views.powerforge, vscode.ConfigurationTarget.Global);
+}
+
+async function openDefaultViews(stateStore: StateStore): Promise<void> {
+  await openSelectedViews(stateStore, readOnboardingStatus().views);
+}
+
+async function openSelectedViews(stateStore: StateStore, views?: ViewSelection): Promise<void> {
+  const layoutStore = new LayoutStore(stateStore);
+  const mode = layoutStore.getMode();
+  const usePanel = mode === 'expanded';
+
+  if (usePanel) {
+    await vscode.commands.executeCommand('workbench.view.extension.forgeflow-panel');
+  } else {
+    await vscode.commands.executeCommand('workbench.view.extension.forgeflow');
+  }
+
+  const selected = views ?? {
+    files: true,
+    projects: true,
+    projectsWeb: true,
+    git: true,
+    dashboard: true,
+    powerforge: true
+  };
+  const viewIds: string[] = [];
+  if (selected.files) {
+    viewIds.push(usePanel ? 'forgeflow.files.panel' : 'forgeflow.files');
+  }
+  if (selected.projects) {
+    viewIds.push(usePanel ? 'forgeflow.projects.panel' : 'forgeflow.projects');
+  }
+  if (selected.projectsWeb) {
+    viewIds.push(usePanel ? 'forgeflow.projects.web.panel' : 'forgeflow.projects.web');
+  }
+  if (selected.git) {
+    viewIds.push(usePanel ? 'forgeflow.git.panel' : 'forgeflow.git');
+  }
+  if (selected.powerforge) {
+    const panelView = usePanel ? 'forgeflow.powerforge.panel' : 'forgeflow.powerforge';
+    const container = usePanel ? 'workbench.view.extension.forgeflow-powerforge-panel' : undefined;
+    if (container) {
+      await vscode.commands.executeCommand(container);
+    }
+    viewIds.push(panelView);
+  }
+  if (selected.dashboard) {
+    await vscode.commands.executeCommand('forgeflow.dashboard.open');
+  }
+
+  for (const id of viewIds) {
+    await vscode.commands.executeCommand('workbench.action.openView', id);
+  }
 }
 
 function detectEnvironment(): EnvironmentStatus {
