@@ -29,6 +29,7 @@ export interface ForgeFlowSettings {
   powershellProfiles: PowerShellProfile[];
   defaultProfileId?: string;
   filesFavoritesViewMode: 'workspace' | 'all' | 'pinned';
+  filesOpenOnSelection: boolean;
   runDefaultTarget: RunTarget;
   runIntegratedReuseTerminal: boolean;
   runIntegratedReuseScope: 'profile' | 'shared';
@@ -47,6 +48,7 @@ export interface ForgeFlowSettings {
   runHistoryMaxItems: number;
   runHistoryPerProjectMaxItems: number;
   runHistoryPerProjectSortMode: 'time' | 'label' | 'type';
+  runHistoryClickAction: 'run' | 'confirm';
   runShowProfileToast: boolean;
   filtersScope: 'workspace' | 'global';
   filtersProjectsMinChars: number;
@@ -153,6 +155,7 @@ export function getForgeFlowSettings(): ForgeFlowSettings {
     powershellProfiles: config.get<PowerShellProfile[]>('powershell.profiles', []),
     defaultProfileId: config.get<string>('powershell.defaultProfileId'),
     filesFavoritesViewMode: config.get<'workspace' | 'all' | 'pinned'>('files.favorites.viewMode', 'workspace'),
+    filesOpenOnSelection: config.get<boolean>('files.openOnSelection', true),
     runDefaultTarget: config.get<RunTarget>('run.defaultTarget', 'integrated'),
     runIntegratedReuseTerminal: config.get<boolean>('run.integrated.reuseTerminal', true),
     runIntegratedReuseScope: config.get<'profile' | 'shared'>('run.integrated.reuseScope', 'profile'),
@@ -171,6 +174,7 @@ export function getForgeFlowSettings(): ForgeFlowSettings {
     runHistoryMaxItems: config.get<number>('run.history.maxItems', 50),
     runHistoryPerProjectMaxItems: config.get<number>('run.history.perProjectMaxItems', 6),
     runHistoryPerProjectSortMode: config.get<'time' | 'label' | 'type'>('run.history.perProjectSortMode', 'time'),
+    runHistoryClickAction: config.get<'run' | 'confirm'>('run.history.clickAction', 'confirm'),
     runShowProfileToast: config.get<boolean>('run.showProfileToast', true),
     filtersScope: config.get<'workspace' | 'global'>('filters.scope', 'workspace'),
     filtersProjectsMinChars: config.get<number>('filters.projects.minChars', 2),

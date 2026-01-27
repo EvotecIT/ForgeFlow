@@ -24,6 +24,7 @@ import { StateStore } from './store/stateStore';
 import { LayoutStore } from './store/layoutStore';
 import { GitFilterStore } from './store/gitFilterStore';
 import { FilesViewProvider } from './views/filesView';
+import { FilesDragAndDropController } from './views/filesDragAndDrop';
 import { ProjectsViewProvider } from './views/projectsView';
 import { ProjectsWebviewProvider } from './views/projectsWebview';
 import { PowerForgeViewProvider } from './views/powerforge';
@@ -68,6 +69,7 @@ import {
   extractPath,
   extractPreset,
   extractProject,
+  getActiveEditorPath,
   isProjectHistory,
   isProjectPreset,
   resolveTargetPath
@@ -165,6 +167,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   };
 
   const filesProvider = new FilesViewProvider(favoritesStore, filesFilterStore);
+  const filesDragAndDrop = new FilesDragAndDropController();
   const projectsProvider = new ProjectsViewProvider(
     projectsStore,
     scanner,
@@ -190,12 +193,51 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const powerForgeViewProvider = new PowerForgeViewProvider(context, projectsStore);
   const powerForgePanelProvider = new PowerForgeViewProvider(context, projectsStore);
 
-  const filesView = vscode.window.createTreeView('forgeflow.files', { treeDataProvider: filesProvider, canSelectMany: true });
-  const filesPanelView = vscode.window.createTreeView('forgeflow.files.panel', { treeDataProvider: filesProvider, canSelectMany: true });
+  const filesView = vscode.window.createTreeView('forgeflow.files', {
+    treeDataProvider: filesProvider,
+    canSelectMany: true,
+    dragAndDropController: filesDragAndDrop
+  });
+  const filesPanelView = vscode.window.createTreeView('forgeflow.files.panel', {
+    treeDataProvider: filesProvider,
+    canSelectMany: true,
+    dragAndDropController: filesDragAndDrop
+  });
   const projectsView = vscode.window.createTreeView('forgeflow.projects', { treeDataProvider: projectsProvider });
   const projectsPanelView = vscode.window.createTreeView('forgeflow.projects.panel', { treeDataProvider: projectsProvider });
   const gitView = vscode.window.createTreeView('forgeflow.git', { treeDataProvider: gitProvider });
   const gitPanelView = vscode.window.createTreeView('forgeflow.git.panel', { treeDataProvider: gitProvider });
+
+  const openOnSelection = async (selection: readonly unknown[]): Promise<void> => {
+    if (!getForgeFlowSettings().filesOpenOnSelection) {
+      return;
+    }
+    if (selection.length !== 1) {
+      return;
+    }
+    const candidatePath = extractPath(selection[0]);
+    if (!candidatePath) {
+      return;
+    }
+    const stat = await statPath(candidatePath);
+    if (stat?.type !== vscode.FileType.File) {
+      return;
+    }
+    const active = getActiveEditorPath();
+    if (active && normalizeFsPath(active) === normalizeFsPath(candidatePath)) {
+      return;
+    }
+    await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(candidatePath), { preview: true, preserveFocus: true });
+  };
+
+  context.subscriptions.push(
+    filesView.onDidChangeSelection((event) => {
+      void openOnSelection(event.selection);
+    }),
+    filesPanelView.onDidChangeSelection((event) => {
+      void openOnSelection(event.selection);
+    })
+  );
 
   const updateFilesFilterMessage = (): void => {
     const settings = getForgeFlowSettings();
@@ -553,6 +595,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         return;
       }
       const entryWithProject = project && !entry.projectId ? { ...entry, projectId: project.id } : entry;
+      if (getForgeFlowSettings().runHistoryClickAction === 'confirm') {
+        const confirmed = await confirmRunHistoryClick(entryWithProject, project);
+        if (!confirmed) {
+          return;
+        }
+      }
       await runHistoryEntry(entryWithProject, runHistoryStore, runService, projectsStore);
     }),
     vscode.commands.registerCommand('forgeflow.projects.deleteHistoryItem', async (target?: unknown) => {
@@ -1691,6 +1739,16 @@ async function runHistoryEntry(
     return;
   }
   vscode.window.showWarningMessage('ForgeFlow: Unable to run selected history entry.');
+}
+
+async function confirmRunHistoryClick(entry: RunHistoryEntry, project?: Project): Promise<boolean> {
+  const label = entry.label || 'Recent run';
+  const locationHint = entry.filePath ?? entry.command ?? project?.path;
+  const detail = locationHint ? `\n${locationHint}` : '';
+  const message = `ForgeFlow: Run "${label}"?${detail}`;
+  const runChoice = 'Run';
+  const picked = await vscode.window.showInformationMessage(message, { modal: true }, runChoice);
+  return picked === runChoice;
 }
 
 async function runProjectHistory(

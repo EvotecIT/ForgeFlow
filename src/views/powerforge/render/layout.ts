@@ -35,7 +35,7 @@ export function renderView(state: PowerForgeViewState): string {
     <body>
       <header class="page-header">
         <div>
-          <h1>ForgeFlow: PowerForge Manager</h1>
+          <h1>PowerForge — Manager</h1>
           <div class="subheading">
             <span class="pill">${scopeLabel}</span>
             <span class="pill">Configs: ${configCount}</span>

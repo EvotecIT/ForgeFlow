@@ -40,7 +40,7 @@
       "activitybar": [
         {
           "id": "forgeflow",
-          "title": "ForgeFlow Explorer",
+          "title": "ForgeFlow",
           "icon": "resources/forgeflow-activity.svg"
         }
       ],
@@ -52,7 +52,7 @@
         },
         {
           "id": "forgeflow-powerforge-panel",
-          "title": "PowerForge",
+          "title": "PowerForge Manager",
           "icon": "resources/forgeflow-dashboard.svg"
         }
       ]
@@ -61,33 +61,33 @@
       "forgeflow": [
         {
           "id": "forgeflow.files",
-          "name": "ForgeFlow: Files",
+          "name": "Files — ForgeFlow",
           "icon": "resources/forgeflow-files.svg",
           "when": "forgeflow.layout != expanded && config.forgeflow.views.files.enabled"
         },
         {
           "id": "forgeflow.powerforge",
-          "name": "PowerForge: Manager",
+          "name": "PowerForge — Manager",
           "type": "webview",
           "icon": "resources/forgeflow-dashboard.svg",
           "when": "forgeflow.layout != expanded && config.forgeflow.views.powerforge.enabled"
         },
         {
           "id": "forgeflow.projects",
-          "name": "ForgeFlow: Projects",
+          "name": "Projects — ForgeFlow",
           "icon": "resources/forgeflow-projects.svg",
           "when": "forgeflow.layout != expanded && config.forgeflow.views.projects.enabled"
         },
         {
           "id": "forgeflow.projects.web",
-          "name": "ForgeFlow: Projects Web",
+          "name": "Projects Web — ForgeFlow",
           "type": "webview",
           "icon": "resources/forgeflow-projects-web.svg",
           "when": "forgeflow.layout != expanded && config.forgeflow.views.projectsWeb.enabled"
         },
         {
           "id": "forgeflow.git",
-          "name": "ForgeFlow: Git",
+          "name": "Git — ForgeFlow",
           "icon": "resources/forgeflow-git.svg",
           "when": "forgeflow.layout != expanded && config.forgeflow.views.git.enabled"
         }
@@ -95,33 +95,33 @@
       "forgeflow-panel": [
         {
           "id": "forgeflow.dashboard",
-          "name": "ForgeFlow: Dashboard",
+          "name": "Dashboard — ForgeFlow",
           "type": "webview",
           "icon": "resources/forgeflow-dashboard.svg",
           "when": "config.forgeflow.views.dashboard.enabled"
         },
         {
           "id": "forgeflow.files.panel",
-          "name": "ForgeFlow: Files (Panel)",
+          "name": "Files — ForgeFlow (Panel)",
           "icon": "resources/forgeflow-files.svg",
           "when": "forgeflow.layout == expanded && config.forgeflow.views.files.enabled"
         },
         {
           "id": "forgeflow.projects.panel",
-          "name": "ForgeFlow: Projects (Panel)",
+          "name": "Projects — ForgeFlow (Panel)",
           "icon": "resources/forgeflow-projects.svg",
           "when": "forgeflow.layout == expanded && config.forgeflow.views.projects.enabled"
         },
         {
           "id": "forgeflow.projects.web.panel",
-          "name": "ForgeFlow: Projects Web (Panel)",
+          "name": "Projects Web — ForgeFlow (Panel)",
           "type": "webview",
           "icon": "resources/forgeflow-projects-web.svg",
           "when": "forgeflow.layout == expanded && config.forgeflow.views.projectsWeb.enabled"
         },
         {
           "id": "forgeflow.git.panel",
-          "name": "ForgeFlow: Git (Panel)",
+          "name": "Git — ForgeFlow (Panel)",
           "icon": "resources/forgeflow-git.svg",
           "when": "forgeflow.layout == expanded && config.forgeflow.views.git.enabled"
         }
@@ -129,7 +129,7 @@
       "forgeflow-powerforge-panel": [
         {
           "id": "forgeflow.powerforge.panel",
-          "name": "PowerForge: Manager (Panel)",
+          "name": "PowerForge — Manager (Panel)",
           "type": "webview",
           "icon": "resources/forgeflow-dashboard.svg",
           "when": "forgeflow.layout == expanded && config.forgeflow.views.powerforge.enabled"
@@ -213,12 +213,21 @@
         "command": "forgeflow.files.newFile",
         "title": "New File",
         "shortTitle": "New File",
+        "icon": "$(new-file)",
         "category": "ForgeFlow"
       },
       {
         "command": "forgeflow.files.newFolder",
         "title": "New Folder",
         "shortTitle": "New Folder",
+        "icon": "$(new-folder)",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.files.pasteRoot",
+        "title": "Paste (Workspace Root)",
+        "shortTitle": "Paste to Workspace",
+        "icon": "$(clippy)",
         "category": "ForgeFlow"
       },
       {
@@ -1293,39 +1302,54 @@
           "group": "navigation"
         },
         {
+          "command": "forgeflow.files.newFile",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel)",
+          "group": "navigation@2"
+        },
+        {
+          "command": "forgeflow.files.newFolder",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel)",
+          "group": "navigation@3"
+        },
+        {
+          "command": "forgeflow.files.pasteRoot",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel)",
+          "group": "navigation@4"
+        },
+        {
           "command": "forgeflow.files.filter",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel)",
-          "group": "navigation"
+          "group": "navigation@10"
         },
         {
           "command": "forgeflow.files.focusFilter",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel)",
-          "group": "navigation"
+          "group": "navigation@11"
         },
         {
           "command": "forgeflow.files.applyFilterPreset",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel)",
-          "group": "navigation"
+          "group": "navigation@12"
         },
         {
           "command": "forgeflow.files.saveFilterPreset",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel)",
-          "group": "navigation"
+          "group": "navigation@13"
         },
         {
           "command": "forgeflow.files.deleteFilterPreset",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel)",
-          "group": "navigation"
+          "group": "navigation@14"
         },
         {
           "command": "forgeflow.files.setFavoritesViewMode",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel)",
-          "group": "navigation"
+          "group": "navigation@15"
         },
         {
           "command": "forgeflow.files.clearFilter",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel)",
-          "group": "navigation"
+          "group": "navigation@16"
         },
         {
           "command": "forgeflow.projects.refresh",
@@ -2827,6 +2851,11 @@
           ],
           "default": "workspace"
         },
+        "forgeflow.files.openOnSelection": {
+          "type": "boolean",
+          "description": "Open files when selected in the ForgeFlow Files view.",
+          "default": true
+        },
         "forgeflow.views.files.enabled": {
           "type": "boolean",
           "description": "Show the ForgeFlow Files view.",
@@ -3184,6 +3213,15 @@
             "type"
           ],
           "default": "time"
+        },
+        "forgeflow.run.history.clickAction": {
+          "type": "string",
+          "description": "What happens when you click a Recent Runs item in the Projects tree.",
+          "enum": [
+            "confirm",
+            "run"
+          ],
+          "default": "confirm"
         },
         "forgeflow.run.showProfileToast": {
           "type": "boolean",

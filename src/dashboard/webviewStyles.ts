@@ -247,6 +247,17 @@ export const dashboardWebviewStyles = `
       height: 12px;
       fill: currentColor;
     }
+    .sr-only {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
     .empty {
       padding: 12px;
       font-size: 11px;

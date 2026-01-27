@@ -18,7 +18,7 @@ export class PowerForgeViewProvider implements vscode.WebviewViewProvider {
 
   public resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
-    view.title = 'PowerForge Manager';
+    view.title = 'PowerForge — Manager';
     view.webview.options = {
       enableScripts: true,
       localResourceRoots: [this.context.extensionUri]

@@ -9,7 +9,7 @@ import { getForgeFlowSettings } from '../util/config';
 import { resolveProfileLabel } from '../run/powershellProfiles';
 import { matchesFilterQuery } from '../util/filter';
 
-interface FilesNode {
+export interface FilesNode {
   readonly id: string;
   getChildren(): Promise<FilesNode[]>;
   getTreeItem(): vscode.TreeItem;

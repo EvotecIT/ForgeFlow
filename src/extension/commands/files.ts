@@ -275,6 +275,37 @@ export function registerFileCommands(deps: FileCommandDeps): void {
       filesProvider.refresh();
       await projectsProvider.refresh();
     }),
+    vscode.commands.registerCommand('forgeflow.files.pasteRoot', async () => {
+      if (!fileClipboard || fileClipboard.paths.length === 0) {
+        vscode.window.showWarningMessage('ForgeFlow: Clipboard is empty.');
+        return;
+      }
+      const folders = vscode.workspace.workspaceFolders ?? [];
+      if (folders.length === 0) {
+        vscode.window.showWarningMessage('ForgeFlow: No workspace folder available.');
+        return;
+      }
+      let baseDir = folders[0]?.uri.fsPath;
+      if (folders.length > 1) {
+        const pick = await vscode.window.showQuickPick(
+          folders.map((folder) => ({ label: folder.name, description: folder.uri.fsPath, folder })),
+          { placeHolder: 'Select target folder' }
+        );
+        if (!pick) {
+          return;
+        }
+        baseDir = pick.folder.uri.fsPath;
+      }
+      if (!baseDir) {
+        return;
+      }
+      await pastePaths(baseDir, fileClipboard);
+      if (fileClipboard.mode === 'cut') {
+        fileClipboard = undefined;
+      }
+      filesProvider.refresh();
+      await projectsProvider.refresh();
+    }),
     vscode.commands.registerCommand('forgeflow.files.run', async (target?: unknown) => {
       const filePath = extractPath(target);
       await vscode.commands.executeCommand('forgeflow.run', filePath);

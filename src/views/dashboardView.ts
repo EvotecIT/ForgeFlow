@@ -37,6 +37,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
   public resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
+    webviewView.title = 'Dashboard — ForgeFlow';
     webviewView.webview.options = {
       enableScripts: true
     };

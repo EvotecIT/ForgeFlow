@@ -22,6 +22,7 @@ import {
   isPowerShellPath,
   resolveProjectProfileLabel
 } from './helpers';
+import { groupProjectsWithWorktrees } from './duplicateGrouping';
 
 export class ProjectHintNode implements ProjectNode {
   public readonly id: string;
@@ -148,16 +149,32 @@ export class ProjectGroupNode implements ProjectNode {
   }
 
   public async getChildren(): Promise<ProjectNode[]> {
-    const nodes = this.projects.map((project) => new ProjectItemNode(
-      project,
-      this.isFavoriteGroup,
-      this.duplicateInfo?.get(project.id),
-      this.summaries?.[project.id],
-      this.showSummary ?? false,
-      this.entryPointResolver,
-      this.tagsResolver?.(project.id) ?? [],
-      this.historyResolver?.(project) ?? []
-    ));
+    if (!this.duplicateInfo || this.duplicateInfo.size === 0) {
+      const nodes = this.projects.map((project) => this.createProjectNode(project));
+      return [...nodes, ...this.tailNodes];
+    }
+    const grouped = await groupProjectsWithWorktrees(this.projects, this.duplicateInfo);
+    const nodes: ProjectNode[] = [];
+    for (const entry of grouped) {
+      if (entry.kind === 'single') {
+        nodes.push(this.createProjectNode(entry.project));
+        continue;
+      }
+      nodes.push(
+        new ProjectDuplicateGroupNode(
+          entry.duplicate.mainProject,
+          entry.duplicate.projects,
+          entry.duplicate.worktrees,
+          this.isFavoriteGroup,
+          this.duplicateInfo,
+          this.summaries,
+          this.showSummary ?? false,
+          this.entryPointResolver,
+          this.tagsResolver,
+          this.historyResolver
+        )
+      );
+    }
     return [...nodes, ...this.tailNodes];
   }
 
@@ -169,6 +186,19 @@ export class ProjectGroupNode implements ProjectNode {
       item.description = this.description;
     }
     return item;
+  }
+
+  private createProjectNode(project: Project): ProjectItemNode {
+    return new ProjectItemNode(
+      project,
+      this.isFavoriteGroup,
+      this.duplicateInfo?.get(project.id),
+      this.summaries?.[project.id],
+      this.showSummary ?? false,
+      this.entryPointResolver,
+      this.tagsResolver?.(project.id) ?? [],
+      this.historyResolver?.(project) ?? []
+    );
   }
 }
 
@@ -193,6 +223,63 @@ export class ProjectLoadMoreNode implements ProjectNode {
     item.iconPath = new vscode.ThemeIcon('more');
     if (remaining > 0) {
       item.command = { command: 'forgeflow.projects.loadMore', title: 'Load more projects' };
+    }
+    return item;
+  }
+}
+
+export class ProjectDuplicateGroupNode implements ProjectNode {
+  public readonly id: string;
+
+  public constructor(
+    private readonly mainProject: Project,
+    private readonly projects: Project[],
+    private readonly worktrees: Project[],
+    private readonly isFavoriteGroup: boolean,
+    private readonly duplicateInfo?: Map<string, DuplicateInfo>,
+    private readonly summaries?: Record<string, GitProjectSummary>,
+    private readonly showSummary = false,
+    private readonly entryPointResolver?: (project: Project) => Promise<EntryPointGroups>,
+    private readonly tagsResolver?: (projectId: string) => string[],
+    private readonly historyResolver?: (project: Project) => RunHistoryEntry[]
+  ) {
+    this.id = treeId('project-duplicate-group', mainProject.id);
+  }
+
+  public async getChildren(): Promise<ProjectNode[]> {
+    const ordered = this.projects.slice().sort((a, b) => a.path.localeCompare(b.path));
+    const mainFirst = ordered.sort((a, b) => {
+      if (a.id === this.mainProject.id) {
+        return -1;
+      }
+      if (b.id === this.mainProject.id) {
+        return 1;
+      }
+      return a.path.localeCompare(b.path);
+    });
+    return mainFirst.map((project) => new ProjectItemNode(
+      project,
+      this.isFavoriteGroup,
+      this.duplicateInfo?.get(project.id),
+      this.summaries?.[project.id],
+      this.showSummary,
+      this.entryPointResolver,
+      this.tagsResolver?.(project.id) ?? [],
+      this.historyResolver?.(project) ?? []
+    ));
+  }
+
+  public getTreeItem(): vscode.TreeItem {
+    const worktreeCount = this.worktrees.length;
+    const suffix = worktreeCount === 1 ? 'worktree' : 'worktrees';
+    const description = worktreeCount > 0 ? `${worktreeCount} ${suffix}` : undefined;
+    const item = new vscode.TreeItem(this.mainProject.name, vscode.TreeItemCollapsibleState.Collapsed);
+    item.contextValue = 'forgeflowProjectDuplicateGroup';
+    item.resourceUri = vscode.Uri.file(this.mainProject.path);
+    item.tooltip = `${this.mainProject.name}\n${this.mainProject.path}`;
+    item.iconPath = new vscode.ThemeIcon('repo');
+    if (description) {
+      item.description = description;
     }
     return item;
   }

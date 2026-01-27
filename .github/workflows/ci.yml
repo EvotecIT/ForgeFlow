@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,9 +23,9 @@ jobs:
       - name: Lint
         run: npm run lint
       - name: Typecheck
+        run: npm run typecheck
       - name: Line count
         run: npm run check:loc
-        run: npm run typecheck
       - name: Coverage
         run: npm run test:coverage
       - name: Upload coverage
@@ -35,9 +37,7 @@ jobs:
         if: ${{ env.CODECOV_TOKEN != '' }}
         uses: codecov/codecov-action@v5
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
+          token: ${{ env.CODECOV_TOKEN }}
           files: ./coverage/lcov.info
-        env:
-          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
       - name: Package
         run: npm run package

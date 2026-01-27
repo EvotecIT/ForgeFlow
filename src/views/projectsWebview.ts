@@ -28,6 +28,7 @@ export class ProjectsWebviewProvider implements vscode.WebviewViewProvider {
 
   public resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
+    webviewView.title = 'Projects Web — ForgeFlow';
     webviewView.webview.options = {
       enableScripts: true
     };
