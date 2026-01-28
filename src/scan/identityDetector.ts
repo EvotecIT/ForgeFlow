@@ -117,7 +117,9 @@ async function resolveGitConfigAt(projectPath: string): Promise<string | undefin
     return undefined;
   }
   if (stat.type === vscode.FileType.Directory) {
-    return path.join(dotGit, 'config');
+    const configPath = path.join(dotGit, 'config');
+    const configStat = await statPath(configPath);
+    return configStat ? configPath : undefined;
   }
   const text = await readFileText(dotGit);
   if (!text) {
@@ -128,8 +130,61 @@ async function resolveGitConfigAt(projectPath: string): Promise<string | undefin
   if (!gitDirValue) {
     return undefined;
   }
-  const resolved = path.isAbsolute(gitDirValue) ? gitDirValue : path.resolve(projectPath, gitDirValue);
-  return path.join(resolved, 'config');
+  const resolved = resolveGitPath(gitDirValue, projectPath);
+  const commonConfig = await resolveCommonGitConfig(resolved);
+  if (commonConfig) {
+    return commonConfig;
+  }
+  const derivedRepoConfig = await resolveRepoConfigFromWorktree(resolved);
+  if (derivedRepoConfig) {
+    return derivedRepoConfig;
+  }
+  const configPath = path.join(resolved, 'config');
+  const configStat = await statPath(configPath);
+  return configStat ? configPath : undefined;
+}
+
+async function resolveCommonGitConfig(gitDir: string): Promise<string | undefined> {
+  const commondirPath = path.join(gitDir, 'commondir');
+  const commondirStat = await statPath(commondirPath);
+  if (!commondirStat || commondirStat.type !== vscode.FileType.File) {
+    return undefined;
+  }
+  const commondirText = await readFileText(commondirPath);
+  const commondirValue = commondirText?.trim();
+  if (!commondirValue) {
+    return undefined;
+  }
+  const commonDir = resolveGitPath(commondirValue, gitDir);
+  const commonConfigPath = path.join(commonDir, 'config');
+  const configStat = await statPath(commonConfigPath);
+  return configStat ? commonConfigPath : undefined;
+}
+
+async function resolveRepoConfigFromWorktree(gitDir: string): Promise<string | undefined> {
+  const normalized = gitDir.replace(/\\/g, '/').toLowerCase();
+  const marker = '/worktrees/';
+  const index = normalized.indexOf(marker);
+  if (index < 0) {
+    return undefined;
+  }
+  const repoGitDir = gitDir.slice(0, index);
+  const repoConfigPath = path.join(repoGitDir, 'config');
+  const configStat = await statPath(repoConfigPath);
+  return configStat ? repoConfigPath : undefined;
+}
+
+function resolveGitPath(value: string, baseDir: string): string {
+  if (process.platform === 'win32') {
+    return path.isAbsolute(value) ? value : path.resolve(baseDir, value);
+  }
+  const winMatch = /^([a-zA-Z]):[\\/](.*)$/.exec(value);
+  if (winMatch) {
+    const drive = winMatch[1]?.toLowerCase() ?? 'c';
+    const rest = (winMatch[2] ?? '').replace(/\\/g, '/');
+    return `/mnt/${drive}/${rest}`;
+  }
+  return path.isAbsolute(value) ? value : path.resolve(baseDir, value);
 }
 
 function parseOriginRemoteUrl(text: string): string | undefined {

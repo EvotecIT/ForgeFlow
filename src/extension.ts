@@ -208,7 +208,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const gitView = vscode.window.createTreeView('forgeflow.git', { treeDataProvider: gitProvider });
   const gitPanelView = vscode.window.createTreeView('forgeflow.git.panel', { treeDataProvider: gitProvider });
 
-  const openOnSelection = async (selection: readonly unknown[]): Promise<void> => {
+  const openSelectionTimers = new Map<string, NodeJS.Timeout>();
+  const openSelectionDelayMs = 150;
+
+  const clearOpenSelectionTimer = (viewId: string): void => {
+    const timer = openSelectionTimers.get(viewId);
+    if (timer) {
+      clearTimeout(timer);
+      openSelectionTimers.delete(viewId);
+    }
+  };
+
+  const getFilesViewById = (viewId: string): vscode.TreeView<unknown> | undefined => {
+    switch (viewId) {
+      case 'forgeflow.files':
+        return filesView;
+      case 'forgeflow.files.panel':
+        return filesPanelView;
+      default:
+        return undefined;
+    }
+  };
+
+  const scheduleOpenOnSelection = (viewId: string, selection: readonly unknown[]): void => {
+    clearOpenSelectionTimer(viewId);
     if (!getForgeFlowSettings().filesOpenOnSelection) {
       return;
     }
@@ -219,23 +242,42 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (!candidatePath) {
       return;
     }
-    const stat = await statPath(candidatePath);
-    if (stat?.type !== vscode.FileType.File) {
-      return;
-    }
-    const active = getActiveEditorPath();
-    if (active && normalizeFsPath(active) === normalizeFsPath(candidatePath)) {
-      return;
-    }
-    await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(candidatePath), { preview: true, preserveFocus: true });
+    const timer = setTimeout(async () => {
+      openSelectionTimers.delete(viewId);
+      const view = getFilesViewById(viewId);
+      if (!view?.visible) {
+        return;
+      }
+      const activeSelection = view.selection;
+      if (activeSelection.length !== 1) {
+        return;
+      }
+      const activePath = extractPath(activeSelection[0]);
+      if (!activePath || normalizeFsPath(activePath) !== normalizeFsPath(candidatePath)) {
+        return;
+      }
+      const stat = await statPath(candidatePath);
+      if (stat?.type !== vscode.FileType.File) {
+        return;
+      }
+      const activeEditorPath = getActiveEditorPath();
+      if (activeEditorPath && normalizeFsPath(activeEditorPath) === normalizeFsPath(candidatePath)) {
+        return;
+      }
+      await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(candidatePath), {
+        preview: true,
+        preserveFocus: true
+      });
+    }, openSelectionDelayMs);
+    openSelectionTimers.set(viewId, timer);
   };
 
   context.subscriptions.push(
     filesView.onDidChangeSelection((event) => {
-      void openOnSelection(event.selection);
+      scheduleOpenOnSelection('forgeflow.files', event.selection);
     }),
     filesPanelView.onDidChangeSelection((event) => {
-      void openOnSelection(event.selection);
+      scheduleOpenOnSelection('forgeflow.files.panel', event.selection);
     })
   );
 
@@ -279,6 +321,60 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   updateFilesFilterMessage();
   updateProjectsFilterMessage();
   updateGitFilterMessage();
+
+  const computeProjectsSyncKey = (): string => {
+    const scanMeta = projectsStore.getScanMeta();
+    const sortOrder = projectsStore.getSortOrder();
+    const favorites = projectsStore.getFavoriteIds();
+    const projects = projectsStore.list();
+    let maxTimestamp = 0;
+    for (const project of projects) {
+      const candidates = [
+        project.lastModified,
+        project.lastGitCommit,
+        project.lastActivity,
+        project.lastOpened
+      ].filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+      for (const value of candidates) {
+        if (value > maxTimestamp) {
+          maxTimestamp = value;
+        }
+      }
+    }
+    return [
+      scanMeta?.fetchedAt ?? 0,
+      sortOrder?.savedAt ?? 0,
+      favorites.join('|'),
+      projects.length,
+      maxTimestamp
+    ].join('::');
+  };
+
+  let lastProjectsSyncKey = computeProjectsSyncKey();
+  const syncProjectsAcrossWindows = async (): Promise<void> => {
+    const nextKey = computeProjectsSyncKey();
+    if (nextKey === lastProjectsSyncKey) {
+      return;
+    }
+    lastProjectsSyncKey = nextKey;
+    await projectsProvider.refresh(false);
+    await projectsWebviewProvider.refresh();
+    await projectsWebviewPanelProvider.refresh();
+    await gitProvider.refresh();
+  };
+
+  const syncIntervalMs = 30_000;
+  const syncTimer = setInterval(() => {
+    void syncProjectsAcrossWindows();
+  }, syncIntervalMs);
+  context.subscriptions.push({ dispose: () => clearInterval(syncTimer) });
+  context.subscriptions.push(
+    vscode.window.onDidChangeWindowState((state) => {
+      if (state.focused) {
+        void syncProjectsAcrossWindows();
+      }
+    })
+  );
 
   syncFileWatchers();
 
@@ -821,6 +917,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
     vscode.commands.registerCommand('forgeflow.views.openSelected', async () => {
       await openForgeFlowSelectedViews(stateStore);
+    }),
+    vscode.commands.registerCommand('forgeflow.views.resetLocations', async () => {
+      await vscode.commands.executeCommand('workbench.action.resetViewLocations');
+      await openForgeFlowSelectedViews(stateStore);
+      vscode.window.setStatusBarMessage('ForgeFlow: View locations reset.', 3000);
+    }),
+    vscode.commands.registerCommand('forgeflow.views.openPanelContainer', async () => {
+      const options = [
+        { label: 'Dashboard — ForgeFlow', containerId: 'forgeflow-panel' },
+        { label: 'Files — ForgeFlow', containerId: 'forgeflow-files-panel' },
+        { label: 'Projects — ForgeFlow', containerId: 'forgeflow-projects-panel' },
+        { label: 'Projects Web — ForgeFlow', containerId: 'forgeflow-projects-web-panel' },
+        { label: 'Git — ForgeFlow', containerId: 'forgeflow-git-panel' },
+        { label: 'PowerForge — Manager', containerId: 'forgeflow-powerforge-panel' }
+      ];
+      const picked = await vscode.window.showQuickPick(options, {
+        placeHolder: 'Open a ForgeFlow panel view'
+      });
+      if (!picked) {
+        return;
+      }
+      await vscode.commands.executeCommand(`workbench.view.extension.${picked.containerId}`);
     }),
     vscode.commands.registerCommand('forgeflow.diagnostics.export', async () => {
       await exportDiagnostics(projectsStore, favoritesStore, tagsStore, runHistoryStore, gitStore, tokenStore);

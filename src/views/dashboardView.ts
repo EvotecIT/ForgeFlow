@@ -166,14 +166,15 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       }
     });
 
-    const autoRefreshMinutes = getForgeFlowSettings().dashboardAutoRefreshMinutes;
+    const settings = getForgeFlowSettings();
+    const autoRefreshMinutes = settings.dashboardAutoRefreshMinutes;
     const cacheAgeMs = this.lastUpdated ? Date.now() - this.lastUpdated : undefined;
     const shouldAutoRefresh = autoRefreshMinutes <= 0
       ? true
       : cacheAgeMs === undefined
         ? true
         : cacheAgeMs > autoRefreshMinutes * 60_000;
-    if (shouldAutoRefresh) {
+    if (shouldAutoRefresh && settings.dashboardAutoRefreshOnOpen) {
       void this.refresh();
     }
   }

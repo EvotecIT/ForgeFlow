@@ -63,6 +63,7 @@ export interface ForgeFlowSettings {
   powerforgeCliPath?: string;
   dashboardHideArchived: boolean;
   dashboardAutoRefreshMinutes: number;
+  dashboardAutoRefreshOnOpen: boolean;
   dashboardHealthEnabled: boolean;
   dashboardHealthDepStaleDays: number;
   gitStaleDays: number;
@@ -189,6 +190,7 @@ export function getForgeFlowSettings(): ForgeFlowSettings {
     powerforgeCliPath: config.get<string>('powerforge.cliPath'),
     dashboardHideArchived: config.get<boolean>('dashboard.hideArchived', false),
     dashboardAutoRefreshMinutes: config.get<number>('dashboard.autoRefreshMinutes', 2),
+    dashboardAutoRefreshOnOpen: config.get<boolean>('dashboard.autoRefreshOnOpen', true),
     dashboardHealthEnabled: config.get<boolean>('dashboard.health.enabled', true),
     dashboardHealthDepStaleDays: config.get<number>('dashboard.health.depStaleDays', 180),
     gitStaleDays: config.get<number>('git.staleDays', 30),

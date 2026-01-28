@@ -51,6 +51,26 @@
           "icon": "resources/forgeflow-panel.svg"
         },
         {
+          "id": "forgeflow-files-panel",
+          "title": "Files — ForgeFlow",
+          "icon": "resources/forgeflow-files.svg"
+        },
+        {
+          "id": "forgeflow-projects-panel",
+          "title": "Projects — ForgeFlow",
+          "icon": "resources/forgeflow-projects.svg"
+        },
+        {
+          "id": "forgeflow-projects-web-panel",
+          "title": "Projects Web — ForgeFlow",
+          "icon": "resources/forgeflow-projects-web.svg"
+        },
+        {
+          "id": "forgeflow-git-panel",
+          "title": "Git — ForgeFlow",
+          "icon": "resources/forgeflow-git.svg"
+        },
+        {
           "id": "forgeflow-powerforge-panel",
           "title": "PowerForge Manager",
           "icon": "resources/forgeflow-dashboard.svg"
@@ -99,26 +119,34 @@
           "type": "webview",
           "icon": "resources/forgeflow-dashboard.svg",
           "when": "config.forgeflow.views.dashboard.enabled"
-        },
+        }
+      ],
+      "forgeflow-files-panel": [
         {
           "id": "forgeflow.files.panel",
           "name": "Files — ForgeFlow (Panel)",
           "icon": "resources/forgeflow-files.svg",
           "when": "forgeflow.layout == expanded && config.forgeflow.views.files.enabled"
-        },
+        }
+      ],
+      "forgeflow-projects-panel": [
         {
           "id": "forgeflow.projects.panel",
           "name": "Projects — ForgeFlow (Panel)",
           "icon": "resources/forgeflow-projects.svg",
           "when": "forgeflow.layout == expanded && config.forgeflow.views.projects.enabled"
-        },
+        }
+      ],
+      "forgeflow-projects-web-panel": [
         {
           "id": "forgeflow.projects.web.panel",
           "name": "Projects Web — ForgeFlow (Panel)",
           "type": "webview",
           "icon": "resources/forgeflow-projects-web.svg",
           "when": "forgeflow.layout == expanded && config.forgeflow.views.projectsWeb.enabled"
-        },
+        }
+      ],
+      "forgeflow-git-panel": [
         {
           "id": "forgeflow.git.panel",
           "name": "Git — ForgeFlow (Panel)",
@@ -396,6 +424,12 @@
         "category": "ForgeFlow"
       },
       {
+        "command": "forgeflow.projects.cleanupWorktrees",
+        "title": "Cleanup Stale Worktrees",
+        "icon": "$(trash)",
+        "category": "ForgeFlow"
+      },
+      {
         "command": "forgeflow.projects.configureOrRefresh",
         "title": "Configure or Refresh Projects",
         "category": "ForgeFlow"
@@ -602,6 +636,20 @@
         "command": "forgeflow.views.openSelected",
         "title": "Open Selected ForgeFlow Views",
         "shortTitle": "Open Selected Views",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.views.openPanelContainer",
+        "title": "Open ForgeFlow Panel View",
+        "shortTitle": "Open Panel View",
+        "icon": "$(panel-bottom)",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.views.resetLocations",
+        "title": "Reset ForgeFlow View Locations",
+        "shortTitle": "Reset View Locations",
+        "icon": "$(layout)",
         "category": "ForgeFlow"
       },
       {
@@ -1355,6 +1403,21 @@
           "command": "forgeflow.projects.refresh",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel)",
           "group": "navigation@1"
+        },
+        {
+          "command": "forgeflow.projects.cleanupWorktrees",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel)",
+          "group": "navigation@2"
+        },
+        {
+          "command": "forgeflow.views.resetLocations",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel || view == forgeflow.projects || view == forgeflow.projects.panel || view == forgeflow.projects.web || view == forgeflow.projects.web.panel || view == forgeflow.git || view == forgeflow.git.panel || view == forgeflow.dashboard || view == forgeflow.powerforge || view == forgeflow.powerforge.panel)",
+          "group": "navigation@90"
+        },
+        {
+          "command": "forgeflow.views.openPanelContainer",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel || view == forgeflow.projects || view == forgeflow.projects.panel || view == forgeflow.projects.web || view == forgeflow.projects.web.panel || view == forgeflow.git || view == forgeflow.git.panel || view == forgeflow.dashboard || view == forgeflow.powerforge || view == forgeflow.powerforge.panel)",
+          "group": "navigation@89"
         },
         {
           "command": "forgeflow.powerforge.refresh",
@@ -3358,6 +3421,11 @@
           "default": 2,
           "minimum": 0,
           "maximum": 60
+        },
+        "forgeflow.dashboard.autoRefreshOnOpen": {
+          "type": "boolean",
+          "description": "Automatically refresh the dashboard when it opens if the cache is stale.",
+          "default": true
         },
         "forgeflow.dashboard.health.enabled": {
           "type": "boolean",

@@ -14,6 +14,7 @@ export interface GroupedDuplicate {
   readonly projects: Project[];
   readonly mainProject: Project;
   readonly worktrees: Project[];
+  readonly duplicates: Project[];
 }
 
 export type GroupedProjectEntry =
@@ -45,9 +46,6 @@ export async function groupProjectsWithWorktrees(
       continue;
     }
     const grouped = await buildGroupedDuplicate(key, groupProjects);
-    if (!grouped) {
-      continue;
-    }
     duplicateGroups.set(key, grouped);
   }
 
@@ -74,23 +72,23 @@ export async function groupProjectsWithWorktrees(
   return entries;
 }
 
-async function buildGroupedDuplicate(key: string, projects: Project[]): Promise<GroupedDuplicate | undefined> {
+async function buildGroupedDuplicate(key: string, projects: Project[]): Promise<GroupedDuplicate> {
   const gitMetaEntries = await Promise.all(projects.map(async (project) => ({ project, meta: await readGitMeta(project.path) })));
-  const hasWorktree = gitMetaEntries.some((entry) => entry.meta.isWorktree);
-  if (!hasWorktree) {
-    return undefined;
-  }
   const sorted = [...gitMetaEntries].sort((a, b) => a.project.path.localeCompare(b.project.path));
   const mainEntry = chooseMainEntry(sorted);
   const mainProject = mainEntry.project;
   const worktrees = sorted
-    .filter((entry) => entry.project.id !== mainProject.id)
+    .filter((entry) => entry.project.id !== mainProject.id && entry.meta.isWorktree)
+    .map((entry) => entry.project);
+  const duplicates = sorted
+    .filter((entry) => entry.project.id !== mainProject.id && !entry.meta.isWorktree)
     .map((entry) => entry.project);
   return {
     key,
     projects: sorted.map((entry) => entry.project),
     mainProject,
-    worktrees
+    worktrees,
+    duplicates
   };
 }
 
@@ -142,11 +140,8 @@ async function readGitMeta(projectPath: string): Promise<GitMeta> {
       return { isWorktree: false, hasGitDir: false };
     }
     const gitDirValue = gitDirLine.slice('gitdir:'.length).trim();
-    const resolved = path.isAbsolute(gitDirValue)
-      ? gitDirValue
-      : path.resolve(projectPath, gitDirValue);
-    const marker = `${path.sep}worktrees${path.sep}`;
-    const isWorktree = resolved.includes(marker);
+    const normalized = gitDirValue.replace(/\\/g, '/').toLowerCase();
+    const isWorktree = normalized.includes('/worktrees/');
     return { isWorktree, hasGitDir: false };
   } catch {
     return { isWorktree: false, hasGitDir: false };

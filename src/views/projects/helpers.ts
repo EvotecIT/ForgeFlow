@@ -502,15 +502,24 @@ export function needsRepositoryIdentity(identity: ProjectIdentity | undefined): 
   return !identity.repositoryUrl && !identity.repositoryProvider && !identity.repositoryPath && !identity.githubRepo;
 }
 
-export function mergeIdentity(existing: ProjectIdentity | undefined, detected: ProjectIdentity): ProjectIdentity {
+export function mergeIdentity(
+  existing: ProjectIdentity | undefined,
+  detected: ProjectIdentity,
+  options?: { overrideRepository?: boolean }
+): ProjectIdentity {
   if (!existing) {
     return detected;
   }
+  const overrideRepository = options?.overrideRepository === true;
+  const repositoryUrl = overrideRepository && detected.repositoryUrl ? detected.repositoryUrl : existing.repositoryUrl ?? detected.repositoryUrl;
+  const repositoryProvider = overrideRepository && detected.repositoryProvider ? detected.repositoryProvider : existing.repositoryProvider ?? detected.repositoryProvider;
+  const repositoryPath = overrideRepository && detected.repositoryPath ? detected.repositoryPath : existing.repositoryPath ?? detected.repositoryPath;
+  const githubRepo = overrideRepository && detected.githubRepo ? detected.githubRepo : existing.githubRepo ?? detected.githubRepo;
   return {
-    repositoryUrl: existing.repositoryUrl ?? detected.repositoryUrl,
-    repositoryProvider: existing.repositoryProvider ?? detected.repositoryProvider,
-    repositoryPath: existing.repositoryPath ?? detected.repositoryPath,
-    githubRepo: existing.githubRepo ?? detected.githubRepo,
+    repositoryUrl,
+    repositoryProvider,
+    repositoryPath,
+    githubRepo,
     powershellModule: existing.powershellModule ?? detected.powershellModule,
     nugetPackage: existing.nugetPackage ?? detected.nugetPackage,
     vscodeExtensionId: existing.vscodeExtensionId ?? detected.vscodeExtensionId,

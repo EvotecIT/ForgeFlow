@@ -1,3 +1,4 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
 import type { Project } from '../../models/project';
 import type { RunHistoryEntry } from '../../models/run';
@@ -15,7 +16,7 @@ import { getLocalGitInfo } from '../../dashboard/dataProviders';
 import type { GitStore } from '../../git/gitStore';
 import { getGitHeadMtime } from '../../git/gitHead';
 import type { GitCommitCacheStore } from '../../store/gitCommitCacheStore';
-import { statPath } from '../../util/fs';
+import { readFileText, statPath } from '../../util/fs';
 import type {
   DuplicateInfo,
   EntryPointCacheEntry,
@@ -70,6 +71,7 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
   private scanVersion = 0;
   private entryPointCache = new Map<string, EntryPointCacheEntry>();
   private lastSortOrderSignature = '';
+  private hasLoadedCacheOnce = false;
 
   public constructor(
     private readonly projectsStore: ProjectsStore,
@@ -102,11 +104,19 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
       return;
     }
 
+    if (!force && existing.length > 0 && !this.hasLoadedCacheOnce) {
+      this.hasLoadedCacheOnce = true;
+      if (!shouldSkipScan(this.projectsStore.getScanMeta(), roots, settings.projectScanMaxDepth, settings.projectScanCacheMinutes)) {
+        return;
+      }
+    }
+
     if (!force && shouldSkipScan(this.projectsStore.getScanMeta(), roots, settings.projectScanMaxDepth, settings.projectScanCacheMinutes)) {
       this.isScanning = false;
       return;
     }
 
+    this.hasLoadedCacheOnce = true;
     this.isScanning = true;
     void this.runScan(roots, settings.projectScanMaxDepth, settings.projectSortMode);
   }
@@ -323,7 +333,8 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
       if (runId !== this.scanVersion) {
         return results;
       }
-      const needsRepo = needsRepositoryIdentity(project.identity);
+      const isWorktree = project.type === 'git' ? await this.isGitWorktree(project.path) : false;
+      const needsRepo = needsRepositoryIdentity(project.identity) || isWorktree;
       if (project.identity && !needsRepo) {
         results.push(project);
         continue;
@@ -336,13 +347,32 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
         results.push(project);
         continue;
       }
-      const merged = mergeIdentity(project.identity, detected.identity);
+      const merged = mergeIdentity(project.identity, detected.identity, { overrideRepository: isWorktree });
       const updated = { ...project, identity: merged };
       await this.projectsStore.updateProject(updated);
       results.push(updated);
     }
     this.updateDuplicateInfo(results);
     return results;
+  }
+
+  private async isGitWorktree(projectPath: string): Promise<boolean> {
+    const dotGitPath = path.join(projectPath, '.git');
+    const dotGitStat = await statPath(dotGitPath);
+    if (!dotGitStat || dotGitStat.type !== vscode.FileType.File) {
+      return false;
+    }
+    const content = await readFileText(dotGitPath);
+    if (!content) {
+      return false;
+    }
+    const match = /gitdir:\s*(.+)/i.exec(content);
+    const gitDirValue = match?.[1]?.trim();
+    if (!gitDirValue) {
+      return false;
+    }
+    const normalized = gitDirValue.replace(/\\/g, '/').toLowerCase();
+    return normalized.includes('/worktrees/');
   }
 
   private async hydrateGitCommits(projects: Project[], runId: number): Promise<Project[]> {
@@ -402,7 +432,8 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
       }
       const lastCommit = gitInfo?.lastCommit ? Date.parse(gitInfo.lastCommit) : undefined;
       const lastGitCommit = Number.isNaN(lastCommit ?? NaN) ? undefined : lastCommit;
-      const updated = { ...entry.project, lastGitCommit };
+      const latest = this.projectsStore.list().find((project) => project.id === entry.project.id) ?? entry.project;
+      const updated = { ...latest, lastGitCommit };
       await this.projectsStore.updateProject(updated);
       cache[entry.project.id] = {
         projectId: entry.project.id,
@@ -449,7 +480,8 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
         return results;
       }
       const lastModified = recent ?? project.lastModified;
-      const updated = { ...project, lastModified };
+      const latest = this.projectsStore.list().find((item) => item.id === project.id) ?? project;
+      const updated = { ...latest, lastModified };
       await this.projectsStore.updateProject(updated);
       results.push(updated);
       this.modifiedProgress = Math.min(this.modifiedProgress + 1, this.modifiedTotal);
@@ -559,7 +591,9 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
   }
 
   private updateDuplicateInfo(projects: Project[]): void {
-    this.duplicateInfo = buildDuplicateInfo(projects);
+    const fromStore = this.projectsStore.list();
+    const source = fromStore.length > 0 ? fromStore : projects;
+    this.duplicateInfo = buildDuplicateInfo(source);
   }
 
   public invalidateEntryPointCache(projectId?: string): void {

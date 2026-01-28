@@ -35,6 +35,7 @@ import {
   toggleSortDirection
 } from '../projects/settings';
 import { manageEntryPoints, movePinnedItem, openProjectInVisualStudio } from '../projects/entryPoints';
+import { cleanupStaleWorktrees } from '../projects/worktrees';
 
 export interface ProjectCommandDeps {
   context: vscode.ExtensionContext;
@@ -101,6 +102,9 @@ export function registerProjectCommands(deps: ProjectCommandDeps): void {
     }),
     vscode.commands.registerCommand('forgeflow.projects.refresh', async () => {
       await projectsProvider.refresh(true);
+    }),
+    vscode.commands.registerCommand('forgeflow.projects.cleanupWorktrees', async () => {
+      await cleanupStaleWorktrees(projectsProvider);
     }),
     vscode.commands.registerCommand('forgeflow.projects.configureOrRefresh', async () => {
       await configureOrRefreshScanRoots(projectsProvider);
