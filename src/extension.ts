@@ -618,7 +618,15 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   registerOnboardingOnVisible(projectsPanelView);
   registerOnboardingOnVisible(gitView);
   registerOnboardingOnVisible(gitPanelView);
-  await projectsProvider.refresh();
+  const cachedProjects = projectsStore.list();
+  if (cachedProjects.length > 0) {
+    projectsProvider.syncFromStore();
+    setTimeout(() => {
+      void projectsProvider.refresh();
+    }, 1500);
+  } else {
+    await projectsProvider.refresh();
+  }
   logger.info('ForgeFlow activated.');
 }
 
