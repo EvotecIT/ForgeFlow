@@ -14,6 +14,7 @@ export function uniqueFsPaths(paths: string[]): string[] {
 }
 
 export async function collectSearchRoots(_projectsStore: ProjectsStore): Promise<{ roots: string[]; scope: 'workspace' | 'projects' }> {
+  void _projectsStore;
   const roots = new Map<string, string>();
   const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
   for (const folder of workspaceFolders) {

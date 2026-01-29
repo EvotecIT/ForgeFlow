@@ -336,7 +336,7 @@ export const dashboardWebviewScriptPartB = `
         return [];
       }
       const tokens = [];
-      const regex = /"([^"]+)"|'([^']+)'|\S+/g;
+      const regex = /"([^"]+)"|'([^']+)'|\\S+/g;
       let match = null;
       while ((match = regex.exec(raw)) !== null) {
         const token = match[1] || match[2] || match[0];

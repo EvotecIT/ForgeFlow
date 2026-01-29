@@ -319,6 +319,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const computeProjectsSyncKey = (): string => {
     return [
       projectsStore.getRevision(),
+      projectsStore.getWorkspaceRevision(),
       tagsStore.getRevision(),
       getFiltersRevision(stateStore)
     ].join('::');

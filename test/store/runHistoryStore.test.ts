@@ -53,8 +53,9 @@ describe('RunHistoryStore', () => {
 
     const entries = store.list();
     assert.equal(entries.length, 1);
-    assert.ok(entries[0]);
-    assert.equal(entries[0]!.id, 'b');
+    const [firstEntry] = entries;
+    assert.ok(firstEntry);
+    assert.equal(firstEntry.id, 'b');
   });
 
   it('sorts per-project history by time', async () => {

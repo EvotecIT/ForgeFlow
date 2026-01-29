@@ -2,12 +2,13 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { readFileText } from '../../util/fs';
 import type { PowerForgeConfigSummary } from './types';
-import { safeJsonParse } from './utils';
+import { ensureRecord, safeJsonParse, toStringArray } from './utils';
+import type { JsonRecord } from './utils';
 
 export async function readDotNetPublishSummary(filePath: string): Promise<PowerForgeConfigSummary> {
   const text = await readFileText(filePath);
   const parsed = text ? safeJsonParse(text) : undefined;
-  const dotnet = parsed?.DotNet ?? {};
+  const dotnet = ensureRecord(parsed?.DotNet);
   const projectRoot = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(filePath))?.uri.fsPath;
   return {
     kind: 'dotnetpublish',
@@ -18,7 +19,7 @@ export async function readDotNetPublishSummary(filePath: string): Promise<PowerF
       projectRoot: dotnet.ProjectRoot,
       solutionPath: dotnet.SolutionPath,
       configuration: dotnet.Configuration,
-      runtimes: Array.isArray(dotnet.Runtimes) ? dotnet.Runtimes : []
+      runtimes: toStringArray(dotnet.Runtimes)
     }
   };
 }
@@ -31,31 +32,32 @@ export async function saveDotNetPublishConfig(filePath: string, data: Record<str
     return;
   }
   const payload = data as Record<string, unknown>;
-  parsed.DotNet = parsed.DotNet ?? {};
+  const dotnet = ensureRecord(parsed.DotNet);
+  parsed.DotNet = dotnet;
   const root = String(payload['dotnetProjectRoot'] ?? '').trim();
   if (root) {
-    parsed.DotNet.ProjectRoot = root;
+    dotnet.ProjectRoot = root;
   }
   const solution = String(payload['dotnetSolutionPath'] ?? '').trim();
   if (solution) {
-    parsed.DotNet.SolutionPath = solution;
+    dotnet.SolutionPath = solution;
   }
   const configuration = String(payload['dotnetConfiguration'] ?? '').trim();
   if (configuration) {
-    parsed.DotNet.Configuration = configuration;
+    dotnet.Configuration = configuration;
   }
   const runtimes = String(payload['dotnetRuntimes'] ?? '')
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean);
   if (runtimes.length > 0) {
-    parsed.DotNet.Runtimes = runtimes;
+    dotnet.Runtimes = runtimes;
   }
   await writeJsonFile(filePath, parsed);
   vscode.window.setStatusBarMessage('ForgeFlow: PowerForge dotnet publish config saved.', 3000);
 }
 
-async function writeJsonFile(filePath: string, data: Record<string, any>): Promise<void> {
+async function writeJsonFile(filePath: string, data: JsonRecord): Promise<void> {
   const json = JSON.stringify(data, null, 2);
   await vscode.workspace.fs.writeFile(vscode.Uri.file(filePath), Buffer.from(json, 'utf8'));
 }

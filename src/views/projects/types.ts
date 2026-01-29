@@ -3,6 +3,8 @@ import type { Project, ProjectEntryPoint, ProjectIdentity } from '../../models/p
 import type { RunPreset } from '../../models/run';
 import type { RunHistoryEntry } from '../../models/run';
 import type { GitProjectSummary } from '../../git/gitSummary';
+import type { ForgeFlowSettings } from '../../util/config';
+import type { EntryPointGroups } from '../../scan/entryPointDetector';
 
 export interface ProjectNode {
   readonly id: string;
@@ -67,7 +69,7 @@ export interface ProjectsWebviewSnapshot {
   tagFilter: string[];
   favoritesOnly: boolean;
   filterMinChars: number;
-  filterMatchMode: import('../../util/config').ForgeFlowSettings['filtersMatchMode'];
+  filterMatchMode: ForgeFlowSettings['filtersMatchMode'];
   sortDescription: string;
   showSummary: boolean;
   pageSize: number;
@@ -115,7 +117,7 @@ export interface ProjectsWebviewDetails {
 export interface EntryPointCacheEntry {
   key: string;
   fetchedAt: number;
-  groups: import('../../scan/entryPointDetector').EntryPointGroups;
+  groups: EntryPointGroups;
 }
 
 export interface DuplicateInfo {

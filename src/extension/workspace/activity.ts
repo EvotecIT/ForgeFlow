@@ -1,11 +1,11 @@
-import * as vscode from 'vscode';
+import type { TextDocument } from 'vscode';
 import type { ProjectsStore } from '../../store/projectsStore';
 import type { ProjectsViewProvider } from '../../views/projectsView';
 import { getForgeFlowSettings } from '../../util/config';
 import { findProjectByPath } from '../projectUtils';
 
 export async function touchProjectActivity(
-  document: vscode.TextDocument,
+  document: TextDocument,
   store: ProjectsStore,
   provider: ProjectsViewProvider
 ): Promise<void> {

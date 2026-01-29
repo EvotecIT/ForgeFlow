@@ -7,6 +7,7 @@ import type { RunPreset } from '../models/run';
 const PROJECTS_KEY = 'forgeflow.projects.items.v1';
 const FAVORITES_KEY = 'forgeflow.projects.favorites.v1';
 const WORKSPACE_OVERRIDES_KEY = 'forgeflow.projects.workspaceOverrides.v1';
+const WORKSPACE_REVISION_KEY = 'forgeflow.projects.workspaceRevision.v1';
 const FILTER_KEY = 'forgeflow.projects.filter.v1';
 const FAVORITES_ONLY_KEY = 'forgeflow.projects.favoritesOnly.v1';
 const SCAN_META_KEY = 'forgeflow.projects.scanMeta.v1';
@@ -59,6 +60,10 @@ export class ProjectsStore {
 
   public getRevision(): string {
     return this.state.getGlobal<string>(REVISION_KEY, '0');
+  }
+
+  public getWorkspaceRevision(): string {
+    return this.state.getWorkspace<string>(WORKSPACE_REVISION_KEY, '0');
   }
 
   public getScanLock(): ProjectScanLock | undefined {
@@ -196,12 +201,14 @@ export class ProjectsStore {
     const overrides = this.state.getWorkspace<Record<string, ProjectWorkspaceOverride>>(WORKSPACE_OVERRIDES_KEY, {});
     overrides[projectId] = { ...overrides[projectId], lastOpened: timestamp };
     await this.state.setWorkspace(WORKSPACE_OVERRIDES_KEY, overrides);
+    await this.bumpWorkspaceRevision();
   }
 
   public async updateLastActivity(projectId: string, timestamp: number): Promise<void> {
     const overrides = this.state.getWorkspace<Record<string, ProjectWorkspaceOverride>>(WORKSPACE_OVERRIDES_KEY, {});
     overrides[projectId] = { ...overrides[projectId], lastActivity: timestamp };
     await this.state.setWorkspace(WORKSPACE_OVERRIDES_KEY, overrides);
+    await this.bumpWorkspaceRevision();
   }
 
   public async updatePinnedItems(projectId: string, pinnedItems: string[]): Promise<void> {
@@ -236,18 +243,21 @@ export class ProjectsStore {
     const overrides = this.state.getWorkspace<Record<string, ProjectWorkspaceOverride>>(WORKSPACE_OVERRIDES_KEY, {});
     overrides[projectId] = { ...overrides[projectId], preferredRunProfileId: profileId };
     await this.state.setWorkspace(WORKSPACE_OVERRIDES_KEY, overrides);
+    await this.bumpWorkspaceRevision();
   }
 
   public async updatePreferredRunTarget(projectId: string, target?: 'integrated' | 'external' | 'externalAdmin'): Promise<void> {
     const overrides = this.state.getWorkspace<Record<string, ProjectWorkspaceOverride>>(WORKSPACE_OVERRIDES_KEY, {});
     overrides[projectId] = { ...overrides[projectId], preferredRunTarget: target };
     await this.state.setWorkspace(WORKSPACE_OVERRIDES_KEY, overrides);
+    await this.bumpWorkspaceRevision();
   }
 
   public async updatePreferredRunWorkingDirectory(projectId: string, workingDirectory?: string): Promise<void> {
     const overrides = this.state.getWorkspace<Record<string, ProjectWorkspaceOverride>>(WORKSPACE_OVERRIDES_KEY, {});
     overrides[projectId] = { ...overrides[projectId], preferredRunWorkingDirectory: workingDirectory };
     await this.state.setWorkspace(WORKSPACE_OVERRIDES_KEY, overrides);
+    await this.bumpWorkspaceRevision();
   }
 
   public async updateRunPresets(projectId: string, presets: RunPreset[]): Promise<void> {
@@ -302,25 +312,65 @@ export class ProjectsStore {
   }
 
   private sanitizeProject(project: Project): Project {
-    const {
-      lastOpened,
-      lastActivity,
-      preferredRunProfileId,
-      preferredRunTarget,
-      preferredRunWorkingDirectory,
-      ...rest
-    } = project;
-    return rest;
+    const sanitized = { ...project };
+    delete sanitized.lastOpened;
+    delete sanitized.lastActivity;
+    delete sanitized.preferredRunProfileId;
+    delete sanitized.preferredRunTarget;
+    delete sanitized.preferredRunWorkingDirectory;
+    return sanitized;
   }
 
   private async saveAllProjects(projects: Project[]): Promise<void> {
+    const overrides = this.state.getWorkspace<Record<string, ProjectWorkspaceOverride>>(WORKSPACE_OVERRIDES_KEY, {});
+    let overridesChanged = false;
+    for (const project of projects) {
+      const current = overrides[project.id] ?? {};
+      let next = current;
+      let changed = false;
+      if (project.lastOpened !== undefined && project.lastOpened !== current.lastOpened) {
+        next = { ...next, lastOpened: project.lastOpened };
+        changed = true;
+      }
+      if (project.lastActivity !== undefined && project.lastActivity !== current.lastActivity) {
+        next = { ...next, lastActivity: project.lastActivity };
+        changed = true;
+      }
+      if (project.preferredRunProfileId !== undefined && project.preferredRunProfileId !== current.preferredRunProfileId) {
+        next = { ...next, preferredRunProfileId: project.preferredRunProfileId };
+        changed = true;
+      }
+      if (project.preferredRunTarget !== undefined && project.preferredRunTarget !== current.preferredRunTarget) {
+        next = { ...next, preferredRunTarget: project.preferredRunTarget };
+        changed = true;
+      }
+      if (
+        project.preferredRunWorkingDirectory !== undefined
+        && project.preferredRunWorkingDirectory !== current.preferredRunWorkingDirectory
+      ) {
+        next = { ...next, preferredRunWorkingDirectory: project.preferredRunWorkingDirectory };
+        changed = true;
+      }
+      if (changed) {
+        overrides[project.id] = next;
+        overridesChanged = true;
+      }
+    }
     const sanitized = projects.map((project) => this.sanitizeProject(project));
     await this.state.setGlobal(PROJECTS_KEY, sanitized);
+    if (overridesChanged) {
+      await this.state.setWorkspace(WORKSPACE_OVERRIDES_KEY, overrides);
+      await this.bumpWorkspaceRevision();
+    }
     await this.bumpRevision();
   }
 
   private async bumpRevision(): Promise<void> {
     await this.state.setGlobal(REVISION_KEY, createRevisionStamp());
+  }
+
+  private async bumpWorkspaceRevision(): Promise<void> {
+    await this.state.setWorkspace(WORKSPACE_REVISION_KEY, createRevisionStamp());
   }
 }
 

@@ -1,16 +1,35 @@
-export function findSegmentIndex(segments: any[], type: string): number {
+import type { JsonRecord } from './utils';
+
+export type PowerForgeSegment = JsonRecord & {
+  Type?: string;
+  ArtefactType?: string;
+  Kind?: string;
+  Configuration?: JsonRecord;
+  Settings?: JsonRecord;
+  Options?: JsonRecord;
+  PlaceHolderOption?: JsonRecord;
+  BuildLibraries?: JsonRecord;
+  ImportModules?: JsonRecord;
+};
+
+export function findSegmentIndex(segments: PowerForgeSegment[], type: string): number {
   return segments.findIndex((segment) => segment?.Type === type);
 }
 
-export function findArtefactSegment(segments: any[], type: string): any | undefined {
+export function findArtefactSegment(segments: PowerForgeSegment[], type: string): PowerForgeSegment | undefined {
   return segments.find((segment) => segment?.Type === type || segment?.ArtefactType === type);
 }
 
-export function findArtefactSegmentIndex(segments: any[], type: string): number {
+export function findArtefactSegmentIndex(segments: PowerForgeSegment[], type: string): number {
   return segments.findIndex((segment) => segment?.Type === type || segment?.ArtefactType === type);
 }
 
-export function updateSegment(segments: any[], type: string, enabled: boolean, mutate: (segment: any) => void): void {
+export function updateSegment(
+  segments: PowerForgeSegment[],
+  type: string,
+  enabled: boolean,
+  mutate: (segment: PowerForgeSegment) => void
+): void {
   const index = findSegmentIndex(segments, type);
   if (enabled) {
     const segment = index >= 0 ? segments[index] : { Type: type };
@@ -24,7 +43,12 @@ export function updateSegment(segments: any[], type: string, enabled: boolean, m
   }
 }
 
-export function updateArtefactSegment(segments: any[], type: string, enabled: boolean, mutate: (segment: any) => void): void {
+export function updateArtefactSegment(
+  segments: PowerForgeSegment[],
+  type: string,
+  enabled: boolean,
+  mutate: (segment: PowerForgeSegment) => void
+): void {
   const index = findArtefactSegmentIndex(segments, type);
   if (enabled) {
     const segment = index >= 0 ? segments[index] : { Type: type };
@@ -38,7 +62,7 @@ export function updateArtefactSegment(segments: any[], type: string, enabled: bo
   }
 }
 
-export function isModuleDependencySegment(segment: any): boolean {
+export function isModuleDependencySegment(segment: PowerForgeSegment): boolean {
   const kind = segment?.Type ?? segment?.Kind;
   return kind === 'RequiredModule' || kind === 'ExternalModule' || kind === 'ApprovedModule';
 }

@@ -1,7 +1,16 @@
 import * as vscode from 'vscode';
 import { readFileText } from '../../util/fs';
-import { applyStringField, parseCsv, parseInteger, parseLines, safeJsonParse, setRuleToggle } from './utils';
-import { isModuleDependencySegment, updateArtefactSegment, updateSegment } from './segments';
+import {
+  applyStringField,
+  ensureRecordField,
+  parseCsv,
+  parseInteger,
+  parseLines,
+  safeJsonParse,
+  setRuleToggle
+} from './utils';
+import type { JsonRecord } from './utils';
+import { isModuleDependencySegment, updateArtefactSegment, updateSegment, type PowerForgeSegment } from './segments';
 
 export async function savePipelineConfig(filePath: string, data: Record<string, unknown>): Promise<void> {
   const text = await readFileText(filePath);
@@ -11,37 +20,36 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
     return;
   }
   const payload = data as Record<string, unknown>;
-  parsed.Build = parsed.Build ?? {};
-  parsed.Install = parsed.Install ?? {};
-  const segments: any[] = Array.isArray(parsed.Segments) ? parsed.Segments : [];
+  const build = ensureRecordField(parsed, 'Build');
+  const install = ensureRecordField(parsed, 'Install');
+  const segments: PowerForgeSegment[] = Array.isArray(parsed.Segments) ? (parsed.Segments as PowerForgeSegment[]) : [];
   parsed.Segments = segments;
-  parsed.Build.Name = String(payload['buildName'] ?? '').trim() || parsed.Build.Name;
-  parsed.Build.SourcePath = String(payload['buildSourcePath'] ?? '').trim() || parsed.Build.SourcePath;
-  parsed.Build.CsprojPath = String(payload['buildCsprojPath'] ?? '').trim() || parsed.Build.CsprojPath;
-  parsed.Build.Version = String(payload['buildVersion'] ?? '').trim() || parsed.Build.Version;
-  parsed.Build.Configuration = String(payload['buildConfiguration'] ?? '').trim() || parsed.Build.Configuration;
+  build.Name = String(payload['buildName'] ?? '').trim() || build.Name;
+  build.SourcePath = String(payload['buildSourcePath'] ?? '').trim() || build.SourcePath;
+  build.CsprojPath = String(payload['buildCsprojPath'] ?? '').trim() || build.CsprojPath;
+  build.Version = String(payload['buildVersion'] ?? '').trim() || build.Version;
+  build.Configuration = String(payload['buildConfiguration'] ?? '').trim() || build.Configuration;
   const frameworks = String(payload['buildFrameworks'] ?? '')
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean);
   if (frameworks.length > 0) {
-    parsed.Build.Frameworks = frameworks;
+    build.Frameworks = frameworks;
   }
   if (typeof payload['installEnabled'] === 'boolean') {
-    parsed.Install.Enabled = payload['installEnabled'];
+    install.Enabled = payload['installEnabled'];
   }
   const strategy = String(payload['installStrategy'] ?? '').trim();
   if (strategy) {
-    parsed.Install.Strategy = strategy;
+    install.Strategy = strategy;
   }
   const keep = Number(String(payload['installKeepVersions'] ?? '').trim());
   if (!Number.isNaN(keep) && keep > 0) {
-    parsed.Install.KeepVersions = keep;
+    install.KeepVersions = keep;
   }
   const manifestEnabled = Boolean(payload['manifestSegmentEnabled']);
   updateSegment(segments, 'Manifest', manifestEnabled, (segment) => {
-    segment.Configuration = segment.Configuration ?? {};
-    const manifestConfig = segment.Configuration;
+    const manifestConfig = ensureRecordField(segment, 'Configuration');
     applyStringField(manifestConfig, 'ModuleVersion', payload['manifestModuleVersion']);
     applyStringField(manifestConfig, 'Guid', payload['manifestGuid']);
     applyStringField(manifestConfig, 'Author', payload['manifestAuthor']);
@@ -72,8 +80,7 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
 
   const publishSegmentEnabled = Boolean(payload['publishSegmentEnabled']);
   updateSegment(segments, 'Publish', publishSegmentEnabled, (segment) => {
-    segment.Configuration = segment.Configuration ?? {};
-    const publishConfig = segment.Configuration;
+    const publishConfig = ensureRecordField(segment, 'Configuration');
     if (typeof payload['publishEnabled'] === 'boolean') {
       publishConfig.Enabled = payload['publishEnabled'];
     }
@@ -98,8 +105,7 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
     }
     const repoEnabled = Boolean(payload['publishRepositoryEnabled']);
     if (repoEnabled) {
-      publishConfig.Repository = publishConfig.Repository ?? {};
-      const repoConfig = publishConfig.Repository;
+      const repoConfig = ensureRecordField(publishConfig as JsonRecord, 'Repository');
       applyStringField(repoConfig, 'Name', payload['publishRepositoryName']);
       applyStringField(repoConfig, 'Uri', payload['publishRepositoryUri']);
       applyStringField(repoConfig, 'SourceUri', payload['publishRepositorySourceUri']);
@@ -127,16 +133,14 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
 
   const documentationEnabled = Boolean(payload['documentationSegmentEnabled']);
   updateSegment(segments, 'Documentation', documentationEnabled, (segment) => {
-    segment.Configuration = segment.Configuration ?? {};
-    const config = segment.Configuration;
+    const config = ensureRecordField(segment, 'Configuration');
     applyStringField(config, 'Path', payload['documentationPath']);
     applyStringField(config, 'PathReadme', payload['documentationReadmePath']);
   });
 
   const buildDocsEnabled = Boolean(payload['buildDocsSegmentEnabled']);
   updateSegment(segments, 'BuildDocumentation', buildDocsEnabled, (segment) => {
-    segment.Configuration = segment.Configuration ?? {};
-    const config = segment.Configuration;
+    const config = ensureRecordField(segment, 'Configuration');
     if (typeof payload['buildDocsEnable'] === 'boolean') {
       config.Enable = payload['buildDocsEnable'];
     }
@@ -158,24 +162,22 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
 
   const validationEnabled = Boolean(payload['validationSegmentEnabled']);
   updateSegment(segments, 'Validation', validationEnabled, (segment) => {
-    segment.Settings = segment.Settings ?? {};
-    const settings = segment.Settings;
+    const settings = ensureRecordField(segment, 'Settings');
     if (typeof payload['validationEnable'] === 'boolean') {
       settings.Enable = payload['validationEnable'];
     }
-    settings.ScriptAnalyzer = settings.ScriptAnalyzer ?? {};
+    const scriptAnalyzer = ensureRecordField(settings, 'ScriptAnalyzer');
     if (typeof payload['validationScriptAnalyzer'] === 'boolean') {
-      settings.ScriptAnalyzer.Enable = payload['validationScriptAnalyzer'];
+      scriptAnalyzer.Enable = payload['validationScriptAnalyzer'];
     }
-    settings.FileIntegrity = settings.FileIntegrity ?? {};
+    const fileIntegrity = ensureRecordField(settings, 'FileIntegrity');
     if (typeof payload['validationCheckTrailingWhitespace'] === 'boolean') {
-      settings.FileIntegrity.CheckTrailingWhitespace = payload['validationCheckTrailingWhitespace'];
+      fileIntegrity.CheckTrailingWhitespace = payload['validationCheckTrailingWhitespace'];
     }
     if (typeof payload['validationCheckSyntax'] === 'boolean') {
-      settings.FileIntegrity.CheckSyntax = payload['validationCheckSyntax'];
+      fileIntegrity.CheckSyntax = payload['validationCheckSyntax'];
     }
-    settings.Structure = settings.Structure ?? {};
-    const structure = settings.Structure;
+    const structure = ensureRecordField(settings, 'Structure');
     applyStringField(structure, 'Severity', payload['validationStructureSeverity']);
     const publicPaths = parseCsv(payload['validationStructurePublicPaths']);
     if (publicPaths.length > 0) {
@@ -202,8 +204,7 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
       structure.AllowWildcardExports = payload['validationStructureAllowWildcardExports'];
     }
 
-    settings.Documentation = settings.Documentation ?? {};
-    const docs = settings.Documentation;
+    const docs = ensureRecordField(settings, 'Documentation');
     applyStringField(docs, 'Severity', payload['validationDocsSeverity']);
     const synopsis = parseInteger(payload['validationDocsMinSynopsis']);
     if (synopsis !== undefined) {
@@ -236,8 +237,7 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
       delete docs.TimeoutSeconds;
     }
 
-    settings.Tests = settings.Tests ?? {};
-    const tests = settings.Tests;
+    const tests = ensureRecordField(settings, 'Tests');
     applyStringField(tests, 'Severity', payload['validationTestsSeverity']);
     if (typeof payload['validationTestsEnable'] === 'boolean') {
       tests.Enable = payload['validationTestsEnable'];
@@ -271,8 +271,7 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
       delete tests.TimeoutSeconds;
     }
 
-    settings.Binary = settings.Binary ?? {};
-    const binary = settings.Binary;
+    const binary = ensureRecordField(settings, 'Binary');
     applyStringField(binary, 'Severity', payload['validationBinarySeverity']);
     if (typeof payload['validationBinaryValidateAssemblies'] === 'boolean') {
       binary.ValidateAssembliesExist = payload['validationBinaryValidateAssemblies'];
@@ -284,8 +283,7 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
       binary.AllowWildcardExports = payload['validationBinaryAllowWildcardExports'];
     }
 
-    settings.Csproj = settings.Csproj ?? {};
-    const csproj = settings.Csproj;
+    const csproj = ensureRecordField(settings, 'Csproj');
     applyStringField(csproj, 'Severity', payload['validationCsprojSeverity']);
     if (typeof payload['validationCsprojRequireTargetFramework'] === 'boolean') {
       csproj.RequireTargetFramework = payload['validationCsprojRequireTargetFramework'];
@@ -297,8 +295,7 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
 
   const fileConsistencyEnabled = Boolean(payload['fileConsistencySegmentEnabled']);
   updateSegment(segments, 'FileConsistency', fileConsistencyEnabled, (segment) => {
-    segment.Settings = segment.Settings ?? {};
-    const settings = segment.Settings;
+    const settings = ensureRecordField(segment, 'Settings');
     if (typeof payload['fileConsistencyEnable'] === 'boolean') {
       settings.Enable = payload['fileConsistencyEnable'];
     }
@@ -324,8 +321,7 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
 
   const compatibilityEnabled = Boolean(payload['compatibilitySegmentEnabled']);
   updateSegment(segments, 'Compatibility', compatibilityEnabled, (segment) => {
-    segment.Settings = segment.Settings ?? {};
-    const settings = segment.Settings;
+    const settings = ensureRecordField(segment, 'Settings');
     if (typeof payload['compatibilityEnable'] === 'boolean') {
       settings.Enable = payload['compatibilityEnable'];
     }
@@ -345,8 +341,7 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
 
   const packedEnabled = Boolean(payload['packedSegmentEnabled']);
   updateArtefactSegment(segments, 'Packed', packedEnabled, (segment) => {
-    segment.Configuration = segment.Configuration ?? {};
-    const config = segment.Configuration;
+    const config = ensureRecordField(segment, 'Configuration');
     if (typeof payload['packedEnabled'] === 'boolean') {
       config.Enabled = payload['packedEnabled'];
     }
@@ -358,8 +353,7 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
 
   const unpackedEnabled = Boolean(payload['unpackedSegmentEnabled']);
   updateArtefactSegment(segments, 'Unpacked', unpackedEnabled, (segment) => {
-    segment.Configuration = segment.Configuration ?? {};
-    const config = segment.Configuration;
+    const config = ensureRecordField(segment, 'Configuration');
     if (typeof payload['unpackedEnabled'] === 'boolean') {
       config.Enabled = payload['unpackedEnabled'];
     }
@@ -371,10 +365,8 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
 
   const optionsEnabled = Boolean(payload['optionsSegmentEnabled']);
   updateSegment(segments, 'Options', optionsEnabled, (segment) => {
-    segment.Options = segment.Options ?? {};
-    const options = segment.Options;
-    options.Signing = options.Signing ?? {};
-    const signing = options.Signing;
+    const options = ensureRecordField(segment, 'Options');
+    const signing = ensureRecordField(options, 'Signing');
     if (typeof payload['optionsSigningIncludeInternals'] === 'boolean') {
       signing.IncludeInternals = payload['optionsSigningIncludeInternals'];
     }
@@ -396,8 +388,7 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
     } else {
       delete signing.ExcludePaths;
     }
-    options.Delivery = options.Delivery ?? {};
-    const delivery = options.Delivery;
+    const delivery = ensureRecordField(options, 'Delivery');
     if (typeof payload['optionsDeliveryEnable'] === 'boolean') {
       delivery.Enable = payload['optionsDeliveryEnable'];
     }
@@ -452,7 +443,7 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
       delivery.ImportantLinks = linksRaw
         .filter((entry) => entry && typeof entry === 'object')
         .map((entry) => {
-          const record = entry as Record<string, any>;
+          const record = entry as JsonRecord;
           return { Title: String(record['title'] ?? '').trim(), Url: String(record['url'] ?? '').trim() };
         })
         .filter((entry) => entry.Title && entry.Url);
@@ -466,44 +457,41 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
 
   const formattingEnabled = Boolean(payload['formattingSegmentEnabled']);
   updateSegment(segments, 'Formatting', formattingEnabled, (segment) => {
-    segment.Options = segment.Options ?? {};
-    const options = segment.Options;
+    const options = ensureRecordField(segment, 'Options');
     if (typeof payload['formattingUpdateProjectRoot'] === 'boolean') {
       options.UpdateProjectRoot = payload['formattingUpdateProjectRoot'];
     }
-    options.Standard = options.Standard ?? {};
-    const standard = options.Standard;
-    standard.FormatCodePS1 = standard.FormatCodePS1 ?? {};
-    standard.FormatCodePSM1 = standard.FormatCodePSM1 ?? {};
-    standard.FormatCodePSD1 = standard.FormatCodePSD1 ?? {};
+    const standard = ensureRecordField(options, 'Standard');
+    const formatPS1 = ensureRecordField(standard, 'FormatCodePS1');
+    const formatPSM1 = ensureRecordField(standard, 'FormatCodePSM1');
+    const formatPSD1 = ensureRecordField(standard, 'FormatCodePSD1');
     if (typeof payload['formattingPS1Enabled'] === 'boolean') {
-      standard.FormatCodePS1.Enabled = payload['formattingPS1Enabled'];
+      formatPS1.Enabled = payload['formattingPS1Enabled'];
     }
     if (typeof payload['formattingPS1RemoveComments'] === 'boolean') {
-      standard.FormatCodePS1.RemoveComments = payload['formattingPS1RemoveComments'];
+      formatPS1.RemoveComments = payload['formattingPS1RemoveComments'];
     }
     if (typeof payload['formattingRemoveEmptyLines'] === 'boolean') {
-      standard.FormatCodePS1.RemoveEmptyLines = payload['formattingRemoveEmptyLines'];
+      formatPS1.RemoveEmptyLines = payload['formattingRemoveEmptyLines'];
     }
     if (typeof payload['formattingRemoveAllEmptyLines'] === 'boolean') {
-      standard.FormatCodePS1.RemoveAllEmptyLines = payload['formattingRemoveAllEmptyLines'];
+      formatPS1.RemoveAllEmptyLines = payload['formattingRemoveAllEmptyLines'];
     }
     if (typeof payload['formattingRemoveCommentsInParamBlock'] === 'boolean') {
-      standard.FormatCodePS1.RemoveCommentsInParamBlock = payload['formattingRemoveCommentsInParamBlock'];
+      formatPS1.RemoveCommentsInParamBlock = payload['formattingRemoveCommentsInParamBlock'];
     }
     if (typeof payload['formattingRemoveCommentsBeforeParamBlock'] === 'boolean') {
-      standard.FormatCodePS1.RemoveCommentsBeforeParamBlock = payload['formattingRemoveCommentsBeforeParamBlock'];
+      formatPS1.RemoveCommentsBeforeParamBlock = payload['formattingRemoveCommentsBeforeParamBlock'];
     }
-    applyStringField(standard.FormatCodePS1, 'Sort', payload['formattingSort']);
+    applyStringField(formatPS1, 'Sort', payload['formattingSort']);
     const includeRules = parseCsv(payload['formattingIncludeRules']);
-    standard.FormatCodePS1.FormatterSettings = standard.FormatCodePS1.FormatterSettings ?? {};
+    const formatterSettings = ensureRecordField(formatPS1, 'FormatterSettings');
     if (includeRules.length > 0) {
-      standard.FormatCodePS1.FormatterSettings.IncludeRules = includeRules;
+      formatterSettings.IncludeRules = includeRules;
     } else {
-      delete standard.FormatCodePS1.FormatterSettings.IncludeRules;
+      delete formatterSettings.IncludeRules;
     }
-    standard.FormatCodePS1.FormatterSettings.Rules = standard.FormatCodePS1.FormatterSettings.Rules ?? {};
-    const rules = standard.FormatCodePS1.FormatterSettings.Rules;
+    const rules = ensureRecordField(formatterSettings, 'Rules');
     setRuleToggle(rules, 'PSPlaceOpenBrace', payload['formattingRuleOpenBrace']);
     setRuleToggle(rules, 'PSPlaceCloseBrace', payload['formattingRuleCloseBrace']);
     setRuleToggle(rules, 'PSUseConsistentIndentation', payload['formattingRuleIndentation']);
@@ -511,17 +499,16 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
     setRuleToggle(rules, 'PSAlignAssignmentStatement', payload['formattingRuleAlignAssignment']);
     setRuleToggle(rules, 'PSUseCorrectCasing', payload['formattingRuleCorrectCasing']);
     if (typeof payload['formattingPSM1Enabled'] === 'boolean') {
-      standard.FormatCodePSM1.Enabled = payload['formattingPSM1Enabled'];
+      formatPSM1.Enabled = payload['formattingPSM1Enabled'];
     }
     if (typeof payload['formattingPSD1Enabled'] === 'boolean') {
-      standard.FormatCodePSD1.Enabled = payload['formattingPSD1Enabled'];
+      formatPSD1.Enabled = payload['formattingPSD1Enabled'];
     }
   });
 
   const buildLibrariesEnabled = Boolean(payload['buildLibrariesSegmentEnabled']);
   updateSegment(segments, 'BuildLibraries', buildLibrariesEnabled, (segment) => {
-    segment.BuildLibraries = segment.BuildLibraries ?? {};
-    const config = segment.BuildLibraries;
+    const config = ensureRecordField(segment, 'BuildLibraries');
     if (typeof payload['buildLibrariesEnable'] === 'boolean') {
       config.Enable = payload['buildLibrariesEnable'];
     }
@@ -544,8 +531,7 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
 
   const importModulesEnabled = Boolean(payload['importModulesSegmentEnabled']);
   updateSegment(segments, 'ImportModules', importModulesEnabled, (segment) => {
-    segment.ImportModules = segment.ImportModules ?? {};
-    const config = segment.ImportModules;
+    const config = ensureRecordField(segment, 'ImportModules');
     if (typeof payload['importModulesSelf'] === 'boolean') {
       config.Self = payload['importModulesSelf'];
     }
@@ -570,7 +556,7 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
       if (!entry || typeof entry !== 'object') {
         continue;
       }
-      const record = entry as Record<string, any>;
+      const record = entry as JsonRecord;
       const moduleName = String(record['moduleName'] ?? '').trim();
       if (!moduleName) {
         continue;
@@ -578,7 +564,7 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
       const kind = dependencyKinds.has(String(record['kind'] ?? ''))
         ? String(record['kind'])
         : 'RequiredModule';
-      const config: Record<string, any> = { ModuleName: moduleName };
+      const config: JsonRecord = { ModuleName: moduleName };
       applyStringField(config, 'ModuleVersion', record['moduleVersion']);
       applyStringField(config, 'MinimumVersion', record['minimumVersion']);
       applyStringField(config, 'RequiredVersion', record['requiredVersion']);
@@ -589,9 +575,9 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
 
   const placeholderOptionEnabled = Boolean(payload['placeHolderOptionSegmentEnabled']);
   updateSegment(segments, 'PlaceHolderOption', placeholderOptionEnabled, (segment) => {
-    segment.PlaceHolderOption = segment.PlaceHolderOption ?? {};
+    const optionConfig = ensureRecordField(segment, 'PlaceHolderOption');
     if (typeof payload['placeHolderOptionSkipBuiltin'] === 'boolean') {
-      segment.PlaceHolderOption.SkipBuiltinReplacements = payload['placeHolderOptionSkipBuiltin'];
+      optionConfig.SkipBuiltinReplacements = payload['placeHolderOptionSkipBuiltin'];
     }
   });
 
@@ -607,7 +593,7 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
       if (!entry || typeof entry !== 'object') {
         continue;
       }
-      const record = entry as Record<string, any>;
+      const record = entry as JsonRecord;
       const find = String(record['find'] ?? '').trim();
       if (!find) {
         continue;
@@ -619,8 +605,7 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
 
   const testsAfterMergeEnabled = Boolean(payload['testsAfterMergeSegmentEnabled']);
   updateSegment(segments, 'TestsAfterMerge', testsAfterMergeEnabled, (segment) => {
-    segment.Configuration = segment.Configuration ?? {};
-    const config = segment.Configuration;
+    const config = ensureRecordField(segment, 'Configuration');
     applyStringField(config, 'When', payload['testsAfterMergeWhen']);
     applyStringField(config, 'TestsPath', payload['testsAfterMergePath']);
     if (typeof payload['testsAfterMergeForce'] === 'boolean') {
@@ -632,7 +617,7 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
   vscode.window.setStatusBarMessage('ForgeFlow: PowerForge pipeline config saved.', 3000);
 }
 
-async function writeJsonFile(filePath: string, data: Record<string, any>): Promise<void> {
+async function writeJsonFile(filePath: string, data: JsonRecord): Promise<void> {
   const json = JSON.stringify(data, null, 2);
   await vscode.workspace.fs.writeFile(vscode.Uri.file(filePath), Buffer.from(json, 'utf8'));
 }

@@ -122,14 +122,22 @@ export function registerFileCommands(deps: FileCommandDeps): void {
         vscode.window.showWarningMessage('ForgeFlow: Open With supports a single selection.');
         return;
       }
-      await openWith(targets[0]!);
+      const [first] = targets;
+      if (!first) {
+        return;
+      }
+      await openWith(first);
     }),
     vscode.commands.registerCommand('forgeflow.files.openInTerminal', async (target?: unknown) => {
       const targets = collectSelectedPaths(target, filesView, filesPanelView);
       if (targets.length === 0) {
         return;
       }
-      await openInTerminal(targets[0]!);
+      const [first] = targets;
+      if (!first) {
+        return;
+      }
+      await openInTerminal(first);
     }),
     vscode.commands.registerCommand('forgeflow.files.revealInOs', async (target?: unknown) => {
       const targets = collectSelectedPaths(target, filesView, filesPanelView);
@@ -146,7 +154,11 @@ export function registerFileCommands(deps: FileCommandDeps): void {
         return;
       }
       if (targets.length === 1) {
-        await copyPathToClipboard(targets[0]!);
+        const [first] = targets;
+        if (!first) {
+          return;
+        }
+        await copyPathToClipboard(first);
         return;
       }
       await vscode.env.clipboard.writeText(targets.join('\n'));
@@ -158,7 +170,11 @@ export function registerFileCommands(deps: FileCommandDeps): void {
         return;
       }
       if (targets.length === 1) {
-        await copyRelativePathToClipboard(targets[0]!);
+        const [first] = targets;
+        if (!first) {
+          return;
+        }
+        await copyRelativePathToClipboard(first);
         return;
       }
       const relPaths: string[] = [];
@@ -240,7 +256,11 @@ export function registerFileCommands(deps: FileCommandDeps): void {
         vscode.window.showWarningMessage('ForgeFlow: Rename supports a single selection.');
         return;
       }
-      await renamePath(targets[0]!);
+      const [first] = targets;
+      if (!first) {
+        return;
+      }
+      await renamePath(first);
       filesProvider.refresh();
       await projectsProvider.refresh();
     }),
@@ -250,7 +270,11 @@ export function registerFileCommands(deps: FileCommandDeps): void {
         return;
       }
       if (targets.length === 1) {
-        await deletePath(targets[0]!);
+        const [first] = targets;
+        if (!first) {
+          return;
+        }
+        await deletePath(first);
       } else {
         await deletePaths(targets);
       }

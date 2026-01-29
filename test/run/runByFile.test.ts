@@ -4,7 +4,7 @@ import { quoteShellArg, renderCommandTemplate } from '../../src/run/runByFile';
 describe('run-by-file helpers', () => {
   it('quotes shell args with spaces and quotes', () => {
     assert.equal(quoteShellArg('C:\\Temp\\My File.cs'), '"C:\\Temp\\My File.cs"');
-    assert.equal(quoteShellArg('C:\\Temp\\A\"B.cs'), '"C:\\Temp\\A\\\"B.cs"');
+    assert.equal(quoteShellArg('C:\\Temp\\A"B.cs'), '"C:\\Temp\\A\\"B.cs"');
   });
 
   it('renders command template with quoted tokens', () => {

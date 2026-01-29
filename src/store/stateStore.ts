@@ -29,11 +29,9 @@ export class StateStore {
   ): Promise<T> {
     const attempts = Math.max(1, options?.attempts ?? 3);
     const revisionKey = options?.revisionKey;
-    let lastValue = this.getGlobal<T>(key, defaultValue);
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       const current = this.getGlobal<T>(key, defaultValue);
       const next = mutate(cloneValue(current));
-      lastValue = next;
       await this.setGlobal(key, next);
       if (!revisionKey) {
         return next;
@@ -45,7 +43,7 @@ export class StateStore {
         return next;
       }
     }
-    return lastValue;
+    return this.getGlobal<T>(key, defaultValue);
   }
 
   public async updateWorkspaceWithRetry<T>(
@@ -56,11 +54,9 @@ export class StateStore {
   ): Promise<T> {
     const attempts = Math.max(1, options?.attempts ?? 3);
     const revisionKey = options?.revisionKey;
-    let lastValue = this.getWorkspace<T>(key, defaultValue);
     for (let attempt = 0; attempt < attempts; attempt += 1) {
       const current = this.getWorkspace<T>(key, defaultValue);
       const next = mutate(cloneValue(current));
-      lastValue = next;
       await this.setWorkspace(key, next);
       if (!revisionKey) {
         return next;
@@ -72,16 +68,21 @@ export class StateStore {
         return next;
       }
     }
-    return lastValue;
+    return this.getWorkspace<T>(key, defaultValue);
   }
 }
 
 function cloneValue<T>(value: T): T {
   if (Array.isArray(value)) {
-    return [...value] as unknown as T;
+    return value.map((item) => cloneValue(item)) as unknown as T;
   }
   if (value && typeof value === 'object') {
-    return { ...(value as Record<string, unknown>) } as T;
+    const source = value as Record<string, unknown>;
+    const clone: Record<string, unknown> = {};
+    for (const key of Object.keys(source)) {
+      clone[key] = cloneValue(source[key]);
+    }
+    return clone as T;
   }
   return value;
 }

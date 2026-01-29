@@ -12,6 +12,6 @@ export function quoteShellArg(value: string): string {
   if (!value) {
     return '""';
   }
-  const escaped = value.replace(/\"/g, '\\"');
+  const escaped = value.replace(/"/g, '\\"');
   return `"${escaped}"`;
 }

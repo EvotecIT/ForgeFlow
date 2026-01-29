@@ -14,6 +14,7 @@ export class FilesDragAndDropController implements vscode.TreeDragAndDropControl
     dataTransfer: vscode.DataTransfer,
     _token: vscode.CancellationToken
   ): Promise<void> {
+    void _token;
     const paths = sources.flatMap((node) => (isPathNode(node) ? [node.path] : []));
     if (paths.length === 0) {
       return;
@@ -28,6 +29,7 @@ export class FilesDragAndDropController implements vscode.TreeDragAndDropControl
     dataTransfer: vscode.DataTransfer,
     _token: vscode.CancellationToken
   ): Promise<void> {
+    void _token;
     const destination = await resolveDestination(target);
     if (!destination) {
       return;

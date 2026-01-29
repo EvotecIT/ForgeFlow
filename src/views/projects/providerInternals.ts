@@ -216,17 +216,23 @@ export async function hydrateGitCommits(params: {
 
     if (needsRefresh) {
       pending.push({ project: baseProject, index, headMtime, headHash });
-    } else if (baseProject !== project) {
-      await params.projectsStore.updateProject(baseProject);
-      if (headHash && cacheEntry?.headHash !== headHash) {
-        cacheUpdates.push({
-          projectId: baseProject.id,
-          path: baseProject.path,
-          lastCommit: baseProject.lastGitCommit,
-          headMtime,
-          headHash,
-          fetchedAt: Date.now()
-        });
+    } else {
+      if (baseProject !== project) {
+        await params.projectsStore.updateProject(baseProject);
+      }
+      if (cacheEntry && (headMtime !== undefined || headHash)) {
+        const nextHeadMtime = headMtime ?? cacheEntry.headMtime;
+        const nextHeadHash = headHash ?? cacheEntry.headHash;
+        if (nextHeadMtime !== cacheEntry.headMtime || nextHeadHash !== cacheEntry.headHash) {
+          cacheUpdates.push({
+            projectId: baseProject.id,
+            path: baseProject.path,
+            lastCommit: baseProject.lastGitCommit,
+            headMtime: nextHeadMtime,
+            headHash: nextHeadHash,
+            fetchedAt: Date.now()
+          });
+        }
       }
     }
   }

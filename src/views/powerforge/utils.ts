@@ -1,3 +1,49 @@
+export type JsonRecord = Record<string, unknown>;
+
+export function isRecord(value: unknown): value is JsonRecord {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+export function ensureRecord(value: unknown): JsonRecord {
+  return isRecord(value) ? value : {};
+}
+
+export function ensureRecordField(parent: JsonRecord, key: string): JsonRecord {
+  const record = ensureRecord(parent[key]);
+  parent[key] = record;
+  return record;
+}
+
+export function toStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((entry): entry is string => typeof entry === 'string');
+}
+
+export function toRecordArray(value: unknown): JsonRecord[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(isRecord);
+}
+
+export function asString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+export function asStringOrNull(value: unknown): string | null {
+  return typeof value === 'string' ? value : null;
+}
+
+export function asBoolean(value: unknown): boolean | undefined {
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+export function asNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
 export function escapeHtml(value: string): string {
   return value.replace(/[&<>"']/g, (char) => {
     switch (char) {
@@ -87,7 +133,7 @@ export function renderImportantLinkRows(entries?: Array<{ title: string; url: st
     `).join('\n');
 }
 
-export function applyStringField(target: Record<string, any>, key: string, value: unknown): void {
+export function applyStringField(target: JsonRecord, key: string, value: unknown): void {
   const next = String(value ?? '').trim();
   if (next) {
     target[key] = next;
@@ -118,18 +164,20 @@ export function parseInteger(value: unknown): number | undefined {
   return parsed;
 }
 
-export function safeJsonParse(text: string): any | undefined {
+export function safeJsonParse(text: string): JsonRecord | undefined {
   try {
-    return JSON.parse(text);
+    const parsed = JSON.parse(text);
+    return isRecord(parsed) ? parsed : undefined;
   } catch {
     return undefined;
   }
 }
 
-export function setRuleToggle(target: Record<string, any>, ruleName: string, enabled: unknown): void {
+export function setRuleToggle(target: JsonRecord, ruleName: string, enabled: unknown): void {
   if (typeof enabled !== 'boolean') {
     return;
   }
-  target[ruleName] = target[ruleName] ?? {};
-  target[ruleName].Enable = enabled;
+  const rule = ensureRecord(target[ruleName]);
+  rule['Enable'] = enabled;
+  target[ruleName] = rule;
 }

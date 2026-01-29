@@ -2,62 +2,72 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { readFileText } from '../../util/fs';
 import type { PowerForgeConfigSummary } from './types';
-import { safeJsonParse } from './utils';
-import { findArtefactSegment, isModuleDependencySegment } from './segments';
+import {
+  asBoolean,
+  asNumber,
+  asString,
+  asStringOrNull,
+  ensureRecord,
+  safeJsonParse,
+  toRecordArray,
+  toStringArray
+} from './utils';
+import type { JsonRecord } from './utils';
+import { findArtefactSegment, isModuleDependencySegment, type PowerForgeSegment } from './segments';
 
 export async function readPipelineSummary(filePath: string): Promise<PowerForgeConfigSummary> {
   const text = await readFileText(filePath);
   const parsed = text ? safeJsonParse(text) : undefined;
-  const build = parsed?.Build ?? {};
-  const install = parsed?.Install ?? {};
-  const segments = Array.isArray(parsed?.Segments) ? parsed.Segments : [];
-  const manifestSegment = segments.find((segment: any) => segment?.Type === 'Manifest');
-  const manifestConfig = manifestSegment?.Configuration ?? {};
-  const publishSegment = segments.find((segment: any) => segment?.Type === 'Publish');
-  const publishConfig = publishSegment?.Configuration ?? {};
-  const publishRepository = publishConfig?.Repository ?? {};
-  const documentationSegment = segments.find((segment: any) => segment?.Type === 'Documentation');
-  const documentationConfig = documentationSegment?.Configuration ?? {};
-  const buildDocumentationSegment = segments.find((segment: any) => segment?.Type === 'BuildDocumentation');
-  const buildDocumentationConfig = buildDocumentationSegment?.Configuration ?? {};
-  const validationSegment = segments.find((segment: any) => segment?.Type === 'Validation');
-  const validationSettings = validationSegment?.Settings ?? {};
-  const validationScriptAnalyzer = validationSettings?.ScriptAnalyzer ?? {};
-  const validationFileIntegrity = validationSettings?.FileIntegrity ?? {};
-  const validationStructure = validationSettings?.Structure ?? {};
-  const validationDocumentation = validationSettings?.Documentation ?? {};
-  const validationTests = validationSettings?.Tests ?? {};
-  const validationBinary = validationSettings?.Binary ?? {};
-  const validationCsproj = validationSettings?.Csproj ?? {};
-  const fileConsistencySegment = segments.find((segment: any) => segment?.Type === 'FileConsistency');
-  const fileConsistencySettings = fileConsistencySegment?.Settings ?? {};
-  const compatibilitySegment = segments.find((segment: any) => segment?.Type === 'Compatibility');
-  const compatibilitySettings = compatibilitySegment?.Settings ?? {};
+  const build = ensureRecord(parsed?.Build);
+  const install = ensureRecord(parsed?.Install);
+  const segments = Array.isArray(parsed?.Segments) ? (parsed.Segments as PowerForgeSegment[]) : [];
+  const manifestSegment = segments.find((segment) => segment?.Type === 'Manifest');
+  const manifestConfig = ensureRecord(manifestSegment?.Configuration);
+  const publishSegment = segments.find((segment) => segment?.Type === 'Publish');
+  const publishConfig = ensureRecord(publishSegment?.Configuration);
+  const publishRepository = ensureRecord(publishConfig.Repository);
+  const documentationSegment = segments.find((segment) => segment?.Type === 'Documentation');
+  const documentationConfig = ensureRecord(documentationSegment?.Configuration);
+  const buildDocumentationSegment = segments.find((segment) => segment?.Type === 'BuildDocumentation');
+  const buildDocumentationConfig = ensureRecord(buildDocumentationSegment?.Configuration);
+  const validationSegment = segments.find((segment) => segment?.Type === 'Validation');
+  const validationSettings = ensureRecord(validationSegment?.Settings);
+  const validationScriptAnalyzer = ensureRecord(validationSettings.ScriptAnalyzer);
+  const validationFileIntegrity = ensureRecord(validationSettings.FileIntegrity);
+  const validationStructure = ensureRecord(validationSettings.Structure);
+  const validationDocumentation = ensureRecord(validationSettings.Documentation);
+  const validationTests = ensureRecord(validationSettings.Tests);
+  const validationBinary = ensureRecord(validationSettings.Binary);
+  const validationCsproj = ensureRecord(validationSettings.Csproj);
+  const fileConsistencySegment = segments.find((segment) => segment?.Type === 'FileConsistency');
+  const fileConsistencySettings = ensureRecord(fileConsistencySegment?.Settings);
+  const compatibilitySegment = segments.find((segment) => segment?.Type === 'Compatibility');
+  const compatibilitySettings = ensureRecord(compatibilitySegment?.Settings);
   const packedSegment = findArtefactSegment(segments, 'Packed');
-  const packedConfig = packedSegment?.Configuration ?? {};
+  const packedConfig = ensureRecord(packedSegment?.Configuration);
   const unpackedSegment = findArtefactSegment(segments, 'Unpacked');
-  const unpackedConfig = unpackedSegment?.Configuration ?? {};
-  const optionsSegment = segments.find((segment: any) => segment?.Type === 'Options');
-  const optionsConfig = optionsSegment?.Options ?? {};
-  const signingOptions = optionsConfig?.Signing ?? {};
-  const deliveryOptions = optionsConfig?.Delivery ?? {};
-  const formattingSegment = segments.find((segment: any) => segment?.Type === 'Formatting');
-  const formattingOptions = formattingSegment?.Options ?? {};
-  const formattingStandard = formattingOptions?.Standard ?? {};
-  const formatPS1 = formattingStandard?.FormatCodePS1 ?? {};
-  const formatPSM1 = formattingStandard?.FormatCodePSM1 ?? {};
-  const formatPSD1 = formattingStandard?.FormatCodePSD1 ?? {};
-  const formatSettings = formatPS1?.FormatterSettings ?? {};
-  const formatRules = formatSettings?.Rules ?? {};
-  const placeHolderOptionSegment = segments.find((segment: any) => segment?.Type === 'PlaceHolderOption');
-  const placeHolderOptionConfig = placeHolderOptionSegment?.PlaceHolderOption ?? {};
-  const placeHolderSegments = segments.filter((segment: any) => segment?.Type === 'PlaceHolder');
-  const testsAfterMergeSegment = segments.find((segment: any) => segment?.Type === 'TestsAfterMerge');
-  const testsAfterMergeConfig = testsAfterMergeSegment?.Configuration ?? {};
-  const buildLibrariesSegment = segments.find((segment: any) => segment?.Type === 'BuildLibraries');
-  const buildLibrariesConfig = buildLibrariesSegment?.BuildLibraries ?? {};
-  const importModulesSegment = segments.find((segment: any) => segment?.Type === 'ImportModules');
-  const importModulesConfig = importModulesSegment?.ImportModules ?? {};
+  const unpackedConfig = ensureRecord(unpackedSegment?.Configuration);
+  const optionsSegment = segments.find((segment) => segment?.Type === 'Options');
+  const optionsConfig = ensureRecord(optionsSegment?.Options);
+  const signingOptions = ensureRecord(optionsConfig.Signing);
+  const deliveryOptions = ensureRecord(optionsConfig.Delivery);
+  const formattingSegment = segments.find((segment) => segment?.Type === 'Formatting');
+  const formattingOptions = ensureRecord(formattingSegment?.Options);
+  const formattingStandard = ensureRecord(formattingOptions.Standard);
+  const formatPS1 = ensureRecord(formattingStandard.FormatCodePS1);
+  const formatPSM1 = ensureRecord(formattingStandard.FormatCodePSM1);
+  const formatPSD1 = ensureRecord(formattingStandard.FormatCodePSD1);
+  const formatSettings = ensureRecord(formatPS1.FormatterSettings);
+  const formatRules = ensureRecord(formatSettings.Rules);
+  const placeHolderOptionSegment = segments.find((segment) => segment?.Type === 'PlaceHolderOption');
+  const placeHolderOptionConfig = ensureRecord(placeHolderOptionSegment?.PlaceHolderOption);
+  const placeHolderSegments = segments.filter((segment) => segment?.Type === 'PlaceHolder');
+  const testsAfterMergeSegment = segments.find((segment) => segment?.Type === 'TestsAfterMerge');
+  const testsAfterMergeConfig = ensureRecord(testsAfterMergeSegment?.Configuration);
+  const buildLibrariesSegment = segments.find((segment) => segment?.Type === 'BuildLibraries');
+  const buildLibrariesConfig = ensureRecord(buildLibrariesSegment?.BuildLibraries);
+  const importModulesSegment = segments.find((segment) => segment?.Type === 'ImportModules');
+  const importModulesConfig = ensureRecord(importModulesSegment?.ImportModules);
   const projectRoot = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(filePath))?.uri.fsPath;
   return {
     kind: 'pipeline',
@@ -65,252 +75,252 @@ export async function readPipelineSummary(filePath: string): Promise<PowerForgeC
     projectRoot,
     title: `Pipeline: ${path.basename(filePath)}`,
     build: {
-      name: build.Name,
-      sourcePath: build.SourcePath,
-      csprojPath: build.CsprojPath,
-      version: build.Version,
-      configuration: build.Configuration,
-      frameworks: Array.isArray(build.Frameworks) ? build.Frameworks : []
+      name: asString(build.Name),
+      sourcePath: asString(build.SourcePath),
+      csprojPath: asString(build.CsprojPath),
+      version: asString(build.Version),
+      configuration: asString(build.Configuration),
+      frameworks: toStringArray(build.Frameworks)
     },
     install: {
       enabled: Boolean(install.Enabled),
-      strategy: install.Strategy,
-      keepVersions: typeof install.KeepVersions === 'number' ? install.KeepVersions : undefined
+      strategy: asString(install.Strategy),
+      keepVersions: asNumber(install.KeepVersions)
     },
     manifest: {
       segmentEnabled: Boolean(manifestSegment),
-      moduleVersion: manifestConfig.ModuleVersion,
-      compatiblePSEditions: Array.isArray(manifestConfig.CompatiblePSEditions) ? manifestConfig.CompatiblePSEditions : [],
-      guid: manifestConfig.Guid,
-      author: manifestConfig.Author,
-      companyName: manifestConfig.CompanyName ?? null,
-      copyright: manifestConfig.Copyright ?? null,
-      description: manifestConfig.Description ?? null,
-      powerShellVersion: manifestConfig.PowerShellVersion,
-      tags: Array.isArray(manifestConfig.Tags) ? manifestConfig.Tags : [],
-      iconUri: manifestConfig.IconUri ?? null,
-      projectUri: manifestConfig.ProjectUri ?? null,
-      licenseUri: manifestConfig.LicenseUri ?? null,
-      requireLicenseAcceptance: manifestConfig.RequireLicenseAcceptance,
-      prerelease: manifestConfig.Prerelease ?? null
+      moduleVersion: asString(manifestConfig.ModuleVersion),
+      compatiblePSEditions: toStringArray(manifestConfig.CompatiblePSEditions),
+      guid: asString(manifestConfig.Guid),
+      author: asString(manifestConfig.Author),
+      companyName: asStringOrNull(manifestConfig.CompanyName),
+      copyright: asStringOrNull(manifestConfig.Copyright),
+      description: asStringOrNull(manifestConfig.Description),
+      powerShellVersion: asString(manifestConfig.PowerShellVersion),
+      tags: toStringArray(manifestConfig.Tags),
+      iconUri: asStringOrNull(manifestConfig.IconUri),
+      projectUri: asStringOrNull(manifestConfig.ProjectUri),
+      licenseUri: asStringOrNull(manifestConfig.LicenseUri),
+      requireLicenseAcceptance: asBoolean(manifestConfig.RequireLicenseAcceptance),
+      prerelease: asStringOrNull(manifestConfig.Prerelease)
     },
     publish: {
       segmentEnabled: Boolean(publishSegment),
-      enabled: publishConfig.Enabled,
-      destination: publishConfig.Destination,
-      tool: publishConfig.Tool,
-      apiKey: publishConfig.ApiKey,
-      id: publishConfig.ID ?? null,
-      userName: publishConfig.UserName ?? null,
-      repositoryName: publishConfig.RepositoryName ?? null,
-      force: publishConfig.Force,
-      overwriteTagName: publishConfig.OverwriteTagName ?? null,
-      doNotMarkAsPreRelease: publishConfig.DoNotMarkAsPreRelease,
-      generateReleaseNotes: publishConfig.GenerateReleaseNotes,
-      verbose: publishConfig.Verbose,
+      enabled: asBoolean(publishConfig.Enabled),
+      destination: asString(publishConfig.Destination),
+      tool: asString(publishConfig.Tool),
+      apiKey: asString(publishConfig.ApiKey),
+      id: asStringOrNull(publishConfig.ID),
+      userName: asStringOrNull(publishConfig.UserName),
+      repositoryName: asStringOrNull(publishConfig.RepositoryName),
+      force: asBoolean(publishConfig.Force),
+      overwriteTagName: asStringOrNull(publishConfig.OverwriteTagName),
+      doNotMarkAsPreRelease: asBoolean(publishConfig.DoNotMarkAsPreRelease),
+      generateReleaseNotes: asBoolean(publishConfig.GenerateReleaseNotes),
+      verbose: asBoolean(publishConfig.Verbose),
       repositoryEnabled: Boolean(publishConfig.Repository),
       repository: {
-        name: publishRepository?.Name ?? null,
-        uri: publishRepository?.Uri ?? null,
-        sourceUri: publishRepository?.SourceUri ?? null,
-        publishUri: publishRepository?.PublishUri ?? null,
-        trusted: publishRepository?.Trusted,
-        priority: typeof publishRepository?.Priority === 'number' ? publishRepository.Priority : null,
-        apiVersion: publishRepository?.ApiVersion,
-        ensureRegistered: publishRepository?.EnsureRegistered,
-        unregisterAfterUse: publishRepository?.UnregisterAfterUse
+        name: asStringOrNull(publishRepository.Name),
+        uri: asStringOrNull(publishRepository.Uri),
+        sourceUri: asStringOrNull(publishRepository.SourceUri),
+        publishUri: asStringOrNull(publishRepository.PublishUri),
+        trusted: asBoolean(publishRepository.Trusted),
+        priority: asNumber(publishRepository.Priority) ?? null,
+        apiVersion: asString(publishRepository.ApiVersion),
+        ensureRegistered: asBoolean(publishRepository.EnsureRegistered),
+        unregisterAfterUse: asBoolean(publishRepository.UnregisterAfterUse)
       }
     },
     documentation: {
       segmentEnabled: Boolean(documentationSegment),
-      path: documentationConfig.Path,
-      readmePath: documentationConfig.PathReadme
+      path: asString(documentationConfig.Path),
+      readmePath: asString(documentationConfig.PathReadme)
     },
     buildDocumentation: {
       segmentEnabled: Boolean(buildDocumentationSegment),
-      enable: buildDocumentationConfig.Enable,
-      tool: buildDocumentationConfig.Tool,
-      startClean: buildDocumentationConfig.StartClean,
-      updateWhenNew: buildDocumentationConfig.UpdateWhenNew,
-      syncExternalHelpToProjectRoot: buildDocumentationConfig.SyncExternalHelpToProjectRoot,
-      generateExternalHelp: buildDocumentationConfig.GenerateExternalHelp,
-      externalHelpCulture: buildDocumentationConfig.ExternalHelpCulture
+      enable: asBoolean(buildDocumentationConfig.Enable),
+      tool: asString(buildDocumentationConfig.Tool),
+      startClean: asBoolean(buildDocumentationConfig.StartClean),
+      updateWhenNew: asBoolean(buildDocumentationConfig.UpdateWhenNew),
+      syncExternalHelpToProjectRoot: asBoolean(buildDocumentationConfig.SyncExternalHelpToProjectRoot),
+      generateExternalHelp: asBoolean(buildDocumentationConfig.GenerateExternalHelp),
+      externalHelpCulture: asString(buildDocumentationConfig.ExternalHelpCulture)
     },
     validation: {
       segmentEnabled: Boolean(validationSegment),
-      enable: validationSettings.Enable,
-      scriptAnalyzerEnable: validationScriptAnalyzer.Enable,
-      checkTrailingWhitespace: validationFileIntegrity.CheckTrailingWhitespace,
-      checkSyntax: validationFileIntegrity.CheckSyntax,
+      enable: asBoolean(validationSettings.Enable),
+      scriptAnalyzerEnable: asBoolean(validationScriptAnalyzer.Enable),
+      checkTrailingWhitespace: asBoolean(validationFileIntegrity.CheckTrailingWhitespace),
+      checkSyntax: asBoolean(validationFileIntegrity.CheckSyntax),
       structure: {
-        severity: validationStructure.Severity,
-        publicPaths: Array.isArray(validationStructure.PublicFunctionPaths) ? validationStructure.PublicFunctionPaths : [],
-        internalPaths: Array.isArray(validationStructure.InternalFunctionPaths) ? validationStructure.InternalFunctionPaths : [],
-        validateManifestFiles: validationStructure.ValidateManifestFiles,
-        validateExports: validationStructure.ValidateExports,
-        validateInternalNotExported: validationStructure.ValidateInternalNotExported,
-        allowWildcardExports: validationStructure.AllowWildcardExports
+        severity: asString(validationStructure.Severity),
+        publicPaths: toStringArray(validationStructure.PublicFunctionPaths),
+        internalPaths: toStringArray(validationStructure.InternalFunctionPaths),
+        validateManifestFiles: asBoolean(validationStructure.ValidateManifestFiles),
+        validateExports: asBoolean(validationStructure.ValidateExports),
+        validateInternalNotExported: asBoolean(validationStructure.ValidateInternalNotExported),
+        allowWildcardExports: asBoolean(validationStructure.AllowWildcardExports)
       },
       documentation: {
-        severity: validationDocumentation.Severity,
-        minSynopsisPercent: validationDocumentation.MinSynopsisPercent,
-        minDescriptionPercent: validationDocumentation.MinDescriptionPercent,
-        minExampleCountPerCommand: validationDocumentation.MinExampleCountPerCommand,
-        excludeCommands: Array.isArray(validationDocumentation.ExcludeCommands) ? validationDocumentation.ExcludeCommands : [],
-        timeoutSeconds: validationDocumentation.TimeoutSeconds
+        severity: asString(validationDocumentation.Severity),
+        minSynopsisPercent: asNumber(validationDocumentation.MinSynopsisPercent),
+        minDescriptionPercent: asNumber(validationDocumentation.MinDescriptionPercent),
+        minExampleCountPerCommand: asNumber(validationDocumentation.MinExampleCountPerCommand),
+        excludeCommands: toStringArray(validationDocumentation.ExcludeCommands),
+        timeoutSeconds: asNumber(validationDocumentation.TimeoutSeconds)
       },
       tests: {
-        severity: validationTests.Severity,
-        enable: validationTests.Enable,
-        testPath: validationTests.TestPath ?? null,
-        additionalModules: Array.isArray(validationTests.AdditionalModules) ? validationTests.AdditionalModules : [],
-        skipModules: Array.isArray(validationTests.SkipModules) ? validationTests.SkipModules : [],
-        skipDependencies: validationTests.SkipDependencies,
-        skipImport: validationTests.SkipImport,
-        force: validationTests.Force,
-        timeoutSeconds: validationTests.TimeoutSeconds
+        severity: asString(validationTests.Severity),
+        enable: asBoolean(validationTests.Enable),
+        testPath: asStringOrNull(validationTests.TestPath),
+        additionalModules: toStringArray(validationTests.AdditionalModules),
+        skipModules: toStringArray(validationTests.SkipModules),
+        skipDependencies: asBoolean(validationTests.SkipDependencies),
+        skipImport: asBoolean(validationTests.SkipImport),
+        force: asBoolean(validationTests.Force),
+        timeoutSeconds: asNumber(validationTests.TimeoutSeconds)
       },
       binary: {
-        severity: validationBinary.Severity,
-        validateAssembliesExist: validationBinary.ValidateAssembliesExist,
-        validateManifestExports: validationBinary.ValidateManifestExports,
-        allowWildcardExports: validationBinary.AllowWildcardExports
+        severity: asString(validationBinary.Severity),
+        validateAssembliesExist: asBoolean(validationBinary.ValidateAssembliesExist),
+        validateManifestExports: asBoolean(validationBinary.ValidateManifestExports),
+        allowWildcardExports: asBoolean(validationBinary.AllowWildcardExports)
       },
       csproj: {
-        severity: validationCsproj.Severity,
-        requireTargetFramework: validationCsproj.RequireTargetFramework,
-        requireLibraryOutput: validationCsproj.RequireLibraryOutput
+        severity: asString(validationCsproj.Severity),
+        requireTargetFramework: asBoolean(validationCsproj.RequireTargetFramework),
+        requireLibraryOutput: asBoolean(validationCsproj.RequireLibraryOutput)
       }
     },
     fileConsistency: {
       segmentEnabled: Boolean(fileConsistencySegment),
-      enable: fileConsistencySettings.Enable,
-      requiredEncoding: fileConsistencySettings.RequiredEncoding,
-      requiredLineEnding: fileConsistencySettings.RequiredLineEnding,
-      scope: fileConsistencySettings.Scope,
-      excludeDirectories: Array.isArray(fileConsistencySettings.ExcludeDirectories) ? fileConsistencySettings.ExcludeDirectories : [],
-      exportReport: fileConsistencySettings.ExportReport,
-      checkMixedLineEndings: fileConsistencySettings.CheckMixedLineEndings,
-      checkMissingFinalNewline: fileConsistencySettings.CheckMissingFinalNewline
+      enable: asBoolean(fileConsistencySettings.Enable),
+      requiredEncoding: asString(fileConsistencySettings.RequiredEncoding),
+      requiredLineEnding: asString(fileConsistencySettings.RequiredLineEnding),
+      scope: asString(fileConsistencySettings.Scope),
+      excludeDirectories: toStringArray(fileConsistencySettings.ExcludeDirectories),
+      exportReport: asBoolean(fileConsistencySettings.ExportReport),
+      checkMixedLineEndings: asBoolean(fileConsistencySettings.CheckMixedLineEndings),
+      checkMissingFinalNewline: asBoolean(fileConsistencySettings.CheckMissingFinalNewline)
     },
     compatibility: {
       segmentEnabled: Boolean(compatibilitySegment),
-      enable: compatibilitySettings.Enable,
-      requireCrossCompatibility: compatibilitySettings.RequireCrossCompatibility,
-      minimumCompatibilityPercentage: compatibilitySettings.MinimumCompatibilityPercentage,
-      exportReport: compatibilitySettings.ExportReport
+      enable: asBoolean(compatibilitySettings.Enable),
+      requireCrossCompatibility: asBoolean(compatibilitySettings.RequireCrossCompatibility),
+      minimumCompatibilityPercentage: asNumber(compatibilitySettings.MinimumCompatibilityPercentage),
+      exportReport: asBoolean(compatibilitySettings.ExportReport)
     },
     artefacts: {
       packed: {
         segmentEnabled: Boolean(packedSegment),
-        enabled: packedConfig.Enabled ?? undefined,
-        path: packedConfig.Path ?? null,
-        includeTagName: packedConfig.IncludeTagName ?? null
+        enabled: asBoolean(packedConfig.Enabled),
+        path: asStringOrNull(packedConfig.Path),
+        includeTagName: asBoolean(packedConfig.IncludeTagName) ?? null
       },
       unpacked: {
         segmentEnabled: Boolean(unpackedSegment),
-        enabled: unpackedConfig.Enabled ?? undefined,
-        path: unpackedConfig.Path ?? null,
-        includeTagName: unpackedConfig.IncludeTagName ?? null
+        enabled: asBoolean(unpackedConfig.Enabled),
+        path: asStringOrNull(unpackedConfig.Path),
+        includeTagName: asBoolean(unpackedConfig.IncludeTagName) ?? null
       }
     },
     options: {
       segmentEnabled: Boolean(optionsSegment),
-      signingIncludeInternals: signingOptions.IncludeInternals ?? null,
-      signingIncludeBinaries: signingOptions.IncludeBinaries ?? null,
-      signingThumbprint: signingOptions.CertificateThumbprint ?? null,
-      signingPfxPath: signingOptions.CertificatePFXPath ?? null,
-      signingPfxPassword: signingOptions.CertificatePFXPassword ?? null,
-      signingInclude: Array.isArray(signingOptions.Include) ? signingOptions.Include : [],
-      signingExcludePaths: Array.isArray(signingOptions.ExcludePaths) ? signingOptions.ExcludePaths : [],
-      deliveryEnable: deliveryOptions.Enable ?? null,
-      deliveryIncludeRootReadme: deliveryOptions.IncludeRootReadme ?? null,
-      deliveryIncludeRootChangelog: deliveryOptions.IncludeRootChangelog ?? null,
-      deliveryIncludeRootLicense: deliveryOptions.IncludeRootLicense ?? null,
-      deliverySchema: deliveryOptions.Schema ?? null,
-      deliveryReadmeDestination: deliveryOptions.ReadmeDestination ?? null,
-      deliveryChangelogDestination: deliveryOptions.ChangelogDestination ?? null,
-      deliveryLicenseDestination: deliveryOptions.LicenseDestination ?? null,
-      deliveryRepositoryPaths: Array.isArray(deliveryOptions.RepositoryPaths) ? deliveryOptions.RepositoryPaths : [],
-      deliveryRepositoryBranch: deliveryOptions.RepositoryBranch ?? null,
-      deliveryDocumentationOrder: Array.isArray(deliveryOptions.DocumentationOrder) ? deliveryOptions.DocumentationOrder : [],
-      deliveryIntroText: Array.isArray(deliveryOptions.IntroText) ? deliveryOptions.IntroText : [],
-      deliveryUpgradeText: Array.isArray(deliveryOptions.UpgradeText) ? deliveryOptions.UpgradeText : [],
-      deliveryGenerateInstallCommand: deliveryOptions.GenerateInstallCommand ?? null,
-      deliveryGenerateUpdateCommand: deliveryOptions.GenerateUpdateCommand ?? null,
-      deliveryInstallCommandName: deliveryOptions.InstallCommandName ?? null,
-      deliveryUpdateCommandName: deliveryOptions.UpdateCommandName ?? null,
-      deliveryImportantLinks: Array.isArray(deliveryOptions.ImportantLinks)
-        ? deliveryOptions.ImportantLinks.map((link: any) => ({ title: link?.Title ?? '', url: link?.Url ?? '' }))
-        : []
+      signingIncludeInternals: asBoolean(signingOptions.IncludeInternals) ?? null,
+      signingIncludeBinaries: asBoolean(signingOptions.IncludeBinaries) ?? null,
+      signingThumbprint: asStringOrNull(signingOptions.CertificateThumbprint),
+      signingPfxPath: asStringOrNull(signingOptions.CertificatePFXPath),
+      signingPfxPassword: asStringOrNull(signingOptions.CertificatePFXPassword),
+      signingInclude: toStringArray(signingOptions.Include),
+      signingExcludePaths: toStringArray(signingOptions.ExcludePaths),
+      deliveryEnable: asBoolean(deliveryOptions.Enable) ?? null,
+      deliveryIncludeRootReadme: asBoolean(deliveryOptions.IncludeRootReadme) ?? null,
+      deliveryIncludeRootChangelog: asBoolean(deliveryOptions.IncludeRootChangelog) ?? null,
+      deliveryIncludeRootLicense: asBoolean(deliveryOptions.IncludeRootLicense) ?? null,
+      deliverySchema: asStringOrNull(deliveryOptions.Schema),
+      deliveryReadmeDestination: asStringOrNull(deliveryOptions.ReadmeDestination),
+      deliveryChangelogDestination: asStringOrNull(deliveryOptions.ChangelogDestination),
+      deliveryLicenseDestination: asStringOrNull(deliveryOptions.LicenseDestination),
+      deliveryRepositoryPaths: toStringArray(deliveryOptions.RepositoryPaths),
+      deliveryRepositoryBranch: asStringOrNull(deliveryOptions.RepositoryBranch),
+      deliveryDocumentationOrder: toStringArray(deliveryOptions.DocumentationOrder),
+      deliveryIntroText: toStringArray(deliveryOptions.IntroText),
+      deliveryUpgradeText: toStringArray(deliveryOptions.UpgradeText),
+      deliveryGenerateInstallCommand: asBoolean(deliveryOptions.GenerateInstallCommand) ?? null,
+      deliveryGenerateUpdateCommand: asBoolean(deliveryOptions.GenerateUpdateCommand) ?? null,
+      deliveryInstallCommandName: asStringOrNull(deliveryOptions.InstallCommandName),
+      deliveryUpdateCommandName: asStringOrNull(deliveryOptions.UpdateCommandName),
+      deliveryImportantLinks: toRecordArray(deliveryOptions.ImportantLinks)
+        .map((link: JsonRecord) => ({ title: asString(link.Title) ?? '', url: asString(link.Url) ?? '' }))
+        .filter((entry) => entry.title && entry.url)
     },
     formatting: {
       segmentEnabled: Boolean(formattingSegment),
-      updateProjectRoot: formattingOptions.UpdateProjectRoot,
-      ps1Enabled: formatPS1.Enabled,
-      ps1RemoveComments: formatPS1.RemoveComments,
-      ps1RemoveEmptyLines: formatPS1.RemoveEmptyLines,
-      ps1RemoveAllEmptyLines: formatPS1.RemoveAllEmptyLines,
-      ps1RemoveCommentsInParamBlock: formatPS1.RemoveCommentsInParamBlock,
-      ps1RemoveCommentsBeforeParamBlock: formatPS1.RemoveCommentsBeforeParamBlock,
-      sort: formatPS1.Sort ?? null,
-      includeRules: Array.isArray(formatSettings.IncludeRules) ? formatSettings.IncludeRules : [],
-      rulePlaceOpenBrace: formatRules.PSPlaceOpenBrace?.Enable,
-      rulePlaceCloseBrace: formatRules.PSPlaceCloseBrace?.Enable,
-      ruleConsistentIndentation: formatRules.PSUseConsistentIndentation?.Enable,
-      ruleConsistentWhitespace: formatRules.PSUseConsistentWhitespace?.Enable,
-      ruleAlignAssignment: formatRules.PSAlignAssignmentStatement?.Enable,
-      ruleCorrectCasing: formatRules.PSUseCorrectCasing?.Enable,
-      psm1Enabled: formatPSM1.Enabled,
-      psd1Enabled: formatPSD1.Enabled
+      updateProjectRoot: asBoolean(formattingOptions.UpdateProjectRoot),
+      ps1Enabled: asBoolean(formatPS1.Enabled),
+      ps1RemoveComments: asBoolean(formatPS1.RemoveComments),
+      ps1RemoveEmptyLines: asBoolean(formatPS1.RemoveEmptyLines),
+      ps1RemoveAllEmptyLines: asBoolean(formatPS1.RemoveAllEmptyLines),
+      ps1RemoveCommentsInParamBlock: asBoolean(formatPS1.RemoveCommentsInParamBlock),
+      ps1RemoveCommentsBeforeParamBlock: asBoolean(formatPS1.RemoveCommentsBeforeParamBlock),
+      sort: asStringOrNull(formatPS1.Sort),
+      includeRules: toStringArray(formatSettings.IncludeRules),
+      rulePlaceOpenBrace: asBoolean(ensureRecord(formatRules.PSPlaceOpenBrace).Enable),
+      rulePlaceCloseBrace: asBoolean(ensureRecord(formatRules.PSPlaceCloseBrace).Enable),
+      ruleConsistentIndentation: asBoolean(ensureRecord(formatRules.PSUseConsistentIndentation).Enable),
+      ruleConsistentWhitespace: asBoolean(ensureRecord(formatRules.PSUseConsistentWhitespace).Enable),
+      ruleAlignAssignment: asBoolean(ensureRecord(formatRules.PSAlignAssignmentStatement).Enable),
+      ruleCorrectCasing: asBoolean(ensureRecord(formatRules.PSUseCorrectCasing).Enable),
+      psm1Enabled: asBoolean(formatPSM1.Enabled),
+      psd1Enabled: asBoolean(formatPSD1.Enabled)
     },
     buildLibraries: {
       segmentEnabled: Boolean(buildLibrariesSegment),
-      enable: buildLibrariesConfig.Enable ?? null,
-      configuration: buildLibrariesConfig.Configuration ?? null,
-      frameworks: Array.isArray(buildLibrariesConfig.Framework) ? buildLibrariesConfig.Framework : [],
-      projectName: buildLibrariesConfig.ProjectName ?? null,
-      excludeMainLibrary: buildLibrariesConfig.ExcludeMainLibrary ?? null,
-      netProjectPath: buildLibrariesConfig.NETProjectPath ?? null,
-      binaryModuleCmdletScanDisabled: buildLibrariesConfig.BinaryModuleCmdletScanDisabled ?? null
+      enable: asBoolean(buildLibrariesConfig.Enable) ?? null,
+      configuration: asStringOrNull(buildLibrariesConfig.Configuration),
+      frameworks: toStringArray(buildLibrariesConfig.Framework),
+      projectName: asStringOrNull(buildLibrariesConfig.ProjectName),
+      excludeMainLibrary: asBoolean(buildLibrariesConfig.ExcludeMainLibrary) ?? null,
+      netProjectPath: asStringOrNull(buildLibrariesConfig.NETProjectPath),
+      binaryModuleCmdletScanDisabled: asBoolean(buildLibrariesConfig.BinaryModuleCmdletScanDisabled) ?? null
     },
     importModules: {
       segmentEnabled: Boolean(importModulesSegment),
-      self: importModulesConfig.Self ?? null,
-      requiredModules: importModulesConfig.RequiredModules ?? null,
-      verbose: importModulesConfig.Verbose ?? null
+      self: asBoolean(importModulesConfig.Self) ?? null,
+      requiredModules: asBoolean(importModulesConfig.RequiredModules) ?? null,
+      verbose: asBoolean(importModulesConfig.Verbose) ?? null
     },
     moduleDependencies: segments
-      .filter((segment: any) => isModuleDependencySegment(segment))
-      .map((segment: any) => {
+      .filter((segment) => isModuleDependencySegment(segment))
+      .map((segment) => {
         const kind = String(segment?.Type ?? segment?.Kind ?? '');
-        const config = segment?.Configuration ?? {};
+        const config = ensureRecord(segment?.Configuration);
         return {
           kind,
-          moduleName: config.ModuleName ?? '',
-          moduleVersion: config.ModuleVersion ?? null,
-          minimumVersion: config.MinimumVersion ?? null,
-          requiredVersion: config.RequiredVersion ?? null,
-          guid: config.Guid ?? null
+          moduleName: asString(config.ModuleName) ?? '',
+          moduleVersion: asStringOrNull(config.ModuleVersion),
+          minimumVersion: asStringOrNull(config.MinimumVersion),
+          requiredVersion: asStringOrNull(config.RequiredVersion),
+          guid: asStringOrNull(config.Guid)
         };
       })
-      .filter((entry: any) => entry.moduleName),
+      .filter((entry) => entry.moduleName),
     placeHolderOption: {
       segmentEnabled: Boolean(placeHolderOptionSegment),
-      skipBuiltinReplacements: placeHolderOptionConfig.SkipBuiltinReplacements
+      skipBuiltinReplacements: asBoolean(placeHolderOptionConfig.SkipBuiltinReplacements)
     },
-    placeHolders: placeHolderSegments.map((segment: any) => {
-      const config = segment?.Configuration ?? {};
+    placeHolders: placeHolderSegments.map((segment) => {
+      const config = ensureRecord(segment?.Configuration);
       return {
-        find: config.Find ?? '',
-        replace: config.Replace ?? ''
+        find: asString(config.Find) ?? '',
+        replace: asString(config.Replace) ?? ''
       };
-    }).filter((entry: any) => entry.find),
+    }).filter((entry) => entry.find),
     testsAfterMerge: {
       segmentEnabled: Boolean(testsAfterMergeSegment),
-      when: testsAfterMergeConfig.When,
-      testsPath: testsAfterMergeConfig.TestsPath,
-      force: testsAfterMergeConfig.Force
+      when: asString(testsAfterMergeConfig.When),
+      testsPath: asString(testsAfterMergeConfig.TestsPath),
+      force: asBoolean(testsAfterMergeConfig.Force)
     }
   };
 }
