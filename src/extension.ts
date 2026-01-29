@@ -57,6 +57,7 @@ import { normalizeFsPath } from './extension/pathUtils';
 import { touchProjectActivity } from './extension/workspace/activity';
 import { registerFileCommands } from './extension/commands/files';
 import { registerProjectCommands } from './extension/commands/projects';
+import { schedulePowerShellProfileHealthCheck } from './extension/run/health';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const logger = new ForgeFlowLogger();
@@ -83,6 +84,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const gitWatchService = new GitWatchService(projectsStore, gitCommitCacheStore, logger);
   const layoutMode = layoutStore.getMode();
   void vscode.commands.executeCommand('setContext', 'forgeflow.layout', layoutMode);
+  schedulePowerShellProfileHealthCheck();
   let filesRefreshTimer: NodeJS.Timeout | undefined;
   let lastFilesRefreshAt = 0;
   const filesRefreshMinIntervalMs = 1000;
