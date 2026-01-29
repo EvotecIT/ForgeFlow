@@ -12,6 +12,17 @@ class FakeStateStore {
   public async setGlobal<T>(key: string, value: T): Promise<void> {
     this.state.set(key, value);
   }
+
+  public async updateGlobalWithRetry<T>(
+    key: string,
+    defaultValue: T,
+    mutate: (current: T) => T
+  ): Promise<T> {
+    const current = this.getGlobal<T>(key, defaultValue);
+    const next = mutate(Array.isArray(current) ? [...current] as unknown as T : current);
+    await this.setGlobal(key, next);
+    return next;
+  }
 }
 
 function makeEntry(overrides: Partial<RunHistoryEntry> = {}): RunHistoryEntry {
