@@ -116,6 +116,8 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
     this.projects = applyStoredOrder(existing, this.projectsStore.getSortOrder(), settings);
     this.favoriteIds = this.projectsStore.getFavoriteIds();
     this.resetPaging();
+    this.updateDuplicateInfo(this.projects);
+    this.invalidateEntryPointCache();
     this.onDidUpdateProjectsEmitter.fire(this.projects);
     this.onDidChangeTreeDataEmitter.fire(undefined);
 
