@@ -4,7 +4,7 @@ import type { Project } from '../models/project';
 import type { ProjectsStore } from '../store/projectsStore';
 import type { GitCommitCacheStore } from '../store/gitCommitCacheStore';
 import { getLocalGitInfo } from '../dashboard/dataProviders';
-import { getGitHeadMtime, getGitHeadPaths } from './gitHead';
+import { getGitHeadHash, getGitHeadMtime, getGitHeadPaths } from './gitHead';
 import { getForgeFlowSettings } from '../util/config';
 import type { ForgeFlowLogger } from '../util/log';
 
@@ -185,20 +185,26 @@ export class GitWatchService implements vscode.Disposable {
       return;
     }
     try {
+      const paths = await getGitHeadPaths(project.path);
+      if (!paths) {
+        this.logger.warn(`Git watch stopped for missing .git (${project.path}).`);
+        this.stopWatch(project.id);
+        return;
+      }
       const gitInfo = await getLocalGitInfo(project.path);
       const lastCommit = gitInfo?.lastCommit ? Date.parse(gitInfo.lastCommit) : undefined;
       const lastGitCommit = Number.isNaN(lastCommit ?? NaN) ? undefined : lastCommit;
       const headMtime = await getGitHeadMtime(project.path);
+      const headHash = headMtime === undefined ? await getGitHeadHash(project.path) : undefined;
 
-      const cache = this.gitCommitCacheStore.getAll();
-      cache[project.id] = {
+      await this.gitCommitCacheStore.upsertEntry({
         projectId: project.id,
         path: project.path,
         lastCommit: lastGitCommit,
         headMtime,
+        headHash,
         fetchedAt: Date.now()
-      };
-      await this.gitCommitCacheStore.saveAll(cache);
+      });
 
       await this.projectsStore.updateProject({ ...project, lastGitCommit });
       this.onDidUpdateEmitter.fire({ projectId: project.id, lastGitCommit });

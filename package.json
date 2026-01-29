@@ -2919,6 +2919,16 @@
           "description": "Open files when selected in the ForgeFlow Files view.",
           "default": true
         },
+        "forgeflow.files.watchMode": {
+          "type": "string",
+          "description": "Scope of file watchers used to refresh the Files view on external changes.",
+          "enum": [
+            "off",
+            "roots",
+            "all"
+          ],
+          "default": "all"
+        },
         "forgeflow.views.files.enabled": {
           "type": "boolean",
           "description": "Show the ForgeFlow Files view.",

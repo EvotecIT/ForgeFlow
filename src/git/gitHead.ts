@@ -1,4 +1,6 @@
 import { promises as fs } from 'fs';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import * as path from 'path';
 
 export interface GitHeadPaths {
@@ -29,6 +31,16 @@ export async function getGitHeadMtime(repoPath: string): Promise<number | undefi
   }
 
   return latest > 0 ? latest : undefined;
+}
+
+export async function getGitHeadHash(repoPath: string): Promise<string | undefined> {
+  try {
+    const { stdout } = await execFileAsync('git', ['-C', repoPath, 'rev-parse', 'HEAD']);
+    const hash = stdout.trim();
+    return hash.length > 0 ? hash : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function getGitHeadPaths(repoPath: string): Promise<GitHeadPaths | undefined> {
@@ -65,3 +77,5 @@ async function resolveGitDir(repoPath: string): Promise<string | undefined> {
     return undefined;
   }
 }
+
+const execFileAsync = promisify(execFile);

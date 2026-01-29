@@ -8,11 +8,16 @@ export interface FilterPreset {
 }
 
 const PRESETS_KEY = 'forgeflow.filters.presets.v1';
+const PRESETS_REVISION_KEY = 'forgeflow.filters.presets.revision.v1';
 
 type PresetMap = Record<FilterPresetScope, FilterPreset[]>;
 
 export class FilterPresetStore {
   public constructor(private readonly state: StateStore) {}
+
+  public getRevision(): string {
+    return this.state.getGlobal<string>(PRESETS_REVISION_KEY, '0');
+  }
 
   public getPresets(scope: FilterPresetScope): FilterPreset[] {
     const map = this.state.getGlobal<PresetMap>(PRESETS_KEY, {
@@ -40,6 +45,7 @@ export class FilterPresetStore {
     }
     map[scope] = presets;
     await this.state.setGlobal(PRESETS_KEY, map);
+    await this.bumpRevision();
   }
 
   public async deletePreset(scope: FilterPresetScope, name: string): Promise<void> {
@@ -51,5 +57,16 @@ export class FilterPresetStore {
     });
     map[scope] = (map[scope] ?? []).filter((preset) => preset.name.toLowerCase() !== name.toLowerCase());
     await this.state.setGlobal(PRESETS_KEY, map);
+    await this.bumpRevision();
   }
+
+  private async bumpRevision(): Promise<void> {
+    await this.state.setGlobal(PRESETS_REVISION_KEY, createRevisionStamp());
+  }
+}
+
+function createRevisionStamp(): string {
+  const base = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `${base}-${rand}`;
 }

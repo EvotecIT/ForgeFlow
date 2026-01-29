@@ -7,6 +7,7 @@ import type { GitProjectSummary } from '../../git/gitSummary';
 import { getForgeFlowSettings } from '../../util/config';
 import type { ForgeFlowSettings, ProjectSortMode, SortDirection } from '../../util/config';
 import type { ProjectSortOrder } from '../../store/projectsStore';
+import type { ProjectScanRootMeta } from '../../store/projectsStore';
 import type { TagsStore } from '../../store/tagsStore';
 import { matchesFilterQuery } from '../../util/filter';
 import { resolveProfileLabel } from '../../run/powershellProfiles';
@@ -412,7 +413,8 @@ export function buildSortDescription(
     modified: { loading: boolean; progress: number; total: number };
   },
   filterText?: string,
-  tagFilter: string[] = []
+  tagFilter: string[] = [],
+  scanNotice?: string
 ): string {
   const settings = getForgeFlowSettings();
   const modeLabel = getSortModeLabel(settings.projectSortMode);
@@ -442,7 +444,8 @@ export function buildSortDescription(
   }
   const filterSuffix = filterText ? ` • filter: ${filterText}` : '';
   const tagSuffix = tagFilter.length > 0 ? ` • tags: ${tagFilter.join(', ')}` : '';
-  return `Sorted by ${modeLabel} (${directionLabel})${suffix}${filterSuffix}${tagSuffix}`;
+  const noticeSuffix = scanNotice ? ` • ${scanNotice}` : '';
+  return `Sorted by ${modeLabel} (${directionLabel})${suffix}${filterSuffix}${tagSuffix}${noticeSuffix}`;
 }
 
 export function shouldSkipScan(
@@ -462,6 +465,36 @@ export function shouldSkipScan(
   }
   const ttlMs = cacheMinutes * 60_000;
   return Date.now() - meta.fetchedAt < ttlMs;
+}
+
+export function getStaleScanRoots(
+  meta: Record<string, ProjectScanRootMeta>,
+  roots: string[],
+  maxDepth: number,
+  cacheMinutes: number
+): string[] {
+  if (cacheMinutes <= 0) {
+    return [...roots];
+  }
+  const ttlMs = cacheMinutes * 60_000;
+  const now = Date.now();
+  const stale: string[] = [];
+  for (const root of roots) {
+    const key = normalizeRoot(root);
+    const entry = meta[key];
+    if (!entry) {
+      stale.push(root);
+      continue;
+    }
+    if (entry.maxDepth !== maxDepth) {
+      stale.push(root);
+      continue;
+    }
+    if (now - entry.fetchedAt >= ttlMs) {
+      stale.push(root);
+    }
+  }
+  return stale;
 }
 
 export function sameRoots(left: string[], right: string[]): boolean {

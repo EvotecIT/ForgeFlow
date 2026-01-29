@@ -25,6 +25,7 @@ export interface ProjectChildrenContext {
   favoritesOnly: boolean;
   visibleCount: number;
   isScanning: boolean;
+  scanNotice?: string;
   gitCommitLoading: boolean;
   gitCommitProgress: number;
   gitCommitTotal: number;
@@ -48,66 +49,70 @@ export async function getProjectChildren(context: ProjectChildrenContext, elemen
     ? new ProjectTagFilterNode(context.tagFilter, context.tagsStore, projectIds)
     : undefined;
   const roots = getScanRoots();
-  if (roots.length === 0) {
+  const baseNodes: ProjectNode[] = [];
+  if (tagsNode) {
+    baseNodes.push(tagsNode);
+  }
+  if (roots.length === 0 && context.projects.length === 0) {
     return [
-      ...(tagsNode ? [tagsNode] : []),
+      ...baseNodes,
       new ProjectHintNode('Select project roots to scan', 'forgeflow.projects.configureOrRefresh')
     ];
   }
+  const rootHint = roots.length === 0
+    ? new ProjectHintNode('No scan roots configured. Showing cached projects.', 'forgeflow.projects.configureOrRefresh')
+    : undefined;
+  const withRootHint = (nodes: ProjectNode[]): ProjectNode[] => (
+    rootHint ? [...baseNodes, rootHint, ...nodes] : [...baseNodes, ...nodes]
+  );
   if (context.isScanning) {
-    return [
-      ...(tagsNode ? [tagsNode] : []),
+    return withRootHint([
       new ProjectHintNode('Scanning projects...', 'forgeflow.projects.refresh'),
       ...getRootGroups(context)
-    ];
+    ]);
   }
   if (context.gitCommitLoading) {
     const label = context.gitCommitTotal > 0
       ? `Loading git commit data (${context.gitCommitProgress}/${context.gitCommitTotal})...`
       : 'Loading git commit data...';
-    return [
-      ...(tagsNode ? [tagsNode] : []),
+    return withRootHint([
       new ProjectHintNode(label, 'forgeflow.projects.refresh'),
       ...getRootGroups(context)
-    ];
+    ]);
   }
   if (context.modifiedLoading) {
     const label = context.modifiedTotal > 0
       ? `Loading modified times (${context.modifiedProgress}/${context.modifiedTotal})...`
       : 'Loading modified times...';
-    return [
-      ...(tagsNode ? [tagsNode] : []),
+    return withRootHint([
       new ProjectHintNode(label, 'forgeflow.projects.refresh'),
       ...getRootGroups(context)
-    ];
+    ]);
   }
   if (context.projects.length === 0) {
-    return [
-      ...(tagsNode ? [tagsNode] : []),
+    return withRootHint([
       new ProjectHintNode('No projects found. Refresh or adjust scan roots.', 'forgeflow.projects.configureOrRefresh')
-    ];
+    ]);
   }
   const minChars = getForgeFlowSettings().filtersProjectsMinChars;
   const trimmedFilter = context.filterText.trim();
   const hasTextFilter = trimmedFilter.length >= minChars;
   const filteredProjects = getFilteredProjects(context.projects, context);
   if (trimmedFilter && !hasTextFilter) {
-    return [
-      ...(tagsNode ? [tagsNode] : []),
+    return withRootHint([
       new ProjectHintNode(`Filter needs at least ${minChars} characters.`, 'forgeflow.projects.filter'),
       ...getRootGroups(context)
-    ];
+    ]);
   }
   if ((trimmedFilter || context.tagFilter.length > 0) && filteredProjects.length === 0) {
     const hint = trimmedFilter
       ? `No projects match filter: ${trimmedFilter}`
       : 'No projects match selected tags.';
-    return [
-      ...(tagsNode ? [tagsNode] : []),
+    return withRootHint([
       new ProjectHintNode(hint, 'forgeflow.projects.clearFilter')
-    ];
+    ]);
   }
-  return [...(tagsNode ? [tagsNode] : []), ...getRootGroups(context)];
+  return withRootHint(getRootGroups(context));
 }
 
 function getRootGroups(context: ProjectChildrenContext): ProjectNode[] {
@@ -119,7 +124,7 @@ function getRootGroups(context: ProjectChildrenContext): ProjectNode[] {
   const sortDescription = buildSortDescription(others, {
     gitCommit: { loading: context.gitCommitLoading, progress: context.gitCommitProgress, total: context.gitCommitTotal },
     modified: { loading: context.modifiedLoading, progress: context.modifiedProgress, total: context.modifiedTotal }
-  }, context.filterText, context.tagFilter);
+  }, context.filterText, context.tagFilter, context.scanNotice);
   const groups: ProjectNode[] = [];
   if (!context.favoritesOnly) {
     groups.push(new ProjectGroupNode(

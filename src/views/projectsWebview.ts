@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import type { ProjectsViewProvider, ProjectsWebviewDetails, ProjectsWebviewSnapshot } from './projectsView';
 import type { ProjectsStore } from '../store/projectsStore';
 import type { DashboardViewProvider } from './dashboardView';
-import { renderProjectsWebviewHtml } from './projectsWebviewHtml';
+import { buildProjectsWebviewUpdate, renderProjectsWebviewHtml } from './projectsWebviewHtml';
 
 interface ProjectActionMessage {
   type?: string;
@@ -19,6 +19,7 @@ export class ProjectsWebviewProvider implements vscode.WebviewViewProvider {
   private lastSnapshot?: ProjectsWebviewSnapshot;
   private detailsCache = new Map<string, ProjectsWebviewDetails>();
   private pendingFocusFilter = false;
+  private hasRendered = false;
 
   public constructor(
     private readonly projectsProvider: ProjectsViewProvider,
@@ -29,6 +30,7 @@ export class ProjectsWebviewProvider implements vscode.WebviewViewProvider {
   public resolveWebviewView(webviewView: vscode.WebviewView): void {
     this.view = webviewView;
     webviewView.title = 'Projects Web — ForgeFlow';
+    this.hasRendered = false;
     webviewView.webview.options = {
       enableScripts: true
     };
@@ -50,7 +52,18 @@ export class ProjectsWebviewProvider implements vscode.WebviewViewProvider {
       return;
     }
     this.lastSnapshot = this.projectsProvider.getWebviewSnapshot();
-    this.view.webview.html = renderProjectsWebviewHtml(this.lastSnapshot, this.view.webview);
+    this.detailsCache.clear();
+    if (!this.hasRendered) {
+      this.view.webview.html = renderProjectsWebviewHtml(this.lastSnapshot, this.view.webview);
+      this.hasRendered = true;
+      return;
+    }
+    const update = buildProjectsWebviewUpdate(this.lastSnapshot);
+    void this.view.webview.postMessage({ type: 'sync', update });
+  }
+
+  public clearDetailsCache(): void {
+    this.detailsCache.clear();
   }
 
   public async focusFilter(): Promise<void> {

@@ -62,6 +62,7 @@ export interface ProjectsWebviewTagCount {
 
 export interface ProjectsWebviewSnapshot {
   updatedAt: number;
+  dataUpdatedAt?: number;
   filterText: string;
   tagFilter: string[];
   favoritesOnly: boolean;

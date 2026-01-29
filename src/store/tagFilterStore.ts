@@ -8,9 +8,14 @@ export interface TagPreset {
 
 const FILTER_KEY = 'forgeflow.tags.filter.v1';
 const PRESETS_KEY = 'forgeflow.tags.presets.v1';
+const PRESETS_REVISION_KEY = 'forgeflow.tags.presets.revision.v1';
 
 export class TagFilterStore {
   public constructor(private readonly state: StateStore) {}
+
+  public getPresetsRevision(): string {
+    return this.state.getGlobal<string>(PRESETS_REVISION_KEY, '0');
+  }
 
   public getFilter(): string[] {
     return getScopedValue(this.state, FILTER_KEY, []);
@@ -34,11 +39,17 @@ export class TagFilterStore {
       presets.push({ name, tags: normalizedTags });
     }
     await this.state.setGlobal(PRESETS_KEY, presets);
+    await this.bumpPresetsRevision();
   }
 
   public async deletePreset(name: string): Promise<void> {
     const presets = this.getPresets().filter((preset) => preset.name.toLowerCase() !== name.toLowerCase());
     await this.state.setGlobal(PRESETS_KEY, presets);
+    await this.bumpPresetsRevision();
+  }
+
+  private async bumpPresetsRevision(): Promise<void> {
+    await this.state.setGlobal(PRESETS_REVISION_KEY, createRevisionStamp());
   }
 }
 
@@ -54,4 +65,10 @@ function normalizeTags(tags: string[]): string[] {
       }
     });
   return Array.from(deduped.values());
+}
+
+function createRevisionStamp(): string {
+  const base = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `${base}-${rand}`;
 }

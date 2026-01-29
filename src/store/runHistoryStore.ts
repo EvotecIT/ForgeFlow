@@ -3,6 +3,7 @@ import type { RunHistoryEntry } from '../models/run';
 import * as vscode from 'vscode';
 
 const RUN_HISTORY_KEY = 'forgeflow.run.history.v1';
+const RUN_HISTORY_REVISION_KEY = 'forgeflow.run.history.revision.v1';
 
 export class RunHistoryStore implements vscode.Disposable {
   private readonly onDidChangeEmitter = new vscode.EventEmitter<void>();
@@ -10,35 +11,33 @@ export class RunHistoryStore implements vscode.Disposable {
 
   public constructor(private readonly state: StateStore) {}
 
+  public getRevision(): string {
+    return this.state.getGlobal<string>(RUN_HISTORY_REVISION_KEY, '0');
+  }
+
   public list(): RunHistoryEntry[] {
     return this.state.getGlobal<RunHistoryEntry[]>(RUN_HISTORY_KEY, []);
   }
 
   public async add(entry: RunHistoryEntry, maxItems: number): Promise<void> {
-    const items = this.list();
-    const signature = buildSignature(entry);
-    const filtered = items.filter((item) => buildSignature(item) !== signature);
-    filtered.unshift(entry);
-    const limited = filtered.slice(0, Math.max(1, maxItems));
-    await this.state.setGlobal(RUN_HISTORY_KEY, limited);
-    this.onDidChangeEmitter.fire();
+    await this.updateHistory((items) => {
+      const signature = buildSignature(entry);
+      const filtered = items.filter((item) => buildSignature(item) !== signature);
+      filtered.unshift(entry);
+      return filtered.slice(0, Math.max(1, maxItems));
+    });
   }
 
   public async clear(): Promise<void> {
-    await this.state.setGlobal<RunHistoryEntry[]>(RUN_HISTORY_KEY, []);
-    this.onDidChangeEmitter.fire();
+    await this.updateHistory(() => []);
   }
 
   public async remove(id: string): Promise<void> {
-    const items = this.list().filter((entry) => entry.id !== id);
-    await this.state.setGlobal(RUN_HISTORY_KEY, items);
-    this.onDidChangeEmitter.fire();
+    await this.updateHistory((items) => items.filter((entry) => entry.id !== id));
   }
 
   public async clearForProject(projectId: string): Promise<void> {
-    const items = this.list().filter((entry) => entry.projectId !== projectId);
-    await this.state.setGlobal(RUN_HISTORY_KEY, items);
-    this.onDidChangeEmitter.fire();
+    await this.updateHistory((items) => items.filter((entry) => entry.projectId !== projectId));
   }
 
   public listForProject(
@@ -53,6 +52,18 @@ export class RunHistoryStore implements vscode.Disposable {
 
   public dispose(): void {
     this.onDidChangeEmitter.dispose();
+  }
+
+  private async updateHistory(
+    mutate: (items: RunHistoryEntry[]) => RunHistoryEntry[]
+  ): Promise<void> {
+    await this.state.updateGlobalWithRetry(
+      RUN_HISTORY_KEY,
+      [],
+      (current) => mutate(current),
+      { revisionKey: RUN_HISTORY_REVISION_KEY }
+    );
+    this.onDidChangeEmitter.fire();
   }
 }
 

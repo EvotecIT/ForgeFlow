@@ -41,6 +41,15 @@ export class FilesViewProvider implements vscode.TreeDataProvider<FilesNode> {
     this.refresh();
   }
 
+  public syncFilterFromStore(): void {
+    const next = this.filterStore.getFilter();
+    if (next === this.filterText) {
+      return;
+    }
+    this.filterText = next;
+    this.refresh();
+  }
+
   public refresh(): void {
     this.onDidChangeTreeDataEmitter.fire(undefined);
   }

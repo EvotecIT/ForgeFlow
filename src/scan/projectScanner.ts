@@ -22,9 +22,10 @@ export class ProjectScanner {
   public async scan(roots: string[], maxDepth: number, existing: Project[]): Promise<Project[]> {
     const results: Project[] = [];
     const existingMap = new Map(existing.map((project) => [project.id, project]));
+    const existingByPath = new Map(existing.map((project) => [normalizeScanPath(project.path), project]));
 
     for (const root of roots) {
-      const found = await this.scanRoot(root, maxDepth);
+      const found = await this.scanRoot(root, maxDepth, existingByPath);
       for (const project of found) {
         const previous = existingMap.get(project.id);
         results.push({
@@ -47,7 +48,11 @@ export class ProjectScanner {
     return results;
   }
 
-  private async scanRoot(root: string, maxDepth: number): Promise<Project[]> {
+  private async scanRoot(
+    root: string,
+    maxDepth: number,
+    existingByPath: Map<string, Project>
+  ): Promise<Project[]> {
     const projects: Project[] = [];
     const queue: Array<{ dir: string; depth: number }> = [{ dir: root, depth: 0 }];
 
@@ -60,7 +65,7 @@ export class ProjectScanner {
       const entries = await readDirectory(dir);
       const marker = await this.detectMarker(dir, entries);
       if (marker) {
-        const project = await this.createProject(dir, marker);
+        const project = await this.createProject(dir, marker, existingByPath);
         projects.push(project);
         continue;
       }
@@ -112,8 +117,13 @@ export class ProjectScanner {
     return marker;
   }
 
-  private async createProject(root: string, marker: MarkerMatch): Promise<Project> {
-    const id = stableIdFromPath(root);
+  private async createProject(
+    root: string,
+    marker: MarkerMatch,
+    existingByPath: Map<string, Project>
+  ): Promise<Project> {
+    const existing = existingByPath.get(normalizeScanPath(root));
+    const id = existing?.id ?? stableIdFromPath(root);
     const name = path.basename(root);
     const stat = await statPath(marker.markerPath);
 
@@ -136,4 +146,9 @@ function chooseMarker(current: MarkerMatch | undefined, next: MarkerMatch): Mark
     return next;
   }
   return markerPriority[next.type] > markerPriority[current.type] ? next : current;
+}
+
+function normalizeScanPath(value: string): string {
+  const resolved = path.resolve(value);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
 }

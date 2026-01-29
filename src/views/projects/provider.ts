@@ -2,9 +2,8 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import type { Project } from '../../models/project';
 import type { RunHistoryEntry } from '../../models/run';
-import { detectEntryPointGroups, type EntryPointGroups } from '../../scan/entryPointDetector';
+import type { EntryPointGroups } from '../../scan/entryPointDetector';
 import { detectProjectIdentity } from '../../scan/identityDetector';
-import { findRecentWriteTime } from '../../scan/modifiedScanner';
 import type { ProjectScanner } from '../../scan/projectScanner';
 import type { ProjectsStore } from '../../store/projectsStore';
 import type { TagsStore } from '../../store/tagsStore';
@@ -12,45 +11,59 @@ import type { TagFilterStore } from '../../store/tagFilterStore';
 import type { RunHistoryStore } from '../../store/runHistoryStore';
 import { getForgeFlowSettings } from '../../util/config';
 import type { ProjectSortMode } from '../../util/config';
-import { getLocalGitInfo } from '../../dashboard/dataProviders';
 import type { GitStore } from '../../git/gitStore';
-import { getGitHeadMtime } from '../../git/gitHead';
 import type { GitCommitCacheStore } from '../../store/gitCommitCacheStore';
 import { readFileText, statPath } from '../../util/fs';
 import type {
   DuplicateInfo,
   EntryPointCacheEntry,
-  ProjectNode,
-  ProjectsWebviewBrowseEntry,
-  ProjectsWebviewDetails,
-  ProjectsWebviewSnapshot
+  ProjectNode
 } from './types';
-import { isPathUnderRoot, readBrowseEntries } from './browse';
 import { getProjectChildren } from './children';
 import {
+  buildProjectsWebviewBrowseEntries,
+  buildProjectsWebviewDetails,
+  buildProjectsWebviewSnapshot
+} from './webviewData';
+import {
   applyStoredOrder,
-  buildDuplicateInfo,
-  buildEntryPointCacheKey,
-  buildSortDescription,
-  collectTagCounts,
-  formatProjectDescription,
-  formatSummaryTooltip,
   getScanRoots,
+  getStaleScanRoots,
   mergeIdentity,
   needsRepositoryIdentity,
   normalizeTagFilter,
-  shouldRefreshGitCommit,
-  shouldRefreshGitCommitWithHead,
-  shouldSkipScan,
-  sortProjects,
-  toWebviewEntry
+  sameRoots,
+  sortProjects
 } from './helpers';
+import {
+  applyGitCommitUpdateToProjects,
+  buildDuplicateInfoFromStore,
+  computeScanMetaUpdate,
+  getInitialVisibleCount,
+  getRecentRunsForProject,
+  hydrateGitCommits,
+  hydrateModifiedTimes,
+  invalidateEntryPointCache,
+  mergeScanResults,
+  resolveEntryPointGroups,
+  resolveScanNotice,
+  shouldUpdateProgress
+} from './providerInternals';
 
 export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode> {
   private readonly onDidChangeTreeDataEmitter = new vscode.EventEmitter<ProjectNode | undefined>();
   public readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
   private readonly onDidUpdateProjectsEmitter = new vscode.EventEmitter<Project[]>();
   public readonly onDidUpdateProjects = this.onDidUpdateProjectsEmitter.event;
+  private readonly scanLockId = `scan-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  private readonly scanLockTtlMs = 10 * 60_000;
+  private scanLockHeld = false;
+  private scanDeferredAt?: number;
+  private scanDeferredMessage?: string;
+  private readonly scanNoticeTtlMs = 2 * 60_000;
+  private lastScanMetaFetchedAt?: number;
+  private scanBackoffUntil?: number;
+  private readonly scanBackoffMs = 2 * 60_000;
 
   private projects: Project[] = [];
   private favoriteIds: string[] = [];
@@ -92,6 +105,14 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
   public async refresh(force = false): Promise<void> {
     const settings = getForgeFlowSettings();
     const roots = getScanRoots();
+    this.syncScanMeta();
+    this.filterText = this.projectsStore.getFilter();
+    this.tagFilter = this.tagFilterStore.getFilter();
+    const nextFavoritesOnly = this.projectsStore.getFavoritesOnly();
+    if (nextFavoritesOnly !== this.favoritesOnly) {
+      this.favoritesOnly = nextFavoritesOnly;
+      void vscode.commands.executeCommand('setContext', 'forgeflow.projects.favoritesOnly', this.favoritesOnly);
+    }
     const existing = this.projectsStore.list();
     this.projects = applyStoredOrder(existing, this.projectsStore.getSortOrder(), settings);
     this.favoriteIds = this.projectsStore.getFavoriteIds();
@@ -104,63 +125,92 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
       return;
     }
 
-    if (!force && existing.length > 0 && !this.hasLoadedCacheOnce) {
-      this.hasLoadedCacheOnce = true;
-      if (!shouldSkipScan(this.projectsStore.getScanMeta(), roots, settings.projectScanMaxDepth, settings.projectScanCacheMinutes)) {
-        return;
+    let rootsToScan = roots;
+    if (!force && settings.projectScanCacheMinutes > 0) {
+      const scanMeta = this.projectsStore.getScanMeta();
+      const rootsMatch = scanMeta && sameRoots(scanMeta.roots, roots) && scanMeta.maxDepth === settings.projectScanMaxDepth;
+      if (rootsMatch) {
+        const staleRoots = getStaleScanRoots(
+          this.projectsStore.getScanRootsMeta(),
+          roots,
+          settings.projectScanMaxDepth,
+          settings.projectScanCacheMinutes
+        );
+        if (staleRoots.length === 0) {
+          this.hasLoadedCacheOnce = true;
+          this.isScanning = false;
+          return;
+        }
+        rootsToScan = staleRoots;
       }
     }
 
-    if (!force && shouldSkipScan(this.projectsStore.getScanMeta(), roots, settings.projectScanMaxDepth, settings.projectScanCacheMinutes)) {
+    if (!force && this.scanBackoffUntil && Date.now() < this.scanBackoffUntil) {
+      this.scanDeferredAt = Date.now();
+      this.scanDeferredMessage = 'Scan deferred (cooldown).';
+      this.onDidUpdateProjectsEmitter.fire(this.projects);
+      this.onDidChangeTreeDataEmitter.fire(undefined);
       this.isScanning = false;
       return;
     }
 
+    const lockAcquired = await this.projectsStore.tryAcquireScanLock(this.scanLockId, this.scanLockTtlMs);
+    if (!lockAcquired) {
+      this.scanDeferredAt = Date.now();
+      this.scanDeferredMessage = 'Scan deferred (another window is scanning).';
+      this.scanBackoffUntil = Date.now() + this.scanBackoffMs;
+      this.onDidUpdateProjectsEmitter.fire(this.projects);
+      this.onDidChangeTreeDataEmitter.fire(undefined);
+      this.isScanning = false;
+      return;
+    }
+
+    this.scanBackoffUntil = undefined;
+    this.clearScanNotice();
     this.hasLoadedCacheOnce = true;
     this.isScanning = true;
-    void this.runScan(roots, settings.projectScanMaxDepth, settings.projectSortMode);
+    this.scanLockHeld = true;
+    void this.runScan(rootsToScan, roots, settings.projectScanMaxDepth, settings.projectSortMode);
   }
 
-  public getWebviewSnapshot(): ProjectsWebviewSnapshot {
+  public syncFromStore(): void {
+    if (this.isScanning) {
+      return;
+    }
+    this.syncScanMeta();
+    this.filterText = this.projectsStore.getFilter();
+    this.tagFilter = this.tagFilterStore.getFilter();
+    const nextFavoritesOnly = this.projectsStore.getFavoritesOnly();
+    if (nextFavoritesOnly !== this.favoritesOnly) {
+      this.favoritesOnly = nextFavoritesOnly;
+      void vscode.commands.executeCommand('setContext', 'forgeflow.projects.favoritesOnly', this.favoritesOnly);
+    }
     const settings = getForgeFlowSettings();
-    const fallbackToName = !(
-      (settings.projectSortMode === 'gitCommit' && this.gitCommitLoading)
-      || (settings.projectSortMode === 'recentModified' && this.modifiedLoading)
-    );
-    const sorted = sortProjects(this.projects, settings.projectSortMode, settings.projectSortDirection, fallbackToName);
-    const favorites = new Set(this.favoriteIds);
-    const summaries = this.gitStore.getSummaries();
-    const showSummary = settings.gitShowProjectSummary;
-    const tagCounts = collectTagCounts(this.tagsStore, sorted.map((project) => project.id));
-    const activeTagKeys = new Set(this.tagFilter.map((tag) => tag.toLowerCase()));
-    const tagEntries = Array.from(tagCounts.values())
-      .map((entry) => ({
-        key: entry.key,
-        label: entry.label,
-        count: entry.count,
-        active: activeTagKeys.has(entry.key)
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label));
-    const sortDescription = buildSortDescription(
-      sorted,
-      {
-        gitCommit: { loading: this.gitCommitLoading, progress: this.gitCommitProgress, total: this.gitCommitTotal },
-        modified: { loading: this.modifiedLoading, progress: this.modifiedProgress, total: this.modifiedTotal }
-      },
-      this.filterText,
-      this.tagFilter
-    );
+    const existing = this.projectsStore.list();
+    this.projects = applyStoredOrder(existing, this.projectsStore.getSortOrder(), settings);
+    this.favoriteIds = this.projectsStore.getFavoriteIds();
+    this.resetPaging();
+    this.updateDuplicateInfo(this.projects);
+    this.invalidateEntryPointCache();
+    this.hasLoadedCacheOnce = true;
+    this.onDidUpdateProjectsEmitter.fire(this.projects);
+    this.onDidChangeTreeDataEmitter.fire(undefined);
+  }
 
-    return {
-      updatedAt: Date.now(),
+  public refreshRunHistory(): void {
+    this.onDidChangeTreeDataEmitter.fire(undefined);
+  }
+
+  public getWebviewSnapshot() {
+    return buildProjectsWebviewSnapshot({
+      projects: this.projects,
+      favoriteIds: this.favoriteIds,
+      duplicateInfo: this.duplicateInfo,
+      gitStore: this.gitStore,
+      tagsStore: this.tagsStore,
+      tagFilter: this.tagFilter,
       filterText: this.filterText,
-      tagFilter: [...this.tagFilter],
       favoritesOnly: this.favoritesOnly,
-      filterMinChars: settings.filtersProjectsMinChars,
-      filterMatchMode: settings.filtersMatchMode,
-      sortDescription,
-      showSummary,
-      pageSize: settings.projectPageSize,
       visibleCount: this.visibleCount,
       gitCommitLoading: this.gitCommitLoading,
       gitCommitProgress: this.gitCommitProgress,
@@ -168,75 +218,29 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
       modifiedLoading: this.modifiedLoading,
       modifiedProgress: this.modifiedProgress,
       modifiedTotal: this.modifiedTotal,
-      projects: sorted.map((project) => {
-        const tags = this.tagsStore.getTags(project.id);
-        const duplicate = this.duplicateInfo.get(project.id);
-        const summary = summaries[project.id];
-        const description = formatProjectDescription(project.type, duplicate, summary, showSummary, tags);
-        const summaryTooltip = summary && showSummary && project.type === 'git'
-          ? formatSummaryTooltip(summary)
-          : undefined;
-        return {
-          id: project.id,
-          name: project.name,
-          path: project.path,
-          type: project.type,
-          tags,
-          favorite: favorites.has(project.id),
-          description,
-          duplicate: duplicate ? { index: duplicate.index, total: duplicate.total, key: duplicate.key } : undefined,
-          summary,
-          summaryTooltip,
-          identity: project.identity,
-          preferredRunProfileId: project.preferredRunProfileId,
-          preferredRunTarget: project.preferredRunTarget,
-          preferredRunWorkingDirectory: project.preferredRunWorkingDirectory,
-          lastOpened: project.lastOpened,
-          lastActivity: project.lastActivity,
-          lastModified: project.lastModified,
-          lastGitCommit: project.lastGitCommit
-        };
-      }),
-      tagCounts: tagEntries
-    };
+      scanMeta: this.projectsStore.getScanMeta(),
+      scanNotice: this.getScanNotice()
+    });
   }
 
-  public async getWebviewProjectDetails(projectId: string): Promise<ProjectsWebviewDetails | undefined> {
+  public async getWebviewProjectDetails(projectId: string) {
     const project = this.projects.find((item) => item.id === projectId);
     if (!project) {
       return undefined;
     }
-    const groups = await this.getEntryPointGroups(project);
-    const pinnedItems = await Promise.all(project.pinnedItems.map(async (itemPath) => {
-      const stat = await statPath(itemPath);
-      return {
-        path: itemPath,
-        isDirectory: stat?.type === vscode.FileType.Directory
-      };
-    }));
-    const recentRuns = this.getRecentRuns(project);
-    const runPresets = project.runPresets ?? [];
-    const browseRoot = await readBrowseEntries(project.path);
-    return {
-      projectId: project.id,
-      pinnedItems,
-      entryPoints: groups.entryPoints.map((entry) => toWebviewEntry(entry)),
-      buildScripts: groups.buildScripts.map((entry) => toWebviewEntry(entry)),
-      recentRuns,
-      runPresets,
-      browseRoot
-    };
+    return await buildProjectsWebviewDetails({
+      project,
+      getEntryPointGroups: (target) => this.getEntryPointGroups(target),
+      getRecentRuns: (target) => this.getRecentRuns(target)
+    });
   }
 
-  public async getWebviewBrowseEntries(projectId: string, folderPath: string): Promise<ProjectsWebviewBrowseEntry[] | undefined> {
+  public async getWebviewBrowseEntries(projectId: string, folderPath: string) {
     const project = this.projects.find((item) => item.id === projectId);
     if (!project) {
       return undefined;
     }
-    if (!isPathUnderRoot(project.path, folderPath)) {
-      return undefined;
-    }
-    return await readBrowseEntries(folderPath);
+    return await buildProjectsWebviewBrowseEntries(project, folderPath);
   }
 
   public setFilter(text: string): void {
@@ -308,6 +312,7 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
         favoritesOnly: this.favoritesOnly,
         visibleCount: this.visibleCount,
         isScanning: this.isScanning,
+        scanNotice: this.getScanNotice(),
         gitCommitLoading: this.gitCommitLoading,
         gitCommitProgress: this.gitCommitProgress,
         gitCommitTotal: this.gitCommitTotal,
@@ -376,80 +381,28 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
   }
 
   private async hydrateGitCommits(projects: Project[], runId: number): Promise<Project[]> {
-    const results: Project[] = [];
     const settings = getForgeFlowSettings();
-    const ttlMs = Math.max(0, settings.projectGitCommitCacheMinutes) * 60_000;
-    const now = Date.now();
-    const cache = this.gitCommitCacheStore.getAll();
-    const pending: Array<{ project: Project; index: number; headMtime?: number }> = [];
-
-    for (const project of projects) {
-      if (runId !== this.scanVersion) {
-        return results;
+    const results = await hydrateGitCommits({
+      projects,
+      runId,
+      scanVersion: () => this.scanVersion,
+      projectsStore: this.projectsStore,
+      gitCommitCacheStore: this.gitCommitCacheStore,
+      settings,
+      onStart: (total) => {
+        this.gitCommitTotal = total;
+        this.gitCommitProgress = 0;
+        this.gitCommitLoading = total > 0;
+        if (this.gitCommitLoading) {
+          this.lastProgressUpdate = Date.now();
+          this.onDidChangeTreeDataEmitter.fire(undefined);
+        }
+      },
+      onProgress: (progress, total) => {
+        this.gitCommitProgress = Math.min(progress, total);
+        this.maybeUpdateProgress();
       }
-      if (project.type !== 'git') {
-        results.push(project);
-        continue;
-      }
-      const cacheEntry = cache[project.id];
-      let headMtime: number | undefined;
-      let needsRefresh = shouldRefreshGitCommit(cacheEntry, ttlMs, now);
-      if (!needsRefresh) {
-        headMtime = await getGitHeadMtime(project.path);
-        needsRefresh = shouldRefreshGitCommitWithHead(cacheEntry, ttlMs, now, headMtime);
-      }
-
-      const cachedCommit = cacheEntry?.lastCommit ?? project.lastGitCommit;
-      const baseProject = cachedCommit === project.lastGitCommit ? project : { ...project, lastGitCommit: cachedCommit };
-      const index = results.push(baseProject) - 1;
-
-      if (needsRefresh) {
-        pending.push({ project: baseProject, index, headMtime });
-      } else if (baseProject !== project) {
-        await this.projectsStore.updateProject(baseProject);
-      }
-    }
-
-    this.gitCommitTotal = pending.length;
-    this.gitCommitProgress = 0;
-    this.gitCommitLoading = pending.length > 0;
-    if (this.gitCommitLoading) {
-      this.lastProgressUpdate = Date.now();
-      this.onDidChangeTreeDataEmitter.fire(undefined);
-    }
-
-    for (const entry of pending) {
-      if (runId !== this.scanVersion) {
-        return results;
-      }
-      const headMtime = entry.headMtime ?? await getGitHeadMtime(entry.project.path);
-      if (runId !== this.scanVersion) {
-        return results;
-      }
-      const gitInfo = await getLocalGitInfo(entry.project.path);
-      if (runId !== this.scanVersion) {
-        return results;
-      }
-      const lastCommit = gitInfo?.lastCommit ? Date.parse(gitInfo.lastCommit) : undefined;
-      const lastGitCommit = Number.isNaN(lastCommit ?? NaN) ? undefined : lastCommit;
-      const latest = this.projectsStore.list().find((project) => project.id === entry.project.id) ?? entry.project;
-      const updated = { ...latest, lastGitCommit };
-      await this.projectsStore.updateProject(updated);
-      cache[entry.project.id] = {
-        projectId: entry.project.id,
-        path: entry.project.path,
-        lastCommit: lastGitCommit,
-        headMtime,
-        fetchedAt: Date.now()
-      };
-      results[entry.index] = updated;
-      this.gitCommitProgress = Math.min(this.gitCommitProgress + 1, this.gitCommitTotal);
-      this.maybeUpdateProgress();
-    }
-
-    if (pending.length > 0) {
-      await this.gitCommitCacheStore.saveAll(cache);
-    }
+    });
     if (runId === this.scanVersion) {
       this.gitCommitLoading = false;
       this.gitCommitProgress = this.gitCommitTotal;
@@ -460,7 +413,6 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
   }
 
   private async hydrateModifiedTimes(projects: Project[], runId: number): Promise<Project[]> {
-    const results: Project[] = [];
     const settings = getForgeFlowSettings();
     this.modifiedTotal = projects.length;
     this.modifiedProgress = 0;
@@ -468,25 +420,17 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
     this.lastProgressUpdate = Date.now();
     this.onDidChangeTreeDataEmitter.fire(undefined);
 
-    for (const project of projects) {
-      if (runId !== this.scanVersion) {
-        return results;
+    const results = await hydrateModifiedTimes({
+      projects,
+      runId,
+      scanVersion: () => this.scanVersion,
+      projectsStore: this.projectsStore,
+      settings,
+      onProgress: (progress, total) => {
+        this.modifiedProgress = Math.min(progress, total);
+        this.maybeUpdateProgress();
       }
-      const recent = await findRecentWriteTime(project.path, settings.projectModifiedScanDepth, {
-        ignoreFolders: settings.projectModifiedIgnoreFolders,
-        ignoreExtensions: settings.projectModifiedIgnoreFileExtensions
-      });
-      if (runId !== this.scanVersion) {
-        return results;
-      }
-      const lastModified = recent ?? project.lastModified;
-      const latest = this.projectsStore.list().find((item) => item.id === project.id) ?? project;
-      const updated = { ...latest, lastModified };
-      await this.projectsStore.updateProject(updated);
-      results.push(updated);
-      this.modifiedProgress = Math.min(this.modifiedProgress + 1, this.modifiedTotal);
-      this.maybeUpdateProgress();
-    }
+    });
 
     if (runId === this.scanVersion) {
       this.modifiedLoading = false;
@@ -497,8 +441,14 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
     return results;
   }
 
-  private async runScan(roots: string[], maxDepth: number, sortMode: ProjectSortMode): Promise<void> {
+  private async runScan(
+    scanRoots: string[],
+    allRoots: string[],
+    maxDepth: number,
+    sortMode: ProjectSortMode
+  ): Promise<void> {
     const runId = ++this.scanVersion;
+    const scanStart = Date.now();
     try {
       if (sortMode === 'gitCommit') {
         this.gitCommitLoading = true;
@@ -523,7 +473,10 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
         this.modifiedTotal = 0;
       }
       const existing = this.projectsStore.list();
-      const projects = await this.scanner.scan(roots, maxDepth, existing);
+      const scanned = await this.scanner.scan(scanRoots, maxDepth, existing);
+      const projects = scanRoots.length === allRoots.length
+        ? scanned
+        : mergeScanResults(existing, scanned, scanRoots);
       if ((sortMode === 'gitCommit' || sortMode === 'recentModified') && this.projects.length > 0) {
         const order = new Map(this.projects.map((project, index) => [project.id, index]));
         projects.sort((a, b) => {
@@ -532,8 +485,16 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
           return aIndex - bIndex;
         });
       }
+      const fetchedAt = Date.now();
       await this.projectsStore.saveProjects(projects);
-      await this.projectsStore.setScanMeta({ roots: [...roots], maxDepth, fetchedAt: Date.now() });
+      await this.projectsStore.setScanMeta({ roots: [...allRoots], maxDepth, fetchedAt });
+      await this.projectsStore.updateScanRootsMeta(scanRoots, maxDepth, fetchedAt);
+      await this.projectsStore.setScanStats({
+        scannedAt: fetchedAt,
+        durationMs: fetchedAt - scanStart,
+        rootsCount: allRoots.length,
+        scannedRootsCount: scanRoots.length
+      });
       this.projects = projects;
       this.favoriteIds = this.projectsStore.getFavoriteIds();
       this.resetPaging();
@@ -573,6 +534,10 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
       }
     } finally {
       this.isScanning = false;
+      if (this.scanLockHeld) {
+        this.scanLockHeld = false;
+        await this.projectsStore.releaseScanLock(this.scanLockId);
+      }
       if (this.pendingRefresh) {
         this.pendingRefresh = false;
         await this.refresh();
@@ -581,78 +546,80 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
   }
 
   private maybeUpdateProgress(): void {
-    const now = Date.now();
-    const gitDone = this.gitCommitLoading && this.gitCommitProgress === this.gitCommitTotal;
-    const modifiedDone = this.modifiedLoading && this.modifiedProgress === this.modifiedTotal;
-    if (gitDone || modifiedDone || now - this.lastProgressUpdate > 500) {
-      this.lastProgressUpdate = now;
-      this.onDidChangeTreeDataEmitter.fire(undefined);
+    const result = shouldUpdateProgress({
+      now: Date.now(),
+      lastUpdate: this.lastProgressUpdate,
+      gitCommitLoading: this.gitCommitLoading,
+      gitCommitProgress: this.gitCommitProgress,
+      gitCommitTotal: this.gitCommitTotal,
+      modifiedLoading: this.modifiedLoading,
+      modifiedProgress: this.modifiedProgress,
+      modifiedTotal: this.modifiedTotal
+    });
+    if (!result.shouldUpdate) {
+      return;
     }
+    this.lastProgressUpdate = result.nextLastUpdate;
+    this.onDidChangeTreeDataEmitter.fire(undefined);
+  }
+
+  private syncScanMeta(): void {
+    const fetchedAt = this.projectsStore.getScanMeta()?.fetchedAt;
+    const update = computeScanMetaUpdate(fetchedAt, this.lastScanMetaFetchedAt);
+    this.lastScanMetaFetchedAt = update.nextFetchedAt;
+    if (update.resetBackoff) {
+      this.scanBackoffUntil = undefined;
+    }
+    if (update.clearNotice) {
+      this.clearScanNotice();
+    }
+  }
+
+  private getScanNotice(): string | undefined {
+    const notice = resolveScanNotice({
+      deferredAt: this.scanDeferredAt,
+      deferredMessage: this.scanDeferredMessage,
+      ttlMs: this.scanNoticeTtlMs
+    });
+    if (notice.expired) {
+      this.clearScanNotice();
+    }
+    return notice.notice;
+  }
+
+  private clearScanNotice(): void {
+    this.scanDeferredAt = undefined;
+    this.scanDeferredMessage = undefined;
   }
 
   private updateDuplicateInfo(projects: Project[]): void {
-    const fromStore = this.projectsStore.list();
-    const source = fromStore.length > 0 ? fromStore : projects;
-    this.duplicateInfo = buildDuplicateInfo(source);
+    this.duplicateInfo = buildDuplicateInfoFromStore(this.projectsStore, projects);
   }
 
   public invalidateEntryPointCache(projectId?: string): void {
-    if (!projectId) {
-      this.entryPointCache.clear();
-      return;
-    }
-    this.entryPointCache.delete(projectId);
+    invalidateEntryPointCache(this.entryPointCache, projectId);
   }
 
   public async getEntryPointGroups(project: Project): Promise<EntryPointGroups> {
-    const settings = getForgeFlowSettings();
-    const cacheMinutes = settings.projectEntryPointCacheMinutes;
-    const cacheMs = cacheMinutes > 0 ? cacheMinutes * 60_000 : 0;
-    const cacheKey = buildEntryPointCacheKey(project, settings);
-    const cached = this.entryPointCache.get(project.id);
-    if (cacheMs > 0 && cached && cached.key === cacheKey && Date.now() - cached.fetchedAt < cacheMs) {
-      return cached.groups;
-    }
-    const groups = await detectEntryPointGroups(project.path, {
-      maxDepth: settings.projectEntryPointScanDepth,
-      preferredFolders: settings.projectEntryPointPreferredFolders,
-      fileNames: settings.projectEntryPointFileNames,
-      maxCount: settings.projectEntryPointMaxCount,
-      customPaths: project.entryPointOverrides
-    });
-    if (cacheMs > 0) {
-      this.entryPointCache.set(project.id, { key: cacheKey, fetchedAt: Date.now(), groups });
-    }
-    return groups;
+    return await resolveEntryPointGroups(project, this.entryPointCache);
   }
 
   public applyGitCommitUpdate(projectId: string, lastGitCommit?: number): void {
-    const index = this.projects.findIndex((project) => project.id === projectId);
-    if (index === -1) {
+    const result = applyGitCommitUpdateToProjects(this.projects, projectId, lastGitCommit);
+    if (!result.changed) {
       return;
     }
-    const existing = this.projects[index];
-    if (!existing) {
-      return;
-    }
-    if (existing.lastGitCommit === lastGitCommit) {
-      return;
-    }
-    this.projects[index] = { ...existing, lastGitCommit };
+    this.projects = result.projects;
     this.maybePersistSortOrder();
     this.onDidChangeTreeDataEmitter.fire(undefined);
   }
 
   private resetPaging(): void {
-    const settings = getForgeFlowSettings();
-    const pageSize = settings.projectPageSize;
-    this.visibleCount = pageSize > 0 ? pageSize : Number.MAX_SAFE_INTEGER;
+    this.visibleCount = getInitialVisibleCount();
   }
 
   private getRecentRuns(project: Project): RunHistoryEntry[] {
-    const settings = getForgeFlowSettings();
-    const maxItems = Math.max(1, settings.runHistoryPerProjectMaxItems ?? 6);
-    return this.runHistoryStore.listForProject(project.id, maxItems, settings.runHistoryPerProjectSortMode);
+    return getRecentRunsForProject(this.runHistoryStore, project);
   }
 
   private maybePersistSortOrder(): void {

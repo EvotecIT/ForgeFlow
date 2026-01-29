@@ -2,19 +2,59 @@ import type * as vscode from 'vscode';
 import type { ProjectsWebviewProject, ProjectsWebviewSnapshot } from './projectsView';
 import { projectsWebviewStyles } from './projectsWebviewStyles';
 
-export function renderProjectsWebviewHtml(snapshot: ProjectsWebviewSnapshot, webview: vscode.Webview): string {
-  const nonce = randomNonce();
+export interface ProjectsWebviewUpdatePayload {
+  favoritesHtml: string;
+  projectsHtml: string;
+  tagsHtml: string;
+  tagBarVisible: boolean;
+  state: Pick<
+  ProjectsWebviewSnapshot,
+  | 'filterText'
+  | 'tagFilter'
+  | 'favoritesOnly'
+  | 'filterMinChars'
+  | 'filterMatchMode'
+  | 'sortDescription'
+  | 'pageSize'
+  | 'visibleCount'
+  | 'dataUpdatedAt'
+  >;
+}
+
+export function buildProjectsWebviewUpdate(snapshot: ProjectsWebviewSnapshot): ProjectsWebviewUpdatePayload {
   const favorites = snapshot.projects.filter((project) => project.favorite);
   const others = snapshot.projects.filter((project) => !project.favorite);
   const favoritesHtml = favorites.length > 0
     ? favorites.map((project) => renderProjectRow(project)).join('')
     : '<div class="empty" data-empty="favorites">No favorite projects.</div>';
-  const othersHtml = others.length > 0
+  const projectsHtml = others.length > 0
     ? others.map((project) => renderProjectRow(project)).join('')
     : '<div class="empty" data-empty="projects">No projects found.</div>';
   const tagsHtml = snapshot.tagCounts.length > 0
     ? snapshot.tagCounts.map((tag) => renderTagChip(tag.label, tag.count, tag.active)).join('')
     : '<span class="muted">No tags available.</span>';
+  return {
+    favoritesHtml,
+    projectsHtml,
+    tagsHtml,
+    tagBarVisible: snapshot.tagCounts.length > 0,
+    state: {
+      filterText: snapshot.filterText,
+      tagFilter: snapshot.tagFilter,
+      favoritesOnly: snapshot.favoritesOnly,
+      filterMinChars: snapshot.filterMinChars,
+      filterMatchMode: snapshot.filterMatchMode,
+      sortDescription: snapshot.sortDescription,
+      pageSize: snapshot.pageSize,
+      visibleCount: snapshot.visibleCount,
+      dataUpdatedAt: snapshot.dataUpdatedAt
+    }
+  };
+}
+
+export function renderProjectsWebviewHtml(snapshot: ProjectsWebviewSnapshot, webview: vscode.Webview): string {
+  const nonce = randomNonce();
+  const update = buildProjectsWebviewUpdate(snapshot);
 
   const stateJson = safeJson(snapshot);
 
@@ -44,7 +84,7 @@ ${projectsWebviewStyles}
       </div>
     </header>
 
-    <div class="tag-bar" id="tagBar" ${snapshot.tagCounts.length === 0 ? 'style="display:none;"' : ''}>${tagsHtml}</div>
+    <div class="tag-bar" id="tagBar" ${update.tagBarVisible ? '' : 'style="display:none;"'}>${update.tagsHtml}</div>
 
     <section class="group" data-group="favorites">
       <div class="group-header">
@@ -52,7 +92,7 @@ ${projectsWebviewStyles}
         <span class="group-count" data-count>0</span>
       </div>
       <div class="group-body">
-        ${favoritesHtml}
+        ${update.favoritesHtml}
       </div>
     </section>
 
@@ -62,7 +102,7 @@ ${projectsWebviewStyles}
         <span class="group-count" data-count>0</span>
       </div>
       <div class="group-body">
-        ${othersHtml}
+        ${update.projectsHtml}
       </div>
       <div class="load-more">
         <button id="loadMore" style="display:none;">Load more</button>
@@ -82,6 +122,23 @@ ${projectsWebviewStyles}
     const refreshProjects = document.getElementById('refreshProjects');
 
     let activeTags = new Set((state.tagFilter || []).map((tag) => String(tag).toLowerCase()));
+    updateStatusLine();
+
+    function formatAge(updatedAt) {
+      if (!updatedAt) return '';
+      const delta = Date.now() - Number(updatedAt);
+      if (!Number.isFinite(delta) || delta < 0) return '';
+      if (delta < 60_000) return 'just now';
+      if (delta < 60 * 60_000) return `${Math.floor(delta / 60_000)}m ago`;
+      if (delta < 24 * 60 * 60_000) return `${Math.floor(delta / (60 * 60_000))}h ago`;
+      return `${Math.floor(delta / (24 * 60 * 60_000))}d ago`;
+    }
+
+    function updateStatusLine() {
+      if (!statusLine) return;
+      const age = formatAge(state.dataUpdatedAt);
+      statusLine.textContent = age ? `${state.sortDescription} • updated ${age}` : state.sortDescription;
+    }
 
     function escapeHtml(value) {
       return String(value).replace(/[&<>"']/g, (char) => ({
@@ -331,6 +388,35 @@ ${projectsWebviewStyles}
         filterInput.focus();
         filterInput.select();
       }
+      if (message.type === 'sync' && message.update) {
+        const update = message.update;
+        if (update.state) {
+          Object.assign(state, update.state);
+        }
+        activeTags = new Set((state.tagFilter || []).map((tag) => String(tag).toLowerCase()));
+        if (filterInput && document.activeElement !== filterInput) {
+          filterInput.value = state.filterText || '';
+        }
+        if (toggleFavorites) {
+          toggleFavorites.textContent = state.favoritesOnly ? 'Favorites only' : 'All projects';
+        }
+        if (statusLine) {
+          updateStatusLine();
+        }
+        if (tagBar) {
+          tagBar.innerHTML = update.tagsHtml || '';
+          tagBar.style.display = update.tagBarVisible ? '' : 'none';
+        }
+        const favoritesBody = document.querySelector('section[data-group="favorites"] .group-body');
+        if (favoritesBody) {
+          favoritesBody.innerHTML = update.favoritesHtml || '';
+        }
+        const projectsBody = document.querySelector('section[data-group="projects"] .group-body');
+        if (projectsBody) {
+          projectsBody.innerHTML = update.projectsHtml || '';
+        }
+        applyFilter();
+      }
       if (message.type === 'projectDetails') {
         const details = message.details;
         if (!details || !details.projectId) return;
@@ -444,6 +530,7 @@ ${projectsWebviewStyles}
     }
 
     applyFilter();
+    updateStatusLine();
   </script>
 </body>
 </html>`;

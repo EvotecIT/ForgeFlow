@@ -30,6 +30,7 @@ export interface ForgeFlowSettings {
   defaultProfileId?: string;
   filesFavoritesViewMode: 'workspace' | 'all' | 'pinned';
   filesOpenOnSelection: boolean;
+  filesWatchMode: 'off' | 'roots' | 'all';
   runDefaultTarget: RunTarget;
   runIntegratedReuseTerminal: boolean;
   runIntegratedReuseScope: 'profile' | 'shared';
@@ -157,6 +158,7 @@ export function getForgeFlowSettings(): ForgeFlowSettings {
     defaultProfileId: config.get<string>('powershell.defaultProfileId'),
     filesFavoritesViewMode: config.get<'workspace' | 'all' | 'pinned'>('files.favorites.viewMode', 'workspace'),
     filesOpenOnSelection: config.get<boolean>('files.openOnSelection', true),
+    filesWatchMode: config.get<'off' | 'roots' | 'all'>('files.watchMode', 'all'),
     runDefaultTarget: config.get<RunTarget>('run.defaultTarget', 'integrated'),
     runIntegratedReuseTerminal: config.get<boolean>('run.integrated.reuseTerminal', true),
     runIntegratedReuseScope: config.get<'profile' | 'shared'>('run.integrated.reuseScope', 'profile'),

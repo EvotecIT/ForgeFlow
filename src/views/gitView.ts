@@ -56,6 +56,19 @@ export class GitViewProvider implements vscode.TreeDataProvider<GitNode> {
     this.onDidChangeTreeDataEmitter.fire(undefined);
   }
 
+  public refreshView(): void {
+    this.onDidChangeTreeDataEmitter.fire(undefined);
+  }
+
+  public syncFilterFromStore(): void {
+    const next = this.filterStore.getFilter();
+    if (next === this.filterText) {
+      return;
+    }
+    this.filterText = next;
+    this.onDidChangeTreeDataEmitter.fire(undefined);
+  }
+
   public async refresh(): Promise<void> {
     if (this.isLoading) {
       this.pendingRefresh = true;

@@ -10,7 +10,11 @@ const WORKSPACE_OVERRIDES_KEY = 'forgeflow.projects.workspaceOverrides.v1';
 const FILTER_KEY = 'forgeflow.projects.filter.v1';
 const FAVORITES_ONLY_KEY = 'forgeflow.projects.favoritesOnly.v1';
 const SCAN_META_KEY = 'forgeflow.projects.scanMeta.v1';
+const SCAN_ROOTS_META_KEY = 'forgeflow.projects.scanRootsMeta.v1';
+const SCAN_STATS_KEY = 'forgeflow.projects.scanStats.v1';
 const SORT_ORDER_KEY = 'forgeflow.projects.sortOrder.v1';
+const REVISION_KEY = 'forgeflow.projects.revision.v1';
+const SCAN_LOCK_KEY = 'forgeflow.projects.scanLock.v1';
 
 interface ProjectWorkspaceOverride {
   lastOpened?: number;
@@ -20,10 +24,27 @@ interface ProjectWorkspaceOverride {
   preferredRunWorkingDirectory?: string;
 }
 
+interface ProjectScanLock {
+  owner: string;
+  expiresAt: number;
+}
+
 export interface ProjectScanMeta {
   roots: string[];
   maxDepth: number;
   fetchedAt: number;
+}
+
+export interface ProjectScanRootMeta {
+  maxDepth: number;
+  fetchedAt: number;
+}
+
+export interface ProjectScanStats {
+  scannedAt: number;
+  durationMs: number;
+  rootsCount: number;
+  scannedRootsCount: number;
 }
 
 export interface ProjectSortOrder {
@@ -35,6 +56,14 @@ export interface ProjectSortOrder {
 
 export class ProjectsStore {
   public constructor(private readonly state: StateStore) {}
+
+  public getRevision(): string {
+    return this.state.getGlobal<string>(REVISION_KEY, '0');
+  }
+
+  public getScanLock(): ProjectScanLock | undefined {
+    return this.state.getGlobal<ProjectScanLock | undefined>(SCAN_LOCK_KEY, undefined);
+  }
 
   public list(): Project[] {
     const projects = this.state.getGlobal<Project[]>(PROJECTS_KEY, []);
@@ -53,7 +82,7 @@ export class ProjectsStore {
   }
 
   public async saveProjects(projects: Project[]): Promise<void> {
-    await this.state.setGlobal(PROJECTS_KEY, projects);
+    await this.saveAllProjects(projects);
   }
 
   public getFavoriteIds(): string[] {
@@ -84,12 +113,40 @@ export class ProjectsStore {
     await this.state.setGlobal(SCAN_META_KEY, meta);
   }
 
+  public getScanRootsMeta(): Record<string, ProjectScanRootMeta> {
+    return this.state.getGlobal<Record<string, ProjectScanRootMeta>>(SCAN_ROOTS_META_KEY, {});
+  }
+
+  public async updateScanRootsMeta(roots: string[], maxDepth: number, fetchedAt: number): Promise<void> {
+    await this.state.updateGlobalWithRetry(
+      SCAN_ROOTS_META_KEY,
+      {},
+      (meta) => {
+        const next = { ...meta };
+        for (const root of roots) {
+          const key = normalizeRootKey(root);
+          next[key] = { maxDepth, fetchedAt };
+        }
+        return next;
+      }
+    );
+  }
+
+  public getScanStats(): ProjectScanStats | undefined {
+    return this.state.getGlobal<ProjectScanStats | undefined>(SCAN_STATS_KEY, undefined);
+  }
+
+  public async setScanStats(stats: ProjectScanStats): Promise<void> {
+    await this.state.setGlobal(SCAN_STATS_KEY, stats);
+  }
+
   public getSortOrder(): ProjectSortOrder | undefined {
     return this.state.getGlobal<ProjectSortOrder | undefined>(SORT_ORDER_KEY, undefined);
   }
 
   public async setSortOrder(order: ProjectSortOrder): Promise<void> {
     await this.state.setGlobal(SORT_ORDER_KEY, order);
+    await this.bumpRevision();
   }
 
   public async addFavorite(projectId: string): Promise<void> {
@@ -97,12 +154,14 @@ export class ProjectsStore {
     if (!favorites.includes(projectId)) {
       favorites.push(projectId);
       await this.state.setGlobal(FAVORITES_KEY, favorites);
+      await this.bumpRevision();
     }
   }
 
   public async removeFavorite(projectId: string): Promise<void> {
     const favorites = this.getFavoriteIds().filter((id) => id !== projectId);
     await this.state.setGlobal(FAVORITES_KEY, favorites);
+    await this.bumpRevision();
   }
 
   public async moveFavorite(projectId: string, direction: 'up' | 'down'): Promise<void> {
@@ -118,17 +177,19 @@ export class ProjectsStore {
     favorites.splice(index, 1);
     favorites.splice(targetIndex, 0, projectId);
     await this.state.setGlobal(FAVORITES_KEY, favorites);
+    await this.bumpRevision();
   }
 
   public async updateProject(project: Project): Promise<void> {
     const projects = this.state.getGlobal<Project[]>(PROJECTS_KEY, []);
     const index = projects.findIndex((item) => item.id === project.id);
+    const sanitized = this.sanitizeProject(project);
     if (index === -1) {
-      projects.push(project);
+      projects.push(sanitized);
     } else {
-      projects[index] = project;
+      projects[index] = sanitized;
     }
-    await this.state.setGlobal(PROJECTS_KEY, projects);
+    await this.saveAllProjects(projects);
   }
 
   public async updateLastOpened(projectId: string, timestamp: number): Promise<void> {
@@ -153,8 +214,8 @@ export class ProjectsStore {
     if (!existing) {
       return;
     }
-    projects[index] = { ...existing, pinnedItems };
-    await this.state.setGlobal(PROJECTS_KEY, projects);
+    projects[index] = this.sanitizeProject({ ...existing, pinnedItems });
+    await this.saveAllProjects(projects);
   }
 
   public async updateEntryPointOverrides(projectId: string, entryPointOverrides: string[]): Promise<void> {
@@ -167,8 +228,8 @@ export class ProjectsStore {
     if (!existing) {
       return;
     }
-    projects[index] = { ...existing, entryPointOverrides };
-    await this.state.setGlobal(PROJECTS_KEY, projects);
+    projects[index] = this.sanitizeProject({ ...existing, entryPointOverrides });
+    await this.saveAllProjects(projects);
   }
 
   public async updatePreferredProfile(projectId: string, profileId?: string): Promise<void> {
@@ -199,8 +260,8 @@ export class ProjectsStore {
     if (!existing) {
       return;
     }
-    projects[index] = { ...existing, runPresets: presets };
-    await this.state.setGlobal(PROJECTS_KEY, projects);
+    projects[index] = this.sanitizeProject({ ...existing, runPresets: presets });
+    await this.saveAllProjects(projects);
   }
 
   public async updateIdentity(projectId: string, identity: ProjectIdentity): Promise<void> {
@@ -213,7 +274,63 @@ export class ProjectsStore {
     if (!existing) {
       return;
     }
-    projects[index] = { ...existing, identity };
-    await this.state.setGlobal(PROJECTS_KEY, projects);
+    projects[index] = this.sanitizeProject({ ...existing, identity });
+    await this.saveAllProjects(projects);
   }
+
+  public async tryAcquireScanLock(owner: string, ttlMs: number): Promise<boolean> {
+    const now = Date.now();
+    const lock = this.state.getGlobal<ProjectScanLock | undefined>(SCAN_LOCK_KEY, undefined);
+    if (!lock || lock.expiresAt <= now || lock.owner === owner) {
+      const next: ProjectScanLock = {
+        owner,
+        expiresAt: now + Math.max(1_000, ttlMs)
+      };
+      await this.state.setGlobal(SCAN_LOCK_KEY, next);
+      const stored = this.state.getGlobal<ProjectScanLock | undefined>(SCAN_LOCK_KEY, undefined);
+      return stored?.owner === owner;
+    }
+    return false;
+  }
+
+  public async releaseScanLock(owner: string): Promise<void> {
+    const lock = this.state.getGlobal<ProjectScanLock | undefined>(SCAN_LOCK_KEY, undefined);
+    if (!lock || lock.owner !== owner) {
+      return;
+    }
+    await this.state.setGlobal<ProjectScanLock | undefined>(SCAN_LOCK_KEY, undefined);
+  }
+
+  private sanitizeProject(project: Project): Project {
+    const {
+      lastOpened,
+      lastActivity,
+      preferredRunProfileId,
+      preferredRunTarget,
+      preferredRunWorkingDirectory,
+      ...rest
+    } = project;
+    return rest;
+  }
+
+  private async saveAllProjects(projects: Project[]): Promise<void> {
+    const sanitized = projects.map((project) => this.sanitizeProject(project));
+    await this.state.setGlobal(PROJECTS_KEY, sanitized);
+    await this.bumpRevision();
+  }
+
+  private async bumpRevision(): Promise<void> {
+    await this.state.setGlobal(REVISION_KEY, createRevisionStamp());
+  }
+}
+
+function createRevisionStamp(): string {
+  const base = Date.now().toString(36);
+  const rand = Math.random().toString(36).slice(2, 8);
+  return `${base}-${rand}`;
+}
+
+function normalizeRootKey(value: string): string {
+  const normalized = value.replace(/\\/g, '/');
+  return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
 }
