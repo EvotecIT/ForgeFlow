@@ -129,15 +129,15 @@ ${projectsWebviewStyles}
       const delta = Date.now() - Number(updatedAt);
       if (!Number.isFinite(delta) || delta < 0) return '';
       if (delta < 60_000) return 'just now';
-      if (delta < 60 * 60_000) return `${Math.floor(delta / 60_000)}m ago`;
-      if (delta < 24 * 60 * 60_000) return `${Math.floor(delta / (60 * 60_000))}h ago`;
-      return `${Math.floor(delta / (24 * 60 * 60_000))}d ago`;
+      if (delta < 60 * 60_000) return Math.floor(delta / 60_000) + 'm ago';
+      if (delta < 24 * 60 * 60_000) return Math.floor(delta / (60 * 60_000)) + 'h ago';
+      return Math.floor(delta / (24 * 60 * 60_000)) + 'd ago';
     }
 
     function updateStatusLine() {
       if (!statusLine) return;
       const age = formatAge(state.dataUpdatedAt);
-      statusLine.textContent = age ? `${state.sortDescription} • updated ${age}` : state.sortDescription;
+      statusLine.textContent = age ? state.sortDescription + ' • updated ' + age : state.sortDescription;
     }
 
     function escapeHtml(value) {

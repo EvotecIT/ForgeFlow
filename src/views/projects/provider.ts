@@ -84,7 +84,6 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
   private scanVersion = 0;
   private entryPointCache = new Map<string, EntryPointCacheEntry>();
   private lastSortOrderSignature = '';
-  private hasLoadedCacheOnce = false;
 
   public constructor(
     private readonly projectsStore: ProjectsStore,
@@ -137,7 +136,6 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
           settings.projectScanCacheMinutes
         );
         if (staleRoots.length === 0) {
-          this.hasLoadedCacheOnce = true;
           this.isScanning = false;
           return;
         }
@@ -167,7 +165,6 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
 
     this.scanBackoffUntil = undefined;
     this.clearScanNotice();
-    this.hasLoadedCacheOnce = true;
     this.isScanning = true;
     this.scanLockHeld = true;
     void this.runScan(rootsToScan, roots, settings.projectScanMaxDepth, settings.projectSortMode);
@@ -192,7 +189,6 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
     this.resetPaging();
     this.updateDuplicateInfo(this.projects);
     this.invalidateEntryPointCache();
-    this.hasLoadedCacheOnce = true;
     this.onDidUpdateProjectsEmitter.fire(this.projects);
     this.onDidChangeTreeDataEmitter.fire(undefined);
   }

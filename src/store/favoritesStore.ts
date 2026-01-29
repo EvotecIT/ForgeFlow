@@ -97,7 +97,7 @@ export class FavoritesStore {
   private async updateFavorites(
     mutate: (items: FavoriteItem[]) => FavoriteItem[]
   ): Promise<void> {
-    await this.state.updateGlobalWithRetry(
+    await this.state.updateGlobalWithRetry<FavoriteItem[]>(
       FAVORITES_KEY,
       [],
       (current) => mutate(current),

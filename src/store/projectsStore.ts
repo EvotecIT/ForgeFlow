@@ -118,7 +118,7 @@ export class ProjectsStore {
   }
 
   public async updateScanRootsMeta(roots: string[], maxDepth: number, fetchedAt: number): Promise<void> {
-    await this.state.updateGlobalWithRetry(
+    await this.state.updateGlobalWithRetry<Record<string, ProjectScanRootMeta>>(
       SCAN_ROOTS_META_KEY,
       {},
       (meta) => {

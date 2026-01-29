@@ -66,7 +66,7 @@ export class GitStore {
   }
 
   public async setProjectSettings(projectId: string, settings: GitProjectSettings): Promise<void> {
-    await this.state.updateWorkspaceWithRetry(
+    await this.state.updateWorkspaceWithRetry<Record<string, GitProjectSettings>>(
       PROJECT_SETTINGS_KEY,
       {},
       (map) => ({ ...map, [projectId]: settings }),
@@ -75,7 +75,7 @@ export class GitStore {
   }
 
   public async clearProjectSettings(projectId: string): Promise<void> {
-    await this.state.updateWorkspaceWithRetry(
+    await this.state.updateWorkspaceWithRetry<Record<string, GitProjectSettings>>(
       PROJECT_SETTINGS_KEY,
       {},
       (map) => {

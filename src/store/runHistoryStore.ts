@@ -57,7 +57,7 @@ export class RunHistoryStore implements vscode.Disposable {
   private async updateHistory(
     mutate: (items: RunHistoryEntry[]) => RunHistoryEntry[]
   ): Promise<void> {
-    await this.state.updateGlobalWithRetry(
+    await this.state.updateGlobalWithRetry<RunHistoryEntry[]>(
       RUN_HISTORY_KEY,
       [],
       (current) => mutate(current),
