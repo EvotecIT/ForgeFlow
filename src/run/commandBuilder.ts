@@ -15,8 +15,13 @@ export function quotePowerShellLiteral(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
-export function buildProcessCommand(request: RunRequest, profile: PowerShellProfile, keepOpen = false): ProcessCommand {
-  const executable = resolveExecutable(profile);
+export function buildProcessCommand(
+  request: RunRequest,
+  profile: PowerShellProfile,
+  keepOpen = false,
+  executableOverride?: string
+): ProcessCommand {
+  const executable = executableOverride ?? resolveExecutable(profile);
   const args: string[] = ['-NoProfile'];
   if (keepOpen) {
     args.push('-NoExit');
@@ -41,10 +46,15 @@ export function buildTerminalCommand(request: RunRequest): TerminalCommand {
   return { commandLine: parts.join('; ') };
 }
 
-export function buildAdminCommand(request: RunRequest, profile: PowerShellProfile, keepOpen = false): ProcessCommand {
+export function buildAdminCommand(
+  request: RunRequest,
+  profile: PowerShellProfile,
+  keepOpen = false,
+  targetExecutableOverride?: string
+): ProcessCommand {
   const executable = 'powershell.exe';
-  const targetExe = resolveExecutable(profile);
-  const targetArgs = buildProcessCommand(request, profile, keepOpen).args;
+  const targetExe = targetExecutableOverride ?? resolveExecutable(profile);
+  const targetArgs = buildProcessCommand(request, profile, keepOpen, targetExe).args;
   const argList = targetArgs.map((arg) => quotePowerShellLiteral(arg)).join(', ');
   const startProcessParts: string[] = [
     `Start-Process -FilePath ${quotePowerShellLiteral(targetExe)}`,

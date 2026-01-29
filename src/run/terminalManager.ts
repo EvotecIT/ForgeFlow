@@ -8,6 +8,7 @@ export interface TerminalOptions {
   perProject: boolean;
   projectId?: string;
   workingDirectory?: string;
+  shellPath?: string;
 }
 
 export class TerminalManager implements vscode.Disposable {
@@ -31,7 +32,7 @@ export class TerminalManager implements vscode.Disposable {
       return existing;
     }
 
-    const shellPath = resolveExecutable(profile);
+    const shellPath = options.shellPath ?? resolveExecutable(profile);
     const shellArgs: string[] = ['-NoLogo', '-NoProfile'];
     if (process.platform === 'win32') {
       shellArgs.push('-ExecutionPolicy', 'Bypass');

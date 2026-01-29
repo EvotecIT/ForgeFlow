@@ -6,7 +6,7 @@ import { getForgeFlowSettings } from '../util/config';
 import type { PowerShellProfile, RunRequest } from '../models/run';
 import type { ForgeFlowLogger } from '../util/log';
 import { buildAdminCommand, buildProcessCommand, buildTerminalCommand } from './commandBuilder';
-import { getAllProfiles, resolveExecutable } from './powershellProfiles';
+import { getAllProfiles, resolveExecutable, resolveExecutablePath } from './powershellProfiles';
 import type { TerminalManager } from './terminalManager';
 
 export class RunService implements vscode.Disposable {
@@ -22,11 +22,15 @@ export class RunService implements vscode.Disposable {
 
   public async run(request: RunRequest): Promise<void> {
     const settings = getForgeFlowSettings();
-    const profile = this.resolveProfile(request.profileId, request.filePath, request.projectId, settings.powershellProfiles, settings.defaultProfileId);
-    if (!profile) {
-      vscode.window.showErrorMessage('ForgeFlow: No valid PowerShell profile configured.');
+    const resolved = await this.resolveProfileWithExecutable(
+      request,
+      settings.powershellProfiles,
+      settings.defaultProfileId
+    );
+    if (!resolved) {
       return;
     }
+    const { profile, executable, reasonOverride } = resolved;
 
     if (profile.kind === 'custom' && !profile.executablePath) {
       vscode.window.showErrorMessage('ForgeFlow: Custom profile is missing executablePath.');
@@ -48,7 +52,7 @@ export class RunService implements vscode.Disposable {
       ? `${profile.label} (${profile.executablePath})`
       : profile.label;
     if (settings.runShowProfileToast) {
-      const reason = this.resolveProfileReason(
+      const reason = reasonOverride ?? this.resolveProfileReason(
         request.profileId,
         request.filePath,
         request.projectId,
@@ -62,6 +66,7 @@ export class RunService implements vscode.Disposable {
       await this.runIntegrated(
         request,
         profile,
+        executable,
         settings.runIntegratedReuseTerminal,
         settings.runIntegratedReuseScope,
         settings.runIntegratedPerProjectTerminal
@@ -73,6 +78,7 @@ export class RunService implements vscode.Disposable {
       await this.runExternal(
         request,
         profile,
+        executable,
         settings.runExternalKeepOpen,
         settings.runExternalReuseSession,
         settings.runExternalLogOutput,
@@ -84,7 +90,7 @@ export class RunService implements vscode.Disposable {
     if (settings.runExternalReuseSession) {
       vscode.window.setStatusBarMessage('ForgeFlow: External session reuse is not supported for elevated runs.', 3000);
     }
-    await this.runExternalAdmin(request, profile, settings.runExternalAdminKeepOpen);
+    await this.runExternalAdmin(request, profile, executable, settings.runExternalAdminKeepOpen);
   }
 
   private resolveProfile(
@@ -163,9 +169,79 @@ export class RunService implements vscode.Disposable {
     return allProfiles.length > 0 ? 'first available profile' : undefined;
   }
 
+  private async resolveProfileWithExecutable(
+    request: RunRequest,
+    profiles: PowerShellProfile[],
+    defaultProfileId?: string
+  ): Promise<{ profile: PowerShellProfile; executable: string; reasonOverride?: string } | undefined> {
+    const profile = this.resolveProfile(request.profileId, request.filePath, request.projectId, profiles, defaultProfileId);
+    if (!profile) {
+      vscode.window.showErrorMessage('ForgeFlow: No valid PowerShell profile configured.');
+      return undefined;
+    }
+
+    const executable = resolveExecutablePath(profile);
+    if (executable) {
+      return { profile, executable };
+    }
+
+    const available = this.getAvailableProfiles(profiles).filter((entry) => entry.profile.id !== profile.id);
+    const fallback = this.pickFallbackProfile(profile, available);
+    const missingDetail = profile.kind === 'custom' && profile.executablePath
+      ? ` (${profile.executablePath})`
+      : '';
+    const actions = [];
+    if (fallback) {
+      actions.push(`Use ${fallback.profile.label}`);
+    }
+    actions.push('Manage Profiles', 'Open Settings');
+    const choice = await vscode.window.showWarningMessage(
+      `ForgeFlow: PowerShell executable not found for profile "${profile.label}"${missingDetail}.`,
+      ...actions
+    );
+    if (choice && fallback && choice === `Use ${fallback.profile.label}`) {
+      return { profile: fallback.profile, executable: fallback.executable, reasonOverride: 'fallback profile' };
+    }
+    if (choice === 'Manage Profiles') {
+      await vscode.commands.executeCommand('forgeflow.powershell.manageProfiles');
+    } else if (choice === 'Open Settings') {
+      await vscode.commands.executeCommand('workbench.action.openSettings', 'forgeflow.powershell');
+    }
+    return undefined;
+  }
+
+  private getAvailableProfiles(
+    profiles: PowerShellProfile[]
+  ): Array<{ profile: PowerShellProfile; executable: string }> {
+    return getAllProfiles(profiles).flatMap((profile) => {
+      const executable = resolveExecutablePath(profile);
+      return executable ? [{ profile, executable }] : [];
+    });
+  }
+
+  private pickFallbackProfile(
+    primary: PowerShellProfile,
+    available: Array<{ profile: PowerShellProfile; executable: string }>
+  ): { profile: PowerShellProfile; executable: string } | undefined {
+    if (available.length === 0) {
+      return undefined;
+    }
+    if (primary.kind === 'pwsh-preview') {
+      return available.find((entry) => entry.profile.kind === 'pwsh') ?? available[0];
+    }
+    if (primary.kind === 'pwsh') {
+      return available.find((entry) => entry.profile.kind === 'windows-powershell') ?? available[0];
+    }
+    if (primary.kind === 'windows-powershell') {
+      return available.find((entry) => entry.profile.kind === 'pwsh') ?? available[0];
+    }
+    return available[0];
+  }
+
   private async runIntegrated(
     request: RunRequest,
     profile: PowerShellProfile,
+    executable: string,
     reuseTerminal: boolean,
     reuseScope: 'profile' | 'shared',
     perProject: boolean
@@ -175,7 +251,8 @@ export class RunService implements vscode.Disposable {
       reuseScope,
       perProject,
       projectId: request.projectId,
-      workingDirectory: request.workingDirectory
+      workingDirectory: request.workingDirectory,
+      shellPath: executable
     });
     const command = buildTerminalCommand(request);
     terminal.show(true);
@@ -186,6 +263,7 @@ export class RunService implements vscode.Disposable {
   private async runExternal(
     request: RunRequest,
     profile: PowerShellProfile,
+    executable: string,
     keepOpen: boolean,
     reuseSession: boolean,
     logOutput: boolean,
@@ -197,7 +275,7 @@ export class RunService implements vscode.Disposable {
         this.resetExternalSession(profile.id);
         vscode.window.setStatusBarMessage('ForgeFlow: External session restarted.', 2000);
       }
-      const session = this.getExternalSession(profile, logOutput);
+      const session = this.getExternalSession(profile, logOutput, executable);
       if (session?.stdin && !session.killed && session.exitCode === null) {
         const sent = this.trySendExternalCommand(session, command.commandLine);
         if (sent) {
@@ -206,7 +284,7 @@ export class RunService implements vscode.Disposable {
         }
         this.logger.warn('External session stale, restarting.');
         this.resetExternalSession(profile.id);
-        const retry = this.getExternalSession(profile, logOutput);
+        const retry = this.getExternalSession(profile, logOutput, executable);
         if (retry?.stdin && !retry.killed && retry.exitCode === null) {
           const resent = this.trySendExternalCommand(retry, command.commandLine);
           if (resent) {
@@ -220,7 +298,7 @@ export class RunService implements vscode.Disposable {
       vscode.window.setStatusBarMessage('ForgeFlow: External session not available, starting new window.', 2500);
     }
 
-    const command = buildProcessCommand(request, profile, keepOpen);
+    const command = buildProcessCommand(request, profile, keepOpen, executable);
     this.logger.info(`Run external: ${command.executable} ${command.args.join(' ')}`);
     const child = spawn(command.executable, command.args, {
       cwd: command.cwd,
@@ -234,12 +312,17 @@ export class RunService implements vscode.Disposable {
     });
   }
 
-  private async runExternalAdmin(request: RunRequest, profile: PowerShellProfile, keepOpen: boolean): Promise<void> {
+  private async runExternalAdmin(
+    request: RunRequest,
+    profile: PowerShellProfile,
+    executable: string,
+    keepOpen: boolean
+  ): Promise<void> {
     if (process.platform !== 'win32') {
       vscode.window.showWarningMessage('ForgeFlow: Elevated external runs are only supported on Windows.');
       return;
     }
-    const command = buildAdminCommand(request, profile, keepOpen);
+    const command = buildAdminCommand(request, profile, keepOpen, executable);
     this.logger.info(`Run external admin: ${command.executable} ${command.args.join(' ')}`);
     const child = spawn(command.executable, command.args, {
       cwd: command.cwd,
@@ -271,7 +354,8 @@ export class RunService implements vscode.Disposable {
 
   private getExternalSession(
     profile: PowerShellProfile,
-    logOutput: boolean
+    logOutput: boolean,
+    executableOverride?: string
   ): ChildProcessWithoutNullStreams | undefined {
     const key = profile.id;
     const existing = this.externalSessions.get(key);
@@ -282,7 +366,7 @@ export class RunService implements vscode.Disposable {
       this.externalSessions.delete(key);
     }
 
-    const executable = resolveExecutable(profile);
+    const executable = executableOverride ?? resolveExecutable(profile);
     const args: string[] = ['-NoLogo', '-NoProfile', '-NoExit'];
     if (process.platform === 'win32') {
       args.push('-ExecutionPolicy', 'Bypass');
