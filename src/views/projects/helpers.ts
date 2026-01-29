@@ -11,6 +11,7 @@ import type { ProjectScanRootMeta } from '../../store/projectsStore';
 import type { TagsStore } from '../../store/tagsStore';
 import { matchesFilterQuery } from '../../util/filter';
 import { resolveProfileLabel } from '../../run/powershellProfiles';
+import { statPath } from '../../util/fs';
 import type { GitCommitCacheEntry } from '../../store/gitCommitCacheStore';
 import type { DuplicateInfo, ProjectsWebviewEntry } from './types';
 
@@ -467,12 +468,12 @@ export function shouldSkipScan(
   return Date.now() - meta.fetchedAt < ttlMs;
 }
 
-export function getStaleScanRoots(
+export async function getStaleScanRoots(
   meta: Record<string, ProjectScanRootMeta>,
   roots: string[],
   maxDepth: number,
   cacheMinutes: number
-): string[] {
+): Promise<string[]> {
   if (cacheMinutes <= 0) {
     return [...roots];
   }
@@ -491,6 +492,16 @@ export function getStaleScanRoots(
       continue;
     }
     if (now - entry.fetchedAt >= ttlMs) {
+      stale.push(root);
+      continue;
+    }
+    if (entry.rootMtime === undefined) {
+      stale.push(root);
+      continue;
+    }
+    const stat = await statPath(root);
+    const currentMtime = stat?.mtime;
+    if (currentMtime === undefined || currentMtime !== entry.rootMtime) {
       stale.push(root);
     }
   }

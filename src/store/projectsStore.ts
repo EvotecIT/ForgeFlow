@@ -3,6 +3,7 @@ import { getScopedValue, setScopedValue } from './filterScope';
 import type { Project, ProjectIdentity } from '../models/project';
 import type { ProjectSortMode, SortDirection } from '../util/config';
 import type { RunPreset } from '../models/run';
+import { statPath } from '../util/fs';
 
 const PROJECTS_KEY = 'forgeflow.projects.items.v1';
 const FAVORITES_KEY = 'forgeflow.projects.favorites.v1';
@@ -39,6 +40,7 @@ export interface ProjectScanMeta {
 export interface ProjectScanRootMeta {
   maxDepth: number;
   fetchedAt: number;
+  rootMtime?: number;
 }
 
 export interface ProjectScanStats {
@@ -123,6 +125,11 @@ export class ProjectsStore {
   }
 
   public async updateScanRootsMeta(roots: string[], maxDepth: number, fetchedAt: number): Promise<void> {
+    const mtimes = new Map<string, number | undefined>();
+    for (const root of roots) {
+      const stat = await statPath(root);
+      mtimes.set(normalizeRootKey(root), stat?.mtime);
+    }
     await this.state.updateGlobalWithRetry<Record<string, ProjectScanRootMeta>>(
       SCAN_ROOTS_META_KEY,
       {},
@@ -130,7 +137,7 @@ export class ProjectsStore {
         const next = { ...meta };
         for (const root of roots) {
           const key = normalizeRootKey(root);
-          next[key] = { maxDepth, fetchedAt };
+          next[key] = { maxDepth, fetchedAt, rootMtime: mtimes.get(key) };
         }
         return next;
       }

@@ -129,7 +129,7 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
       const scanMeta = this.projectsStore.getScanMeta();
       const rootsMatch = scanMeta && sameRoots(scanMeta.roots, roots) && scanMeta.maxDepth === settings.projectScanMaxDepth;
       if (rootsMatch) {
-        const staleRoots = getStaleScanRoots(
+        const staleRoots = await getStaleScanRoots(
           this.projectsStore.getScanRootsMeta(),
           roots,
           settings.projectScanMaxDepth,
