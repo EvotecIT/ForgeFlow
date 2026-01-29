@@ -267,6 +267,28 @@ export class ProjectsStore {
     await this.bumpWorkspaceRevision();
   }
 
+  public async removeProject(projectId: string): Promise<void> {
+    const projects = this.state.getGlobal<Project[]>(PROJECTS_KEY, []);
+    const next = projects.filter((project) => project.id !== projectId);
+    if (next.length !== projects.length) {
+      await this.saveAllProjects(next);
+    }
+    const favorites = this.getFavoriteIds();
+    if (favorites.includes(projectId)) {
+      await this.state.setGlobal(
+        FAVORITES_KEY,
+        favorites.filter((id) => id !== projectId)
+      );
+      await this.bumpRevision();
+    }
+    const overrides = this.state.getWorkspace<Record<string, ProjectWorkspaceOverride>>(WORKSPACE_OVERRIDES_KEY, {});
+    if (projectId in overrides) {
+      delete overrides[projectId];
+      await this.state.setWorkspace(WORKSPACE_OVERRIDES_KEY, overrides);
+      await this.bumpWorkspaceRevision();
+    }
+  }
+
   public async updateRunPresets(projectId: string, presets: RunPreset[]): Promise<void> {
     const projects = this.state.getGlobal<Project[]>(PROJECTS_KEY, []);
     const index = projects.findIndex((item) => item.id === projectId);

@@ -10,6 +10,7 @@ import { deleteFilterPreset, pickFilterPreset, saveFilterPreset } from '../filte
 import { extractEntry, extractPath, extractProject } from '../selection';
 import { findProjectByPath, resolveProjectFromTarget } from '../projectUtils';
 import { openInTerminal, openPath } from '../fsActions';
+import { statPath } from '../../util/fs';
 import {
   addProjectToWorkspace,
   openProject,
@@ -96,6 +97,46 @@ export function registerProjectCommands(deps: ProjectCommandDeps): void {
         return;
       }
       await openProjectInVisualStudio(project, projectsProvider);
+    }),
+    vscode.commands.registerCommand('forgeflow.projects.delete', async (target?: unknown) => {
+      const project = resolveProjectFromTarget(target, projectsStore);
+      if (!project) {
+        return;
+      }
+      const existing = await statPath(project.path);
+      if (!existing) {
+        const removeChoice = await vscode.window.showWarningMessage(
+          `ForgeFlow: Project folder not found for "${project.name}". Remove from list?`,
+          'Remove',
+          'Cancel'
+        );
+        if (removeChoice !== 'Remove') {
+          return;
+        }
+        await projectsStore.removeProject(project.id);
+      } else {
+        const confirm = await vscode.window.showWarningMessage(
+          `ForgeFlow: Move "${project.name}" to the Recycle Bin?`,
+          { modal: true },
+          'Move to Recycle Bin'
+        );
+        if (confirm !== 'Move to Recycle Bin') {
+          return;
+        }
+        try {
+          await vscode.workspace.fs.delete(vscode.Uri.file(project.path), { recursive: true, useTrash: true });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          vscode.window.showErrorMessage(`ForgeFlow: Failed to delete project "${project.name}": ${message}`);
+          return;
+        }
+        await projectsStore.removeProject(project.id);
+      }
+
+      await projectsProvider.refresh(true);
+      await projectsWebviewProvider.refresh();
+      await projectsWebviewPanelProvider.refresh();
+      await dashboardProvider.refresh();
     }),
     vscode.commands.registerCommand('forgeflow.projects.switch', async () => {
       await switchProject(projectsStore, tagsStore);

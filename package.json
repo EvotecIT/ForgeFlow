@@ -412,6 +412,13 @@
         "category": "ForgeFlow"
       },
       {
+        "command": "forgeflow.projects.delete",
+        "title": "Delete Project...",
+        "shortTitle": "Delete Project",
+        "icon": "$(trash)",
+        "category": "ForgeFlow"
+      },
+      {
         "command": "forgeflow.projects.switch",
         "title": "Switch Project",
         "shortTitle": "Switch Project",
@@ -1342,6 +1349,36 @@
         ]
       }
     },
+    "submenus": [
+      {
+        "id": "forgeflow.projects.openMenu",
+        "label": "Open"
+      },
+      {
+        "id": "forgeflow.projects.runMenu",
+        "label": "Run"
+      },
+      {
+        "id": "forgeflow.projects.presetsMenu",
+        "label": "Presets"
+      },
+      {
+        "id": "forgeflow.projects.runOptionsMenu",
+        "label": "Run Options"
+      },
+      {
+        "id": "forgeflow.projects.organizeMenu",
+        "label": "Organize"
+      },
+      {
+        "id": "forgeflow.projects.manageMenu",
+        "label": "Manage"
+      },
+      {
+        "id": "forgeflow.projects.dangerMenu",
+        "label": "Danger"
+      }
+    ],
     "menus": {
       "view/title": [
         {
@@ -1555,6 +1592,120 @@
           "command": "forgeflow.files.pinFavorite",
           "when": "resourceScheme == file",
           "group": "navigation"
+        }
+      ],
+      "forgeflow.projects.openMenu": [
+        {
+          "command": "forgeflow.projects.openInNewWindow",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        },
+        {
+          "command": "forgeflow.projects.addToWorkspace",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        },
+        {
+          "command": "forgeflow.projects.openInTerminal",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        },
+        {
+          "command": "forgeflow.projects.openInVisualStudio",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        }
+      ],
+      "forgeflow.projects.runMenu": [
+        {
+          "command": "forgeflow.projects.run",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        },
+        {
+          "command": "forgeflow.projects.runHistoryForProject",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        },
+        {
+          "command": "forgeflow.projects.runPreset",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        }
+      ],
+      "forgeflow.projects.presetsMenu": [
+        {
+          "command": "forgeflow.projects.saveHistoryForProjectAsPreset",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        },
+        {
+          "command": "forgeflow.projects.saveHistoryForProjectAsPresets",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        },
+        {
+          "command": "forgeflow.projects.deletePreset",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        }
+      ],
+      "forgeflow.projects.runOptionsMenu": [
+        {
+          "command": "forgeflow.run.setProjectProfile",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        },
+        {
+          "command": "forgeflow.run.clearProjectProfile",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        },
+        {
+          "command": "forgeflow.run.setProjectTarget",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        },
+        {
+          "command": "forgeflow.run.clearProjectTarget",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        },
+        {
+          "command": "forgeflow.run.setProjectWorkingDirectory",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        },
+        {
+          "command": "forgeflow.run.clearProjectWorkingDirectory",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        }
+      ],
+      "forgeflow.projects.organizeMenu": [
+        {
+          "command": "forgeflow.projects.pinFavorite",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProject"
+        },
+        {
+          "command": "forgeflow.projects.unpinFavorite",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectFavorite"
+        },
+        {
+          "command": "forgeflow.projects.moveFavoriteUp",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectFavorite"
+        },
+        {
+          "command": "forgeflow.projects.moveFavoriteDown",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectFavorite"
+        },
+        {
+          "command": "forgeflow.projects.setTags",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        },
+        {
+          "command": "forgeflow.projects.clearTags",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        }
+      ],
+      "forgeflow.projects.manageMenu": [
+        {
+          "command": "forgeflow.projects.manageEntryPoints",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        },
+        {
+          "command": "forgeflow.projects.gitClean",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        }
+      ],
+      "forgeflow.projects.dangerMenu": [
+        {
+          "command": "forgeflow.projects.delete",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
         }
       ],
       "view/item/context": [
@@ -2062,18 +2213,13 @@
         },
         {
           "command": "forgeflow.projects.open",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProject",
-          "group": "navigation"
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)",
+          "group": "1_open@1"
         },
         {
-          "command": "forgeflow.projects.openInNewWindow",
+          "submenu": "forgeflow.projects.openMenu",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)",
-          "group": "1_open@2"
-        },
-        {
-          "command": "forgeflow.projects.addToWorkspace",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)",
-          "group": "1_open@3"
+          "group": "1_open@9"
         },
         {
           "command": "forgeflow.projects.open",
@@ -2094,21 +2240,6 @@
           "icon": "$(play)"
         },
         {
-          "command": "forgeflow.projects.runHistoryForProject",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)",
-          "group": "2_manage@0"
-        },
-        {
-          "command": "forgeflow.projects.saveHistoryForProjectAsPreset",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)",
-          "group": "2_manage@1"
-        },
-        {
-          "command": "forgeflow.projects.saveHistoryForProjectAsPresets",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)",
-          "group": "2_manage@2"
-        },
-        {
           "command": "forgeflow.projects.gitClean",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)",
           "group": "inline@4",
@@ -2121,34 +2252,34 @@
           "icon": "$(window)"
         },
         {
-          "command": "forgeflow.projects.runPreset",
+          "submenu": "forgeflow.projects.runMenu",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)",
-          "group": "2_manage@1"
+          "group": "2_run@1"
         },
         {
-          "command": "forgeflow.projects.deletePreset",
+          "submenu": "forgeflow.projects.presetsMenu",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)",
-          "group": "2_manage@2"
+          "group": "2_run@2"
         },
         {
-          "command": "forgeflow.run.setProjectTarget",
+          "submenu": "forgeflow.projects.runOptionsMenu",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)",
-          "group": "2_manage@3"
+          "group": "3_options@1"
         },
         {
-          "command": "forgeflow.run.clearProjectTarget",
+          "submenu": "forgeflow.projects.organizeMenu",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)",
-          "group": "2_manage@4"
+          "group": "4_organize@1"
         },
         {
-          "command": "forgeflow.run.setProjectWorkingDirectory",
+          "submenu": "forgeflow.projects.manageMenu",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)",
-          "group": "2_manage@5"
+          "group": "5_manage@1"
         },
         {
-          "command": "forgeflow.run.clearProjectWorkingDirectory",
+          "submenu": "forgeflow.projects.dangerMenu",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)",
-          "group": "2_manage@6"
+          "group": "6_danger@1"
         },
         {
           "command": "forgeflow.run",
@@ -2638,71 +2769,6 @@
           "command": "forgeflow.files.newFolder",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectBrowseItem",
           "group": "4_create@2"
-        },
-        {
-          "command": "forgeflow.projects.pinFavorite",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProject",
-          "group": "5_forgeflow@1"
-        },
-        {
-          "command": "forgeflow.projects.unpinFavorite",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectFavorite",
-          "group": "5_forgeflow@1"
-        },
-        {
-          "command": "forgeflow.projects.moveFavoriteUp",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectFavorite",
-          "group": "5_forgeflow@2"
-        },
-        {
-          "command": "forgeflow.projects.moveFavoriteDown",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectFavorite",
-          "group": "5_forgeflow@3"
-        },
-        {
-          "command": "forgeflow.run.setProjectProfile",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)",
-          "group": "5_forgeflow@9"
-        },
-        {
-          "command": "forgeflow.run.clearProjectProfile",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)",
-          "group": "5_forgeflow@10"
-        },
-        {
-          "command": "forgeflow.projects.setTags",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)",
-          "group": "5_forgeflow@11"
-        },
-        {
-          "command": "forgeflow.projects.clearTags",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)",
-          "group": "5_forgeflow@12"
-        },
-        {
-          "command": "forgeflow.projects.run",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)",
-          "group": "5_forgeflow@13"
-        },
-        {
-          "command": "forgeflow.projects.openInTerminal",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)",
-          "group": "5_forgeflow@14"
-        },
-        {
-          "command": "forgeflow.projects.gitClean",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)",
-          "group": "5_forgeflow@15"
-        },
-        {
-          "command": "forgeflow.projects.openInVisualStudio",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)",
-          "group": "5_forgeflow@16"
-        },
-        {
-          "command": "forgeflow.projects.manageEntryPoints",
-          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)",
-          "group": "5_forgeflow@4"
         },
         {
           "command": "forgeflow.projects.openEntryPoint",
