@@ -20,7 +20,8 @@ import {
   formatSummaryTooltip,
   historyIconForEntry,
   isPowerShellPath,
-  resolveProjectProfileLabel
+  resolveProjectProfileLabel,
+  sortProjects
 } from './helpers';
 import { groupProjectsWithWorktrees } from './duplicateGrouping';
 
@@ -249,9 +250,20 @@ export class ProjectDuplicateGroupNode implements ProjectNode {
   }
 
   public async getChildren(): Promise<ProjectNode[]> {
-    const worktrees = this.worktrees.slice().sort((a, b) => a.path.localeCompare(b.path));
-    const duplicates = this.duplicates.slice().sort((a, b) => a.path.localeCompare(b.path));
-    const ordered = [this.mainProject, ...worktrees, ...duplicates];
+    const settings = getForgeFlowSettings();
+    const ordered = sortProjects(
+      this.projects.slice(),
+      settings.projectSortMode,
+      settings.projectSortDirection,
+      true
+    );
+    const mainIndex = ordered.findIndex((project) => project.id === this.mainProject.id);
+    if (mainIndex > 0) {
+      const [main] = ordered.splice(mainIndex, 1);
+      if (main) {
+        ordered.unshift(main);
+      }
+    }
     return ordered.map((project) => {
       const node = new ProjectItemNode(
         project,
