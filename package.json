@@ -3103,6 +3103,11 @@
           ],
           "default": "desc"
         },
+        "forgeflow.projects.duplicateGroupMainFirst": {
+          "type": "boolean",
+          "description": "Keep the primary project at the top of duplicate/worktree groups, regardless of sort order.",
+          "default": true
+        },
         "forgeflow.projects.identityScanDepth": {
           "type": "number",
           "description": "Maximum folder depth for identity scanning (psd1/csproj/Directory.Build.props).",

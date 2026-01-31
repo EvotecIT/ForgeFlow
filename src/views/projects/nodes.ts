@@ -257,11 +257,13 @@ export class ProjectDuplicateGroupNode implements ProjectNode {
       settings.projectSortDirection,
       true
     );
-    const mainIndex = ordered.findIndex((project) => project.id === this.mainProject.id);
-    if (mainIndex > 0) {
-      const [main] = ordered.splice(mainIndex, 1);
-      if (main) {
-        ordered.unshift(main);
+    if (settings.projectDuplicateGroupMainFirst) {
+      const mainIndex = ordered.findIndex((project) => project.id === this.mainProject.id);
+      if (mainIndex > 0) {
+        const [main] = ordered.splice(mainIndex, 1);
+        if (main) {
+          ordered.unshift(main);
+        }
       }
     }
     return ordered.map((project) => {

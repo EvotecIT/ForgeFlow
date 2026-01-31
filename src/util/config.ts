@@ -10,6 +10,7 @@ export interface ForgeFlowSettings {
   projectScanCacheMinutes: number;
   projectSortMode: ProjectSortMode;
   projectSortDirection: SortDirection;
+  projectDuplicateGroupMainFirst: boolean;
   identityScanDepth: number;
   identityPreferredFolders: string[];
   projectModifiedScanDepth: number;
@@ -87,6 +88,7 @@ export function getForgeFlowSettings(): ForgeFlowSettings {
     projectScanCacheMinutes: config.get<number>('projects.scanCacheMinutes', 2),
     projectSortMode: config.get<ProjectSortMode>('projects.sortMode', 'recentOpened'),
     projectSortDirection: config.get<SortDirection>('projects.sortDirection', 'desc'),
+    projectDuplicateGroupMainFirst: config.get<boolean>('projects.duplicateGroupMainFirst', true),
     identityScanDepth: config.get<number>('projects.identityScanDepth', 4),
     identityPreferredFolders: config.get<string[]>('projects.identityPreferredFolders', [
       'module',
