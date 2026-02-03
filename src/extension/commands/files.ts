@@ -53,6 +53,20 @@ export function registerFileCommands(deps: FileCommandDeps): void {
     filterPresetStore
   } = deps;
 
+  const openWorktrees = async (target: unknown, openInNewWindow: boolean): Promise<void> => {
+    const targets = collectSelectedPaths(target, filesView, filesPanelView);
+    if (targets.length === 0) {
+      return;
+    }
+    if (!openInNewWindow && targets.length > 1) {
+      vscode.window.showWarningMessage('ForgeFlow: Open Worktree supports a single selection.');
+    }
+    const toOpen = openInNewWindow ? targets : targets.slice(0, 1);
+    for (const folderPath of toOpen) {
+      await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(folderPath), openInNewWindow);
+    }
+  };
+
   context.subscriptions.push(
     vscode.commands.registerCommand('forgeflow.files.open', async (target?: unknown) => {
       const targets = collectSelectedPaths(target, filesView, filesPanelView);
@@ -64,6 +78,37 @@ export function registerFileCommands(deps: FileCommandDeps): void {
       }
       for (const filePath of targets) {
         await openPath(filePath);
+      }
+    }),
+    vscode.commands.registerCommand('forgeflow.worktrees.open', async (target?: unknown) => {
+      await openWorktrees(target, false);
+    }),
+    vscode.commands.registerCommand('forgeflow.worktrees.openInNewWindow', async (target?: unknown) => {
+      await openWorktrees(target, true);
+    }),
+    vscode.commands.registerCommand('forgeflow.worktrees.addToWorkspace', async (target?: unknown) => {
+      const targets = collectSelectedPaths(target, filesView, filesPanelView);
+      if (targets.length === 0) {
+        return;
+      }
+      const folders = vscode.workspace.workspaceFolders ?? [];
+      const existing = new Set(folders.map((folder) => path.resolve(folder.uri.fsPath)));
+      const additions: vscode.WorkspaceFolder[] = [];
+      for (const folderPath of targets) {
+        const resolved = path.resolve(folderPath);
+        if (existing.has(resolved)) {
+          continue;
+        }
+        additions.push({ uri: vscode.Uri.file(folderPath), name: path.basename(folderPath) });
+        existing.add(resolved);
+      }
+      if (additions.length === 0) {
+        vscode.window.showWarningMessage('ForgeFlow: Worktree is already in the workspace.');
+        return;
+      }
+      const success = vscode.workspace.updateWorkspaceFolders(folders.length, 0, ...additions);
+      if (!success) {
+        vscode.window.showWarningMessage('ForgeFlow: Unable to add worktree to workspace.');
       }
     }),
     vscode.commands.registerCommand('forgeflow.files.filter', async () => {

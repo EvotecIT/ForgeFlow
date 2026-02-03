@@ -412,6 +412,27 @@
         "category": "ForgeFlow"
       },
       {
+        "command": "forgeflow.worktrees.open",
+        "title": "Open Worktree",
+        "shortTitle": "Open Worktree",
+        "icon": "$(folder-opened)",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.worktrees.openInNewWindow",
+        "title": "Open Worktree in New Window",
+        "shortTitle": "Open Worktree in New Window",
+        "icon": "$(window)",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.worktrees.addToWorkspace",
+        "title": "Add Worktree to Workspace",
+        "shortTitle": "Add to Workspace",
+        "icon": "$(add)",
+        "category": "ForgeFlow"
+      },
+      {
         "command": "forgeflow.projects.delete",
         "title": "Delete Project...",
         "shortTitle": "Delete Project",
@@ -2210,6 +2231,36 @@
           "command": "forgeflow.files.paste",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowWorkspaceRoot",
           "group": "2_clipboard@4"
+        },
+        {
+          "command": "forgeflow.worktrees.open",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowWorktree",
+          "group": "1_open@1"
+        },
+        {
+          "command": "forgeflow.worktrees.openInNewWindow",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowWorktree",
+          "group": "1_open@2"
+        },
+        {
+          "command": "forgeflow.worktrees.addToWorkspace",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowWorktree",
+          "group": "1_open@3"
+        },
+        {
+          "command": "forgeflow.files.openInTerminal",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowWorktree",
+          "group": "1_open@4"
+        },
+        {
+          "command": "forgeflow.files.revealInOs",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowWorktree",
+          "group": "1_open@5"
+        },
+        {
+          "command": "forgeflow.files.copyPath",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowWorktree",
+          "group": "2_clipboard@1"
         },
         {
           "command": "forgeflow.projects.open",
