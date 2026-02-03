@@ -68,6 +68,7 @@ ${dashboardWebviewStyles}
       <input class="filter" id="filter" type="text" placeholder="${escapeHtml(filterPlaceholder)}" value="${escapeHtml(state?.filter ?? '')}" />
       <button class="clear" id="clear">Clear</button>
       <button class="focus" id="focus">Focus</button>
+      <button class="toggle-groups" id="toggle-groups" title="Expand or collapse grouped duplicates">Expand groups</button>
       <span class="count" id="count"></span>
       ${state?.loading ? '<button class="cancel" id="cancel">Cancel</button>' : ''}
       <button class="refresh" id="refresh">Refresh</button>
@@ -192,6 +193,9 @@ function renderRow(row: DashboardRow, updatedAt?: number, options?: RenderRowOpt
   const localLabel = row.localPath
     ? `<span class="mono" title="${escapeHtml(row.projectPath ?? row.localPath)}">${escapeHtml(row.localPath)}</span>`
     : `<span class="mono">n/a</span>`;
+  const childBadge = isChild
+    ? `<span class="badge child-badge ${row.isWorktree ? 'worktree' : 'duplicate'}">${row.isWorktree ? 'worktree' : 'duplicate'}</span>`
+    : '';
   const groupToggle = isGroup
     ? `<button class="group-toggle" data-group-id="${escapeHtml(groupId)}" aria-label="Toggle group">${iconChevron()}</button>`
     : '';
@@ -201,7 +205,7 @@ function renderRow(row: DashboardRow, updatedAt?: number, options?: RenderRowOpt
   const groupSummary = isGroup && row.groupSummary
     ? `<span class="group-summary">${escapeHtml(row.groupSummary)}</span>`
     : '';
-  const localCell = `<div class="local-cell">${groupToggle}${localLabel}${groupCountBadge}${groupSummary}</div>`;
+  const localCell = `<div class="local-cell">${groupToggle}${localLabel}${childBadge}${groupCountBadge}${groupSummary}</div>`;
   const actionsCell = buildActionsCell(row);
 
   const statusBadge = statusLabel

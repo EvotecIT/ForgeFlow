@@ -206,6 +206,18 @@ export const dashboardWebviewStyles = `
     tr[data-kind="group"][data-expanded="true"] .group-toggle svg {
       transform: rotate(90deg);
     }
+    .badge.child-badge {
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .badge.child-badge.worktree {
+      color: var(--vscode-testing-iconPassed);
+      border-color: color-mix(in srgb, var(--vscode-testing-iconPassed) 40%, var(--ff-border));
+    }
+    .badge.child-badge.duplicate {
+      color: var(--ff-muted);
+      border-color: color-mix(in srgb, var(--ff-muted) 40%, var(--ff-border));
+    }
     .group-count {
       border: 1px solid var(--ff-border);
       border-radius: 999px;

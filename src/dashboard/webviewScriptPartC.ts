@@ -57,6 +57,7 @@ export const dashboardWebviewScriptPartC = `
       const raw = (filterInput && 'value' in filterInput) ? String(filterInput.value || '') : '';
       const trimmed = raw.trim();
       const filter = normalizeFilter(raw);
+      const filterActive = filter.length > 0;
       const activeTagKeys = Array.from(activeTags.keys());
       const rows = Array.from(document.querySelectorAll('tr[data-row="data"]'));
       const parents = rows.filter((row) => row.dataset.kind !== 'child');
@@ -92,7 +93,10 @@ export const dashboardWebviewScriptPartC = `
           if (!row.hidden) {
             visible += 1;
           }
-          const expanded = row.dataset.expanded === 'true';
+          const userExpanded = row.dataset.userExpanded === 'true';
+          const autoExpand = filterActive && !groupMatch && childMatchCount > 0;
+          const expanded = expandAll || autoExpand || userExpanded;
+          row.dataset.expanded = expanded ? 'true' : 'false';
           groupChildren.forEach((child) => {
             const childMatch = child.dataset.match === 'true';
             child.hidden = !(expanded && isMatch && childMatch);
@@ -377,6 +381,13 @@ export const dashboardWebviewScriptPartC = `
         }
       });
     }
+    if (toggleGroupsButton) {
+      toggleGroupsButton.addEventListener('click', () => {
+        expandAll = !expandAll;
+        updateGroupToggle();
+        applyFilter();
+      });
+    }
     if (cancelButton) {
       cancelButton.addEventListener('click', () => {
         vscode.postMessage({ type: 'cancelRefresh' });
@@ -388,6 +399,7 @@ export const dashboardWebviewScriptPartC = `
       });
     }
     updateHeaderHeight();
+    updateGroupToggle();
     window.addEventListener('resize', () => {
       updateHeaderHeight();
     });

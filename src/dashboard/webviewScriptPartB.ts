@@ -95,8 +95,14 @@ export const dashboardWebviewScriptPartB = `
         if (!row) {
           return;
         }
-        const expanded = row.dataset.expanded === 'true';
-        row.dataset.expanded = expanded ? 'false' : 'true';
+        if (expandAll && toggleGroupsButton) {
+          expandAll = false;
+          toggleGroupsButton.textContent = 'Expand groups';
+        }
+        const current = row.dataset.userExpanded === 'true';
+        const next = current ? 'false' : 'true';
+        row.dataset.userExpanded = next;
+        row.dataset.expanded = next;
         applyFilter();
       });
     });
@@ -107,6 +113,7 @@ export const dashboardWebviewScriptPartB = `
     const clearButton = document.getElementById('clear');
     const focusButton = document.getElementById('focus');
     const cancelButton = document.getElementById('cancel');
+    const toggleGroupsButton = document.getElementById('toggle-groups');
     const countLabel = document.getElementById('count');
     const emptyRow = document.getElementById('filter-empty');
     const summaryEl = document.getElementById('summary');
@@ -129,6 +136,7 @@ export const dashboardWebviewScriptPartB = `
     let headerHeight = 48;
     let colWidths = {};
     let contextTarget = null;
+    let expandAll = false;
 
     document.querySelectorAll('.tag-chip').forEach((button) => {
       button.addEventListener('click', (event) => {
@@ -235,6 +243,13 @@ export const dashboardWebviewScriptPartB = `
       if (countLabel) {
         countLabel.textContent = total > 0 ? String(visible) + '/' + String(total) : '';
       }
+    }
+
+    function updateGroupToggle() {
+      if (!toggleGroupsButton) {
+        return;
+      }
+      toggleGroupsButton.textContent = expandAll ? 'Collapse groups' : 'Expand groups';
     }
 
     function updateSummary(rows, visible) {
