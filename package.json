@@ -3103,6 +3103,11 @@
           ],
           "default": "desc"
         },
+        "forgeflow.projects.showWorktreesGroup": {
+          "type": "boolean",
+          "description": "Show a Worktrees group in the Projects view.",
+          "default": true
+        },
         "forgeflow.projects.duplicateGroupMainFirst": {
           "type": "boolean",
           "description": "Keep the primary project at the top of duplicate/worktree groups, regardless of sort order.",

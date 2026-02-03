@@ -20,6 +20,7 @@ export interface ProjectChildrenContext {
   projects: Project[];
   favoriteIds: string[];
   duplicateInfo: Map<string, DuplicateInfo>;
+  worktreeInfo: Map<string, boolean>;
   filterText: string;
   tagFilter: string[];
   favoritesOnly: boolean;
@@ -48,6 +49,7 @@ export async function getProjectChildren(context: ProjectChildrenContext, elemen
   const tagsNode = showTagsNode
     ? new ProjectTagFilterNode(context.tagFilter, context.tagsStore, projectIds)
     : undefined;
+  const settings = getForgeFlowSettings();
   const roots = getScanRoots();
   const baseNodes: ProjectNode[] = [];
   if (tagsNode) {
@@ -94,7 +96,7 @@ export async function getProjectChildren(context: ProjectChildrenContext, elemen
       new ProjectHintNode('No projects found. Refresh or adjust scan roots.', 'forgeflow.projects.configureOrRefresh')
     ]);
   }
-  const minChars = getForgeFlowSettings().filtersProjectsMinChars;
+  const minChars = settings.filtersProjectsMinChars;
   const trimmedFilter = context.filterText.trim();
   const hasTextFilter = trimmedFilter.length >= minChars;
   const filteredProjects = getFilteredProjects(context.projects, context);
@@ -112,15 +114,15 @@ export async function getProjectChildren(context: ProjectChildrenContext, elemen
       new ProjectHintNode(hint, 'forgeflow.projects.clearFilter')
     ]);
   }
-  return withRootHint(getRootGroups(context));
+  return withRootHint(getRootGroups(context, settings));
 }
 
-function getRootGroups(context: ProjectChildrenContext): ProjectNode[] {
+function getRootGroups(context: ProjectChildrenContext, settings: ReturnType<typeof getForgeFlowSettings>): ProjectNode[] {
   const favorites = getFavoriteProjects(context);
-  const othersResult = getOtherProjects(context);
+  const othersResult = getOtherProjects(context, settings);
   const others = othersResult.items;
   const summaries = context.gitStore.getSummaries();
-  const showSummary = getForgeFlowSettings().gitShowProjectSummary;
+  const showSummary = settings.gitShowProjectSummary;
   const sortDescription = buildSortDescription(others, {
     gitCommit: { loading: context.gitCommitLoading, progress: context.gitCommitProgress, total: context.gitCommitTotal },
     modified: { loading: context.modifiedLoading, progress: context.modifiedProgress, total: context.modifiedTotal }
@@ -134,6 +136,7 @@ function getRootGroups(context: ProjectChildrenContext): ProjectNode[] {
       true,
       undefined,
       context.duplicateInfo,
+      true,
       summaries,
       showSummary,
       undefined,
@@ -150,6 +153,25 @@ function getRootGroups(context: ProjectChildrenContext): ProjectNode[] {
       true,
       undefined,
       context.duplicateInfo,
+      true,
+      summaries,
+      showSummary,
+      undefined,
+      (project) => context.getEntryPointGroups(project),
+      (projectId) => context.tagsStore.getTags(projectId),
+      (project) => context.getRecentRuns(project)
+    ));
+  }
+  const worktrees = settings.projectShowWorktreesGroup ? getWorktreeProjects(context, settings) : [];
+  if (worktrees.length > 0) {
+    groups.push(new ProjectGroupNode(
+      'Worktrees',
+      'forgeflowGroup',
+      worktrees,
+      false,
+      undefined,
+      context.duplicateInfo,
+      false,
       summaries,
       showSummary,
       undefined,
@@ -170,6 +192,7 @@ function getRootGroups(context: ProjectChildrenContext): ProjectNode[] {
       false,
       sortDescription,
       context.duplicateInfo,
+      true,
       summaries,
       showSummary,
       tailNodes,
@@ -208,10 +231,12 @@ function getFavoriteProjects(context: ProjectChildrenContext): Project[] {
   return getFilteredProjects(favorites, context);
 }
 
-function getOtherProjects(context: ProjectChildrenContext): { items: Project[]; total: number } {
+function getOtherProjects(
+  context: ProjectChildrenContext,
+  settings: ReturnType<typeof getForgeFlowSettings>
+): { items: Project[]; total: number } {
   const favorites = new Set(context.favoriteIds);
   const others = context.projects.filter((project) => !favorites.has(project.id));
-  const settings = getForgeFlowSettings();
   const filtered = getFilteredProjects(others, context);
   const fallbackToName = !(
     (settings.projectSortMode === 'gitCommit' && context.gitCommitLoading)
@@ -226,4 +251,26 @@ function getOtherProjects(context: ProjectChildrenContext): { items: Project[]; 
     return { items: sorted.slice(0, context.visibleCount), total: sorted.length };
   }
   return { items: sorted, total: sorted.length };
+}
+
+function getWorktreeProjects(
+  context: ProjectChildrenContext,
+  settings: ReturnType<typeof getForgeFlowSettings>
+): Project[] {
+  const favorites = new Set(context.favoriteIds);
+  const worktrees = context.projects.filter((project) => {
+    if (!context.worktreeInfo.get(project.id)) {
+      return false;
+    }
+    if (context.favoritesOnly && !favorites.has(project.id)) {
+      return false;
+    }
+    return true;
+  });
+  const filtered = getFilteredProjects(worktrees, context);
+  const fallbackToName = !(
+    (settings.projectSortMode === 'gitCommit' && context.gitCommitLoading)
+    || (settings.projectSortMode === 'recentModified' && context.modifiedLoading)
+  );
+  return sortProjects(filtered, settings.projectSortMode, settings.projectSortDirection, fallbackToName);
 }

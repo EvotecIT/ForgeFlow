@@ -68,6 +68,8 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
   private projects: Project[] = [];
   private favoriteIds: string[] = [];
   private duplicateInfo = new Map<string, DuplicateInfo>();
+  private worktreeInfo = new Map<string, boolean>();
+  private worktreeInfoRun = 0;
   private filterText = '';
   private tagFilter: string[] = [];
   private favoritesOnly = false;
@@ -120,6 +122,11 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
     this.invalidateEntryPointCache();
     this.onDidUpdateProjectsEmitter.fire(this.projects);
     this.onDidChangeTreeDataEmitter.fire(undefined);
+    if (settings.projectShowWorktreesGroup) {
+      void this.updateWorktreeInfo(this.projects);
+    } else if (this.worktreeInfo.size > 0) {
+      this.worktreeInfo = new Map<string, boolean>();
+    }
 
     if (this.isScanning) {
       this.pendingRefresh = true;
@@ -193,6 +200,11 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
     this.invalidateEntryPointCache();
     this.onDidUpdateProjectsEmitter.fire(this.projects);
     this.onDidChangeTreeDataEmitter.fire(undefined);
+    if (settings.projectShowWorktreesGroup) {
+      void this.updateWorktreeInfo(this.projects);
+    } else if (this.worktreeInfo.size > 0) {
+      this.worktreeInfo = new Map<string, boolean>();
+    }
   }
 
   public refreshRunHistory(): void {
@@ -305,6 +317,7 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
         projects: this.projects,
         favoriteIds: this.favoriteIds,
         duplicateInfo: this.duplicateInfo,
+        worktreeInfo: this.worktreeInfo,
         filterText: this.filterText,
         tagFilter: this.tagFilter,
         favoritesOnly: this.favoritesOnly,
@@ -337,6 +350,7 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
         return results;
       }
       const isWorktree = project.type === 'git' ? await this.isGitWorktree(project.path) : false;
+      this.worktreeInfo.set(project.id, isWorktree);
       const needsRepo = needsRepositoryIdentity(project.identity) || isWorktree;
       if (project.identity && !needsRepo) {
         results.push(project);
@@ -500,6 +514,11 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
       this.maybePersistSortOrder();
       this.onDidUpdateProjectsEmitter.fire(this.projects);
       this.onDidChangeTreeDataEmitter.fire(undefined);
+      if (getForgeFlowSettings().projectShowWorktreesGroup) {
+        void this.updateWorktreeInfo(this.projects);
+      } else if (this.worktreeInfo.size > 0) {
+        this.worktreeInfo = new Map<string, boolean>();
+      }
 
       void this.hydrateIdentities(projects, runId).then(async (updated) => {
         if (runId !== this.scanVersion) {
@@ -508,6 +527,9 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
         this.projects = updated;
         this.maybePersistSortOrder();
         this.onDidChangeTreeDataEmitter.fire(undefined);
+        if (getForgeFlowSettings().projectShowWorktreesGroup) {
+          void this.updateWorktreeInfo(this.projects);
+        }
       });
 
       if (sortMode === 'gitCommit') {
@@ -590,6 +612,44 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
     this.scanDeferredMessage = undefined;
   }
 
+  private async updateWorktreeInfo(projects: Project[]): Promise<void> {
+    const runId = ++this.worktreeInfoRun;
+    const next = new Map<string, boolean>();
+    const pending: Project[] = [];
+    for (const project of projects) {
+      const cached = this.worktreeInfo.get(project.id);
+      if (cached !== undefined) {
+        next.set(project.id, cached);
+        continue;
+      }
+      if (project.type !== 'git') {
+        next.set(project.id, false);
+        continue;
+      }
+      pending.push(project);
+    }
+    if (pending.length > 0) {
+      const results = await Promise.all(
+        pending.map(async (project) => ({ id: project.id, isWorktree: await this.isGitWorktree(project.path) }))
+      );
+      if (runId !== this.worktreeInfoRun) {
+        return;
+      }
+      for (const result of results) {
+        next.set(result.id, result.isWorktree);
+      }
+    }
+    if (runId !== this.worktreeInfoRun) {
+      return;
+    }
+    if (!mapEquals(this.worktreeInfo, next)) {
+      this.worktreeInfo = next;
+      this.onDidChangeTreeDataEmitter.fire(undefined);
+    } else {
+      this.worktreeInfo = next;
+    }
+  }
+
   private updateDuplicateInfo(projects: Project[]): void {
     this.duplicateInfo = buildDuplicateInfoFromStore(this.projectsStore, projects);
   }
@@ -642,4 +702,16 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
       savedAt: Date.now()
     });
   }
+}
+
+function mapEquals(left: Map<string, boolean>, right: Map<string, boolean>): boolean {
+  if (left.size !== right.size) {
+    return false;
+  }
+  for (const [key, value] of left) {
+    if (right.get(key) !== value) {
+      return false;
+    }
+  }
+  return true;
 }

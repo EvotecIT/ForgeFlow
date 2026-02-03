@@ -139,6 +139,7 @@ export class ProjectGroupNode implements ProjectNode {
     private readonly isFavoriteGroup: boolean,
     private readonly description?: string,
     private readonly duplicateInfo?: Map<string, DuplicateInfo>,
+    private readonly useDuplicateGrouping = true,
     private readonly summaries?: Record<string, GitProjectSummary>,
     private readonly showSummary?: boolean,
     private readonly tailNodes: ProjectNode[] = [],
@@ -150,7 +151,7 @@ export class ProjectGroupNode implements ProjectNode {
   }
 
   public async getChildren(): Promise<ProjectNode[]> {
-    if (!this.duplicateInfo || this.duplicateInfo.size === 0) {
+    if (!this.duplicateInfo || this.duplicateInfo.size === 0 || !this.useDuplicateGrouping) {
       const nodes = this.projects.map((project) => this.createProjectNode(project));
       return [...nodes, ...this.tailNodes];
     }

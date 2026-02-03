@@ -11,6 +11,7 @@ export interface ForgeFlowSettings {
   projectSortMode: ProjectSortMode;
   projectSortDirection: SortDirection;
   projectDuplicateGroupMainFirst: boolean;
+  projectShowWorktreesGroup: boolean;
   identityScanDepth: number;
   identityPreferredFolders: string[];
   projectModifiedScanDepth: number;
@@ -89,6 +90,7 @@ export function getForgeFlowSettings(): ForgeFlowSettings {
     projectSortMode: config.get<ProjectSortMode>('projects.sortMode', 'recentOpened'),
     projectSortDirection: config.get<SortDirection>('projects.sortDirection', 'desc'),
     projectDuplicateGroupMainFirst: config.get<boolean>('projects.duplicateGroupMainFirst', true),
+    projectShowWorktreesGroup: config.get<boolean>('projects.showWorktreesGroup', true),
     identityScanDepth: config.get<number>('projects.identityScanDepth', 4),
     identityPreferredFolders: config.get<string[]>('projects.identityPreferredFolders', [
       'module',
