@@ -579,6 +579,8 @@ function renderProjectRow(project: ProjectsWebviewProject): string {
   const summaryTooltip = project.summaryTooltip ? `title="${escapeHtml(project.summaryTooltip)}"` : '';
   const meta = description ? escapeHtml(description) : '';
   const metaHtml = meta ? `<span class="project-meta" ${summaryTooltip}>• ${meta}</span>` : '';
+  const runPills = buildRunPills(project);
+  const runPillsHtml = runPills ? `<div class="project-run">${runPills}</div>` : '';
   return `
     <div class="project-row" data-project-id="${escapeHtml(project.id)}"
       data-search="${escapeHtml(searchText)}"
@@ -587,6 +589,7 @@ function renderProjectRow(project: ProjectsWebviewProject): string {
       <div class="project-main">
         <div class="project-title">${favoriteBadge}${escapeHtml(project.name)}</div>
         <div class="project-path" title="${escapeHtml(project.path)}"><span class="path-text">${escapeHtml(project.path)}</span>${metaHtml}</div>
+        ${runPillsHtml}
       </div>
       <div class="actions">
         ${iconButton('open-project', 'Open project', iconFolderOpen())}
@@ -605,6 +608,28 @@ function renderProjectRow(project: ProjectsWebviewProject): string {
 
 function renderTagChip(label: string, count: number, active: boolean): string {
   return `<button class="tag-chip ${active ? 'active' : ''}" data-tag="${escapeHtml(label)}">${escapeHtml(label)}<span class="count">${count}</span></button>`;
+}
+
+function buildRunPills(project: ProjectsWebviewProject): string {
+  const pills: string[] = [];
+  if (project.preferredRunTarget) {
+    pills.push(renderRunPill(`Target: ${project.preferredRunTarget}`, 'set-run-target', 'Change run target'));
+  }
+  const profileLabel = project.preferredRunProfileLabel || project.preferredRunProfileId;
+  if (profileLabel) {
+    pills.push(renderRunPill(`Profile: ${profileLabel}`, 'set-run-profile', 'Change run profile'));
+  }
+  if (project.preferredRunKeepOpen) {
+    pills.push(renderRunPill(`Keep: ${project.preferredRunKeepOpen}`, 'set-run-keep-open', 'Change keep-open'));
+  }
+  if (project.preferredRunWorkingDirectory) {
+    pills.push(renderRunPill('Cwd: custom', 'set-run-cwd', 'Change run working directory'));
+  }
+  return pills.join('');
+}
+
+function renderRunPill(label: string, action: string, title: string): string {
+  return `<button class="run-pill" data-action="${escapeHtml(action)}" title="${escapeHtml(title)}">${escapeHtml(label)}</button>`;
 }
 
 function iconButton(action: string, label: string, icon: string): string {

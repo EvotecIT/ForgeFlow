@@ -180,6 +180,26 @@ export const projectsWebviewStyles = `
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .project-run {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      font-size: 9px;
+      color: var(--ff-muted);
+    }
+    .run-pill {
+      border: 1px dashed var(--ff-border);
+      background: transparent;
+      color: var(--ff-muted);
+      padding: 1px 6px;
+      border-radius: 999px;
+      cursor: pointer;
+      font-size: 9px;
+    }
+    .run-pill:hover {
+      border-color: color-mix(in srgb, var(--ff-accent) 40%, var(--ff-border));
+      color: var(--ff-fg);
+    }
     .project-meta {
       font-size: 9px;
       color: var(--ff-muted);

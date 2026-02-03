@@ -124,6 +124,14 @@ export function registerRunCommands({
       const filePath = extractPath(target);
       await runPath(filePath, runService, projectsStore, favoritesStore, runHistoryStore, 'integrated');
     }),
+    vscode.commands.registerCommand('forgeflow.run.integrated.keepOpenAlways', async (target?: unknown) => {
+      const filePath = extractPath(target);
+      await runPath(filePath, runService, projectsStore, favoritesStore, runHistoryStore, 'integrated', undefined, 'always');
+    }),
+    vscode.commands.registerCommand('forgeflow.run.integrated.keepOpenOnError', async (target?: unknown) => {
+      const filePath = extractPath(target);
+      await runPath(filePath, runService, projectsStore, favoritesStore, runHistoryStore, 'integrated', undefined, 'onError');
+    }),
     vscode.commands.registerCommand('forgeflow.run.external', async (target?: unknown) => {
       const filePath = extractPath(target);
       await runPath(filePath, runService, projectsStore, favoritesStore, runHistoryStore, 'external');

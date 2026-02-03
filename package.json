@@ -785,6 +785,18 @@
         "category": "ForgeFlow"
       },
       {
+        "command": "forgeflow.run.integrated.keepOpenAlways",
+        "title": "Run Integrated (Keep Open)",
+        "shortTitle": "Run Keep Open",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.run.integrated.keepOpenOnError",
+        "title": "Run Integrated (Keep Open on Error)",
+        "shortTitle": "Run Keep Open on Error",
+        "category": "ForgeFlow"
+      },
+      {
         "command": "forgeflow.run.external",
         "title": "Run External (Default Profile)",
         "shortTitle": "Run External",
@@ -1793,6 +1805,14 @@
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile && resourceExtname == .ps1"
         },
         {
+          "command": "forgeflow.run.integrated.keepOpenAlways",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile && resourceExtname == .ps1"
+        },
+        {
+          "command": "forgeflow.run.integrated.keepOpenOnError",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile && resourceExtname == .ps1"
+        },
+        {
           "command": "forgeflow.run.external",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile && resourceExtname == .ps1"
         },
@@ -1810,6 +1830,14 @@
         },
         {
           "command": "forgeflow.run.integrated",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceExtname == .ps1"
+        },
+        {
+          "command": "forgeflow.run.integrated.keepOpenAlways",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceExtname == .ps1"
+        },
+        {
+          "command": "forgeflow.run.integrated.keepOpenOnError",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceExtname == .ps1"
         },
         {
@@ -2517,6 +2545,16 @@
             "light": "resources/icons/run-terminal-light.svg",
             "dark": "resources/icons/run-terminal-dark.svg"
           }
+        },
+        {
+          "command": "forgeflow.run.integrated.keepOpenAlways",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectEntry && resourceExtname == .ps1",
+          "group": "5_forgeflow@11b"
+        },
+        {
+          "command": "forgeflow.run.integrated.keepOpenOnError",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && viewItem == forgeflowProjectEntry && resourceExtname == .ps1",
+          "group": "5_forgeflow@11c"
         },
         {
           "command": "forgeflow.run.external",

@@ -60,7 +60,8 @@ export async function runPath(
   favoritesStore: FavoritesStore,
   runHistoryStore: RunHistoryStore,
   target: RunTarget | undefined,
-  profileId?: string
+  profileId?: string,
+  keepOpenMode?: 'never' | 'onError' | 'always'
 ): Promise<void> {
   const filePathRaw = inputPath ?? vscode.window.activeTextEditor?.document.uri.fsPath;
   const filePath = filePathRaw ? normalizeFsPath(filePathRaw) : undefined;
@@ -95,7 +96,8 @@ export async function runPath(
     workingDirectory,
     projectId: project?.id,
     profileId,
-    target: resolvedTarget
+    target: resolvedTarget,
+    keepOpenMode
   });
 
   await recordPowerShellRunHistory({

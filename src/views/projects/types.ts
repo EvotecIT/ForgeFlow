@@ -47,6 +47,7 @@ export interface ProjectsWebviewProject {
   summaryTooltip?: string;
   identity?: ProjectIdentity;
   preferredRunProfileId?: string;
+  preferredRunProfileLabel?: string;
   preferredRunTarget?: Project['preferredRunTarget'];
   preferredRunWorkingDirectory?: string;
   preferredRunKeepOpen?: Project['preferredRunKeepOpen'];

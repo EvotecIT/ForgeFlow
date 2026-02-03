@@ -114,6 +114,7 @@ export function buildProjectsWebviewSnapshot(params: WebviewSnapshotParams): Pro
         summaryTooltip,
         identity: project.identity,
         preferredRunProfileId: project.preferredRunProfileId,
+        preferredRunProfileLabel: resolveProjectProfileLabel(project),
         preferredRunTarget: project.preferredRunTarget,
         preferredRunWorkingDirectory: project.preferredRunWorkingDirectory,
         preferredRunKeepOpen: project.preferredRunKeepOpen,
