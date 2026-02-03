@@ -60,8 +60,8 @@ export const dashboardWebviewScriptPartC = `
       const filterActive = filter.length > 0;
       const activeTagKeys = Array.from(activeTags.keys());
       const rows = Array.from(document.querySelectorAll('tr[data-row="data"]'));
-      const parents = rows.filter((row) => row.dataset.kind !== 'child');
-      const children = rows.filter((row) => row.dataset.kind === 'child');
+      const parents = rows.filter((row) => row.dataset.kind !== 'child' && row.dataset.kind !== 'group-header');
+      const children = rows.filter((row) => row.dataset.kind === 'child' || row.dataset.kind === 'group-header');
       const childMap = new Map();
       children.forEach((row) => {
         row.hidden = true;
@@ -81,6 +81,10 @@ export const dashboardWebviewScriptPartC = `
           const groupChildren = childMap.get(groupId) || [];
           let childMatchCount = 0;
           groupChildren.forEach((child) => {
+            if (child.dataset.kind === 'group-header') {
+              child.dataset.match = 'false';
+              return;
+            }
             const childMatch = rowMatchesFilter(child, filter, activeTagKeys);
             child.dataset.match = childMatch ? 'true' : 'false';
             if (childMatch) {
@@ -98,8 +102,9 @@ export const dashboardWebviewScriptPartC = `
           const expanded = expandAll || autoExpand || userExpanded;
           row.dataset.expanded = expanded ? 'true' : 'false';
           groupChildren.forEach((child) => {
+            const isHeader = child.dataset.kind === 'group-header';
             const childMatch = child.dataset.match === 'true';
-            const showChild = expanded && isMatch && (showAllChildren || childMatch);
+            const showChild = expanded && isMatch && (isHeader ? true : (showAllChildren || childMatch));
             child.hidden = !showChild;
           });
         } else {
@@ -260,7 +265,7 @@ export const dashboardWebviewScriptPartC = `
       const projectPath = row.dataset.projectPath || '';
       const localPath = row.dataset.localPath || row.dataset.local || '';
       const groupPaths = parsePaths(row.dataset.groupPaths || '');
-      const isGroup = row.dataset.kind === 'group' && groupPaths.length > 0;
+      const isGroup = (row.dataset.kind === 'group' || row.dataset.kind === 'group-header') && groupPaths.length > 0;
       contextTarget = {
         repoUrl,
         projectPath,
@@ -274,6 +279,7 @@ export const dashboardWebviewScriptPartC = `
       setMenuItemState('copyPath', !!projectPath);
       setMenuItemState('copyRelative', !!(localPath || projectPath));
       setMenuItemState('openGroupNewWindows', isGroup);
+      setMenuItemState('openGroupTerminals', isGroup);
       setMenuItemState('openGroupWorkspace', isGroup);
       setMenuItemState('copyGroupPaths', isGroup);
       contextMenu.style.left = x + 'px';
@@ -327,6 +333,9 @@ export const dashboardWebviewScriptPartC = `
           }
           if (action === 'openGroupNewWindows' && contextTarget.groupPaths && contextTarget.groupPaths.length > 0) {
             vscode.postMessage({ type: 'openProjects', paths: contextTarget.groupPaths });
+          }
+          if (action === 'openGroupTerminals' && contextTarget.groupPaths && contextTarget.groupPaths.length > 0) {
+            vscode.postMessage({ type: 'openGroupTerminals', paths: contextTarget.groupPaths });
           }
           if (action === 'openGroupWorkspace' && contextTarget.groupPaths && contextTarget.groupPaths.length > 0) {
             vscode.postMessage({ type: 'openProjectsInWorkspace', paths: contextTarget.groupPaths });

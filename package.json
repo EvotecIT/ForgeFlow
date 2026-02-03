@@ -3381,6 +3381,16 @@
           "type": "boolean",
           "default": true
         },
+        "forgeflow.run.integrated.keepOpen": {
+          "type": "string",
+          "description": "Keep the integrated terminal open after running a script (helps when scripts call exit).",
+          "enum": [
+            "never",
+            "onError",
+            "always"
+          ],
+          "default": "onError"
+        },
         "forgeflow.run.integrated.reuseScope": {
           "type": "string",
           "description": "Reuse scope for integrated terminals.",
@@ -3597,6 +3607,11 @@
           "type": "boolean",
           "description": "Group duplicate/worktree entries on the dashboard.",
           "default": true
+        },
+        "forgeflow.dashboard.hideActionsColumn": {
+          "type": "boolean",
+          "description": "Hide the actions column in the dashboard table.",
+          "default": false
         },
         "forgeflow.dashboard.health.enabled": {
           "type": "boolean",

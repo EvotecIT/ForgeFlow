@@ -111,6 +111,16 @@ export const dashboardWebviewScriptPartB = `
         }
       });
     });
+    document.querySelectorAll('.group-open-terminals').forEach((link) => {
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        const raw = link.getAttribute('data-paths');
+        const paths = parsePaths(raw);
+        if (paths.length > 0) {
+          vscode.postMessage({ type: 'openGroupTerminals', paths });
+        }
+      });
+    });
     document.querySelectorAll('.group-add-workspace').forEach((link) => {
       link.addEventListener('click', (event) => {
         event.preventDefault();
@@ -147,6 +157,27 @@ export const dashboardWebviewScriptPartB = `
         const next = current ? 'false' : 'true';
         row.dataset.userExpanded = next;
         row.dataset.expanded = next;
+        applyFilter();
+      });
+    });
+    document.querySelectorAll('.group-collapse').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const groupId = button.getAttribute('data-group-id') || '';
+        if (!groupId) {
+          return;
+        }
+        const groupRow = document.querySelector('tr[data-kind="group"][data-group-id="' + groupId + '"]');
+        if (!groupRow) {
+          return;
+        }
+        if (expandAll && toggleGroupsButton) {
+          expandAll = false;
+          toggleGroupsButton.textContent = 'Expand groups';
+        }
+        groupRow.dataset.userExpanded = 'false';
+        groupRow.dataset.expanded = 'false';
         applyFilter();
       });
     });
@@ -253,8 +284,8 @@ export const dashboardWebviewScriptPartB = `
         return;
       }
       const rows = Array.from(tbody.querySelectorAll('tr[data-row="data"]'));
-      const parents = rows.filter((row) => row.dataset.kind !== 'child');
-      const children = rows.filter((row) => row.dataset.kind === 'child');
+      const parents = rows.filter((row) => row.dataset.kind !== 'child' && row.dataset.kind !== 'group-header');
+      const children = rows.filter((row) => row.dataset.kind === 'child' || row.dataset.kind === 'group-header');
       const childMap = new Map();
       children.forEach((row) => {
         const groupId = row.dataset.groupId || '';

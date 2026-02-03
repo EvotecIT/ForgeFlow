@@ -16,6 +16,11 @@ export const dashboardWebviewStyles = `
       background: var(--ff-bg);
       color: var(--ff-fg);
     }
+    body[data-hide-actions="true"] th[data-col="actions"],
+    body[data-hide-actions="true"] td[data-col="actions"],
+    body[data-hide-actions="true"] col[data-col="actions"] {
+      display: none;
+    }
     .page {
       padding: 12px;
     }
@@ -168,6 +173,9 @@ export const dashboardWebviewStyles = `
     tbody tr.row-child {
       background: color-mix(in srgb, var(--ff-fg) 6%, transparent);
     }
+    tbody tr.row-group-header {
+      background: color-mix(in srgb, var(--ff-fg) 10%, transparent);
+    }
     tbody tr.hidden {
       display: none;
     }
@@ -183,6 +191,23 @@ export const dashboardWebviewStyles = `
     }
     .row-child .local-cell {
       padding-left: 18px;
+    }
+    .group-header-cell {
+      padding: 6px 8px;
+      font-size: 9px;
+      color: var(--ff-muted);
+    }
+    .group-header-title {
+      margin-right: 8px;
+    }
+    .group-collapse {
+      border: 1px solid var(--ff-border);
+      background: transparent;
+      color: var(--ff-fg);
+      font-size: 9px;
+      padding: 2px 6px;
+      border-radius: 999px;
+      cursor: pointer;
     }
     .group-toggle {
       border: 1px solid var(--ff-border);

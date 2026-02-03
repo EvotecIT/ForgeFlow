@@ -39,6 +39,7 @@ export interface ForgeFlowSettings {
   runIntegratedReuseTerminal: boolean;
   runIntegratedReuseScope: 'profile' | 'shared';
   runIntegratedPerProjectTerminal: boolean;
+  runIntegratedKeepOpen: 'never' | 'onError' | 'always';
   runExternalKeepOpen: boolean;
   runExternalLogOutput: boolean;
   runExternalReuseSession: boolean;
@@ -72,6 +73,7 @@ export interface ForgeFlowSettings {
   dashboardGroupDuplicates: boolean;
   dashboardHealthEnabled: boolean;
   dashboardHealthDepStaleDays: number;
+  dashboardHideActionsColumn: boolean;
   gitStaleDays: number;
   gitDefaultBranch: string;
   gitShowCleanBranches: boolean;
@@ -175,6 +177,7 @@ export function getForgeFlowSettings(): ForgeFlowSettings {
     runIntegratedReuseTerminal: config.get<boolean>('run.integrated.reuseTerminal', true),
     runIntegratedReuseScope: config.get<'profile' | 'shared'>('run.integrated.reuseScope', 'profile'),
     runIntegratedPerProjectTerminal: config.get<boolean>('run.integrated.perProjectTerminal', true),
+    runIntegratedKeepOpen: config.get<'never' | 'onError' | 'always'>('run.integrated.keepOpen', 'onError'),
     runExternalKeepOpen: config.get<boolean>('run.external.keepOpen', true),
     runExternalLogOutput: config.get<boolean>('run.external.logOutput', false),
     runExternalReuseSession: config.get<boolean>('run.external.reuseSession', false),
@@ -208,6 +211,7 @@ export function getForgeFlowSettings(): ForgeFlowSettings {
     dashboardGroupDuplicates: config.get<boolean>('dashboard.groupDuplicates', true),
     dashboardHealthEnabled: config.get<boolean>('dashboard.health.enabled', true),
     dashboardHealthDepStaleDays: config.get<number>('dashboard.health.depStaleDays', 180),
+    dashboardHideActionsColumn: config.get<boolean>('dashboard.hideActionsColumn', false),
     gitStaleDays: config.get<number>('git.staleDays', 30),
     gitDefaultBranch: config.get<string>('git.defaultBranch', 'main'),
     gitShowCleanBranches: config.get<boolean>('git.showCleanBranches', false),

@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+import * as path from 'path';
 import type { DashboardRow, DashboardService } from '../dashboard/dashboardService';
 import { renderDashboardHtml } from '../dashboard/webviewHtml';
 import type { ForgeFlowLogger } from '../util/log';
@@ -8,6 +9,7 @@ import type { DashboardTokenStore } from '../dashboard/tokenStore';
 import type { DashboardViewState, DashboardViewStateStore } from '../dashboard/viewStateStore';
 import { getForgeFlowSettings } from '../util/config';
 import type { TagFilterStore } from '../store/tagFilterStore';
+import { statPath } from '../util/fs';
 
 export class DashboardViewProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
@@ -60,7 +62,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           sortDir: viewState.sortDir,
           colWidths: viewState.colWidths,
           expandAllGroups: viewState.expandAllGroups,
-          showAllChildren: viewState.showAllChildren
+          showAllChildren: viewState.showAllChildren,
+          hideActionsColumn: settings.dashboardHideActionsColumn
         });
       }
     });
@@ -86,7 +89,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         sortDir: viewState.sortDir,
         colWidths: viewState.colWidths,
         expandAllGroups: viewState.expandAllGroups,
-        showAllChildren: viewState.showAllChildren
+        showAllChildren: viewState.showAllChildren,
+        hideActionsColumn: settings.dashboardHideActionsColumn
       });
     }
 
@@ -130,7 +134,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
               progressCurrent: this.progressCurrent,
               progressTotal: this.progressTotal,
               expandAllGroups: viewState.expandAllGroups,
-              showAllChildren: viewState.showAllChildren
+              showAllChildren: viewState.showAllChildren,
+              hideActionsColumn: settings.dashboardHideActionsColumn
             });
           }
         }
@@ -187,6 +192,16 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
               vscode.window.setStatusBarMessage('ForgeFlow: Unable to add group to workspace.', 3000);
             }
           }
+        }
+      }
+      if (message.type === 'openGroupTerminals' && Array.isArray(message.paths)) {
+        const uniquePaths = Array.from(new Set(message.paths.filter((value) => typeof value === 'string' && value.trim())));
+        for (const targetPath of uniquePaths) {
+          const stat = await statPath(targetPath);
+          const cwd = stat?.type === vscode.FileType.Directory ? targetPath : path.dirname(targetPath);
+          const label = `ForgeFlow: ${path.basename(targetPath)}`;
+          const terminal = vscode.window.createTerminal({ name: label, cwd });
+          terminal.show(true);
         }
       }
       if (message.type === 'revealInOs' && message.path) {
@@ -282,7 +297,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       sortDir: viewState.sortDir,
       colWidths: viewState.colWidths,
       expandAllGroups: viewState.expandAllGroups,
-      showAllChildren: viewState.showAllChildren
+      showAllChildren: viewState.showAllChildren,
+      hideActionsColumn: settings.dashboardHideActionsColumn
     });
     try {
       const rows = await this.dashboardService.buildRows(signal, (current, total, label) => {
@@ -315,7 +331,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         sortDir: viewState.sortDir,
         colWidths: viewState.colWidths,
         expandAllGroups: viewState.expandAllGroups,
-        showAllChildren: viewState.showAllChildren
+        showAllChildren: viewState.showAllChildren,
+        hideActionsColumn: settings.dashboardHideActionsColumn
       });
     } catch (error) {
       if (signal.aborted) {
@@ -343,7 +360,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         sortDir: viewState.sortDir,
         colWidths: viewState.colWidths,
         expandAllGroups: viewState.expandAllGroups,
-        showAllChildren: viewState.showAllChildren
+        showAllChildren: viewState.showAllChildren,
+        hideActionsColumn: settings.dashboardHideActionsColumn
       });
     }
   }

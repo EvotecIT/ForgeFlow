@@ -37,6 +37,13 @@ describe('PowerShell command builder', () => {
     assert.ok(command.commandLine.includes("'/tmp'"));
   });
 
+  it('builds terminal command with keepOpen wrapper when enabled', () => {
+    const request: RunRequest = { filePath: '/tmp/test.ps1', workingDirectory: '/tmp' };
+    const command = buildTerminalCommand(request, { keepOpen: 'onError', executable: 'pwsh' });
+    assert.ok(command.commandLine.includes('pwsh'));
+    assert.ok(command.commandLine.includes('Press Enter'));
+  });
+
   it('builds admin command with Start-Process', () => {
     const request: RunRequest = { filePath: 'C:\\Temp\\Run.ps1', workingDirectory: 'C:\\Temp' };
     const command = buildAdminCommand(request, profile);

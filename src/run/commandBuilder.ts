@@ -11,6 +11,13 @@ export interface TerminalCommand {
   commandLine: string;
 }
 
+export type TerminalKeepOpenMode = 'never' | 'onError' | 'always';
+
+export interface TerminalCommandOptions {
+  keepOpen?: TerminalKeepOpenMode;
+  executable?: string;
+}
+
 export function quotePowerShellLiteral(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
@@ -37,12 +44,32 @@ export function buildProcessCommand(
   };
 }
 
-export function buildTerminalCommand(request: RunRequest): TerminalCommand {
+export function buildTerminalCommand(request: RunRequest, options?: TerminalCommandOptions): TerminalCommand {
   const parts: string[] = [];
   if (request.workingDirectory) {
     parts.push(`Set-Location -LiteralPath ${quotePowerShellLiteral(request.workingDirectory)}`);
   }
-  parts.push(`& ${quotePowerShellLiteral(request.filePath)}`);
+  const keepOpen = options?.keepOpen ?? 'never';
+  if (keepOpen === 'never' || !options?.executable) {
+    parts.push(`& ${quotePowerShellLiteral(request.filePath)}`);
+    return { commandLine: parts.join('; ') };
+  }
+
+  const childArgs: string[] = ['-NoProfile'];
+  if (process.platform === 'win32') {
+    childArgs.push('-ExecutionPolicy', 'Bypass');
+  }
+  const argLine = childArgs.map((arg) => quotePowerShellLiteral(arg)).join(' ');
+  const exeLiteral = quotePowerShellLiteral(options.executable);
+  const fileLiteral = quotePowerShellLiteral(request.filePath);
+  parts.push(`& ${exeLiteral} ${argLine} -File ${fileLiteral}`);
+  parts.push('$ffExit = $LASTEXITCODE');
+  if (keepOpen === 'always') {
+    parts.push("Write-Host ''");
+    parts.push("Read-Host 'Press Enter to close' | Out-Null");
+  } else if (keepOpen === 'onError') {
+    parts.push("if ($ffExit -ne 0) { Write-Host ''; Write-Host ('Exit code: ' + $ffExit); Read-Host 'Press Enter to close' | Out-Null }");
+  }
   return { commandLine: parts.join('; ') };
 }
 

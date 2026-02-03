@@ -20,6 +20,7 @@ export interface DashboardRenderState {
   colWidths?: Record<string, number>;
   expandAllGroups?: boolean;
   showAllChildren?: boolean;
+  hideActionsColumn?: boolean;
 }
 
 export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webview, state?: DashboardRenderState): string {
@@ -57,7 +58,7 @@ export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webvie
 ${dashboardWebviewStyles}
 </style>
 </head>
-<body>
+<body data-hide-actions="${state?.hideActionsColumn ? 'true' : 'false'}">
   <div class="progress ${progressHiddenClass}" id="progress">
     <div class="progress-fill" id="progress-fill" style="width: ${progressPercent};"></div>
   </div>
@@ -129,6 +130,7 @@ ${dashboardWebviewStyles}
     <button class="context-item" data-action="copyPath">Copy Path</button>
     <button class="context-item" data-action="copyRelative">Copy Relative Path</button>
     <button class="context-item" data-action="openGroupNewWindows">Open Group in New Windows</button>
+    <button class="context-item" data-action="openGroupTerminals">Open Group in Terminals</button>
     <button class="context-item" data-action="openGroupWorkspace">Add Group to Workspace</button>
     <button class="context-item" data-action="copyGroupPaths">Copy Group Paths</button>
   </div>
@@ -141,7 +143,7 @@ ${renderDashboardScript(initialStateJson)}
 }
 
 interface RenderRowOptions {
-  kind?: 'single' | 'group' | 'child';
+  kind?: 'single' | 'group' | 'child' | 'group-header';
   groupId?: string;
   groupCount?: number;
   expanded?: boolean;
@@ -158,10 +160,36 @@ function renderRowWithChildren(row: DashboardRow, updatedAt?: number): string {
     groupCount: row.groupCount,
     expanded: false
   });
+  const headerRow = renderGroupHeaderRow(row, groupId);
   const childRows = row.groupChildren
     .map((child) => renderRow(child, updatedAt, { kind: 'child', groupId }))
     .join('');
-  return groupRow + childRows;
+  return groupRow + headerRow + childRows;
+}
+
+function renderGroupHeaderRow(row: DashboardRow, groupId: string): string {
+  const groupPaths = [row.projectPath, ...(row.groupChildren ?? []).map((child) => child.projectPath)].filter((value): value is string => Boolean(value));
+  const uniqueGroupPaths = Array.from(new Set(groupPaths));
+  const groupPathsAttr = uniqueGroupPaths.length > 0
+    ? `data-group-paths="${escapeHtml(JSON.stringify(uniqueGroupPaths))}"`
+    : '';
+  const summaryParts = [
+    row.groupSummary,
+    typeof row.groupCount === 'number' ? `${row.groupCount} total` : undefined
+  ].filter(Boolean);
+  const summary = summaryParts.join(' • ');
+  const label = row.repo ? `Group: ${row.repo}` : 'Group';
+  const headerText = summary ? `${label} — ${summary}` : label;
+  const safeHeader = escapeHtml(headerText);
+  const safeGroupId = escapeHtml(groupId);
+  return `
+    <tr class="row-group-header" data-row="data" data-kind="group-header" data-group-id="${safeGroupId}" data-search="${safeHeader}" ${groupPathsAttr}>
+      <td colspan="13" class="group-header-cell">
+        <span class="group-header-title">${safeHeader}</span>
+        <button class="group-collapse" data-group-id="${safeGroupId}" title="Collapse group">Collapse</button>
+      </td>
+    </tr>
+  `;
 }
 
 function renderRow(row: DashboardRow, updatedAt?: number, options?: RenderRowOptions): string {
@@ -183,9 +211,10 @@ function renderRow(row: DashboardRow, updatedAt?: number, options?: RenderRowOpt
   const groupCount = options?.groupCount;
   const isGroup = kind === 'group';
   const isChild = kind === 'child';
+  const isHeader = kind === 'group-header';
   const expanded = options?.expanded ?? false;
   const tags = Array.isArray(row.tags) ? row.tags : [];
-  const kindClass = isGroup ? 'row-group' : (isChild ? 'row-child' : '');
+  const kindClass = isGroup ? 'row-group' : (isChild ? 'row-child' : (isHeader ? 'row-group-header' : ''));
   const rowClasses = [highlightClass, archivedClass, favoriteClass, kindClass].filter(Boolean).join(' ');
   const tagsLabel = tags.length > 0 ? tags.join(', ') : 'n/a';
   const tagsCell = renderTagsCell(tags);
@@ -221,6 +250,7 @@ function renderRow(row: DashboardRow, updatedAt?: number, options?: RenderRowOpt
   const groupActions = isGroup && uniqueGroupPaths.length > 0
     ? [
         actionButton('group-open-all', JSON.stringify(uniqueGroupPaths), 'Open all in new windows', iconStackOpen(), 'data-paths'),
+        actionButton('group-open-terminals', JSON.stringify(uniqueGroupPaths), 'Open all in terminals', iconTerminalStack(), 'data-paths'),
         actionButton('group-add-workspace', JSON.stringify(uniqueGroupPaths), 'Add all to workspace', iconWorkspaceAdd(), 'data-paths'),
         actionButton('group-copy-paths', JSON.stringify(uniqueGroupPaths), 'Copy all paths', iconCopyList(), 'data-paths')
       ]
@@ -389,6 +419,10 @@ function iconCopyList(): string {
 
 function iconWorkspaceAdd(): string {
   return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h6v6H4V5zm0 8h6v6H4v-6zm8-8h8v6h-8V5zm4 8v-2h2v2h2v2h-2v2h-2v-2h-2v-2h2z"></path></svg>';
+}
+
+function iconTerminalStack(): string {
+  return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h14a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zm0 2v7h14V6H4zm5.5 12h10a2 2 0 0 1 2 2v1H9.5v-3zM6 9l3 3-1.4 1.4L3.2 9l4.4-4.4L9 6 6 9z"></path></svg>';
 }
 
 function renderEmptyState(state?: DashboardRenderState): string {

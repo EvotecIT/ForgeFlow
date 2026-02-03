@@ -69,7 +69,8 @@ export class RunService implements vscode.Disposable {
         executable,
         settings.runIntegratedReuseTerminal,
         settings.runIntegratedReuseScope,
-        settings.runIntegratedPerProjectTerminal
+        settings.runIntegratedPerProjectTerminal,
+        settings.runIntegratedKeepOpen
       );
       return;
     }
@@ -244,7 +245,8 @@ export class RunService implements vscode.Disposable {
     executable: string,
     reuseTerminal: boolean,
     reuseScope: 'profile' | 'shared',
-    perProject: boolean
+    perProject: boolean,
+    keepOpen: 'never' | 'onError' | 'always'
   ): Promise<void> {
     const terminal = this.terminalManager.getTerminal(profile, {
       reuseTerminal,
@@ -254,7 +256,7 @@ export class RunService implements vscode.Disposable {
       workingDirectory: request.workingDirectory,
       shellPath: executable
     });
-    const command = buildTerminalCommand(request);
+    const command = buildTerminalCommand(request, { keepOpen, executable });
     terminal.show(true);
     terminal.sendText(command.commandLine, true);
     this.logger.info(`Run integrated: ${request.filePath}`);
