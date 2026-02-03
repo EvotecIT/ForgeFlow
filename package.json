@@ -419,6 +419,12 @@
         "category": "ForgeFlow"
       },
       {
+        "command": "forgeflow.worktrees.openDefault",
+        "title": "Open Worktree (Default Action)",
+        "shortTitle": "Open Worktree",
+        "category": "ForgeFlow"
+      },
+      {
         "command": "forgeflow.worktrees.openInNewWindow",
         "title": "Open Worktree in New Window",
         "shortTitle": "Open Worktree in New Window",
@@ -3163,6 +3169,16 @@
           "type": "boolean",
           "description": "Keep the primary project at the top of duplicate/worktree groups, regardless of sort order.",
           "default": true
+        },
+        "forgeflow.worktrees.openAction": {
+          "type": "string",
+          "description": "Default action when selecting a worktree.",
+          "enum": [
+            "addToWorkspace",
+            "open",
+            "openInNewWindow"
+          ],
+          "default": "addToWorkspace"
         },
         "forgeflow.projects.identityScanDepth": {
           "type": "number",

@@ -12,6 +12,7 @@ export interface ForgeFlowSettings {
   projectSortDirection: SortDirection;
   projectDuplicateGroupMainFirst: boolean;
   projectShowWorktreesGroup: boolean;
+  worktreesOpenAction: 'addToWorkspace' | 'open' | 'openInNewWindow';
   identityScanDepth: number;
   identityPreferredFolders: string[];
   projectModifiedScanDepth: number;
@@ -91,6 +92,10 @@ export function getForgeFlowSettings(): ForgeFlowSettings {
     projectSortDirection: config.get<SortDirection>('projects.sortDirection', 'desc'),
     projectDuplicateGroupMainFirst: config.get<boolean>('projects.duplicateGroupMainFirst', true),
     projectShowWorktreesGroup: config.get<boolean>('projects.showWorktreesGroup', true),
+    worktreesOpenAction: config.get<'addToWorkspace' | 'open' | 'openInNewWindow'>(
+      'worktrees.openAction',
+      'addToWorkspace'
+    ),
     identityScanDepth: config.get<number>('projects.identityScanDepth', 4),
     identityPreferredFolders: config.get<string[]>('projects.identityPreferredFolders', [
       'module',

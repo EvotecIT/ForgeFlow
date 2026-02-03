@@ -365,7 +365,7 @@ class WorktreeItemNode implements FilesNode, PathNode {
     if (detailParts.length > 0) {
       item.description = detailParts.join(' • ');
     }
-    item.command = { command: 'forgeflow.worktrees.open', title: 'Open worktree', arguments: [this.path] };
+    item.command = { command: 'forgeflow.worktrees.openDefault', title: 'Open worktree', arguments: [this.path] };
     item.iconPath = new vscode.ThemeIcon('repo');
     return item;
   }

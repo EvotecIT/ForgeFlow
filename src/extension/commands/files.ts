@@ -53,6 +53,31 @@ export function registerFileCommands(deps: FileCommandDeps): void {
     filterPresetStore
   } = deps;
 
+  const addWorktreesToWorkspace = async (paths: string[]): Promise<void> => {
+    if (paths.length === 0) {
+      return;
+    }
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    const existing = new Set(folders.map((folder) => path.resolve(folder.uri.fsPath)));
+    const additions: vscode.WorkspaceFolder[] = [];
+    for (const folderPath of paths) {
+      const resolved = path.resolve(folderPath);
+      if (existing.has(resolved)) {
+        continue;
+      }
+      additions.push({ uri: vscode.Uri.file(folderPath), name: path.basename(folderPath) });
+      existing.add(resolved);
+    }
+    if (additions.length === 0) {
+      vscode.window.showWarningMessage('ForgeFlow: Worktree is already in the workspace.');
+      return;
+    }
+    const success = vscode.workspace.updateWorkspaceFolders(folders.length, 0, ...additions);
+    if (!success) {
+      vscode.window.showWarningMessage('ForgeFlow: Unable to add worktree to workspace.');
+    }
+  };
+
   const openWorktrees = async (target: unknown, openInNewWindow: boolean): Promise<void> => {
     const targets = collectSelectedPaths(target, filesView, filesPanelView);
     if (targets.length === 0) {
@@ -83,33 +108,25 @@ export function registerFileCommands(deps: FileCommandDeps): void {
     vscode.commands.registerCommand('forgeflow.worktrees.open', async (target?: unknown) => {
       await openWorktrees(target, false);
     }),
+    vscode.commands.registerCommand('forgeflow.worktrees.openDefault', async (target?: unknown) => {
+      const action = getForgeFlowSettings().worktreesOpenAction;
+      if (action === 'addToWorkspace') {
+        const targets = collectSelectedPaths(target, filesView, filesPanelView);
+        await addWorktreesToWorkspace(targets);
+        return;
+      }
+      if (action === 'openInNewWindow') {
+        await openWorktrees(target, true);
+        return;
+      }
+      await openWorktrees(target, false);
+    }),
     vscode.commands.registerCommand('forgeflow.worktrees.openInNewWindow', async (target?: unknown) => {
       await openWorktrees(target, true);
     }),
     vscode.commands.registerCommand('forgeflow.worktrees.addToWorkspace', async (target?: unknown) => {
       const targets = collectSelectedPaths(target, filesView, filesPanelView);
-      if (targets.length === 0) {
-        return;
-      }
-      const folders = vscode.workspace.workspaceFolders ?? [];
-      const existing = new Set(folders.map((folder) => path.resolve(folder.uri.fsPath)));
-      const additions: vscode.WorkspaceFolder[] = [];
-      for (const folderPath of targets) {
-        const resolved = path.resolve(folderPath);
-        if (existing.has(resolved)) {
-          continue;
-        }
-        additions.push({ uri: vscode.Uri.file(folderPath), name: path.basename(folderPath) });
-        existing.add(resolved);
-      }
-      if (additions.length === 0) {
-        vscode.window.showWarningMessage('ForgeFlow: Worktree is already in the workspace.');
-        return;
-      }
-      const success = vscode.workspace.updateWorkspaceFolders(folders.length, 0, ...additions);
-      if (!success) {
-        vscode.window.showWarningMessage('ForgeFlow: Unable to add worktree to workspace.');
-      }
+      await addWorktreesToWorkspace(targets);
     }),
     vscode.commands.registerCommand('forgeflow.files.filter', async () => {
       await openLiveFilterInput({
