@@ -4,7 +4,7 @@ import type { ProjectsStore } from '../store/projectsStore';
 import type { TagsStore } from '../store/tagsStore';
 import type { ForgeFlowLogger } from '../util/log';
 import { getForgeFlowSettings } from '../util/config';
-import { readDirectory, statPath } from '../util/fs';
+import { readDirectory, readFileText, statPath } from '../util/fs';
 import * as path from 'path';
 import {
   fetchAzureOpenPrs,
@@ -43,6 +43,8 @@ export interface DashboardRow {
   archived: boolean;
   favorite: boolean;
   tags: string[];
+  duplicateKey?: string;
+  isWorktree?: boolean;
   healthScore?: number;
   healthIssues?: string[];
   healthStatus?: 'ok' | 'warn' | 'bad' | 'unknown';
@@ -95,6 +97,10 @@ export class DashboardService {
         if (!identity || (!identity.githubRepo && !identity.repositoryPath && !identity.powershellModule && !identity.nugetPackage)) {
           return;
         }
+        const duplicateKey = buildDuplicateKey(identity);
+        const isWorktree = settings.dashboardGroupDuplicates && project.type === 'git'
+          ? await isGitWorktree(project.path)
+          : false;
 
         report(`${project.name} • remote`);
 
@@ -217,6 +223,8 @@ export class DashboardService {
           highlight: !archived && ((issueCount ?? 0) > 0 || (prCountValue ?? 0) > 0),
           favorite: favorites.has(project.id),
           tags,
+          duplicateKey,
+          isWorktree,
           healthScore: health?.score,
           healthIssues: health?.issues,
           healthStatus: health?.status ?? 'unknown'
@@ -242,7 +250,14 @@ export class DashboardService {
       }
       return b.activityTimestamp - a.activityTimestamp;
     });
-    return rows;
+    const finalRows = settings.dashboardGroupDuplicates ? groupDashboardRows(rows) : rows;
+    finalRows.sort((a, b) => {
+      if (a.archived !== b.archived) {
+        return a.archived ? 1 : -1;
+      }
+      return b.activityTimestamp - a.activityTimestamp;
+    });
+    return finalRows;
   }
 
   public getTrackedProjects(): Project[] {
@@ -511,6 +526,100 @@ function needsRepositoryIdentity(identity: ProjectIdentity | undefined): boolean
     return true;
   }
   return !identity.repositoryUrl && !identity.repositoryProvider && !identity.repositoryPath && !identity.githubRepo;
+}
+
+function buildDuplicateKey(identity: ProjectIdentity | undefined): string | undefined {
+  if (!identity) {
+    return undefined;
+  }
+  if (identity.repositoryUrl) {
+    return `url:${identity.repositoryUrl.toLowerCase()}`;
+  }
+  if (identity.githubRepo) {
+    return `gh:${identity.githubRepo.toLowerCase()}`;
+  }
+  if (identity.repositoryProvider && identity.repositoryPath) {
+    return `${identity.repositoryProvider}:${identity.repositoryPath.toLowerCase()}`;
+  }
+  return undefined;
+}
+
+function groupDashboardRows(rows: DashboardRow[]): DashboardRow[] {
+  const grouped = new Map<string, DashboardRow[]>();
+  const passthrough: DashboardRow[] = [];
+  for (const row of rows) {
+    if (!row.duplicateKey) {
+      passthrough.push(row);
+      continue;
+    }
+    const list = grouped.get(row.duplicateKey) ?? [];
+    list.push(row);
+    grouped.set(row.duplicateKey, list);
+  }
+  const result: DashboardRow[] = [...passthrough];
+  for (const list of grouped.values()) {
+    if (list.length === 1) {
+      result.push(list[0]);
+      continue;
+    }
+    const primary = pickPrimaryRow(list);
+    const favorite = list.some((row) => row.favorite);
+    const highlight = list.some((row) => row.highlight);
+    const tags = Array.from(new Set(list.flatMap((row) => row.tags)));
+    const worktreeCount = list.filter((row) => row.isWorktree).length;
+    const duplicateCount = list.length - 1;
+    const summaryParts: string[] = [];
+    if (worktreeCount > 0) {
+      summaryParts.push(`${worktreeCount} worktree${worktreeCount === 1 ? '' : 's'}`);
+    }
+    const plainDuplicates = Math.max(0, duplicateCount - worktreeCount);
+    if (plainDuplicates > 0) {
+      summaryParts.push(`${plainDuplicates} duplicate${plainDuplicates === 1 ? '' : 's'}`);
+    }
+    const localPath = summaryParts.length > 0
+      ? (primary.localPath ? `${primary.localPath} • ${summaryParts.join(' • ')}` : summaryParts.join(' • '))
+      : primary.localPath;
+    result.push({
+      ...primary,
+      favorite,
+      highlight,
+      tags,
+      localPath
+    });
+  }
+  return result;
+}
+
+function pickPrimaryRow(rows: DashboardRow[]): DashboardRow {
+  const nonWorktree = rows.filter((row) => row.isWorktree === false);
+  const pool = nonWorktree.length > 0 ? nonWorktree : rows;
+  return [...pool].sort((a, b) => {
+    const aLen = a.projectPath?.length ?? Number.MAX_SAFE_INTEGER;
+    const bLen = b.projectPath?.length ?? Number.MAX_SAFE_INTEGER;
+    if (aLen !== bLen) {
+      return aLen - bLen;
+    }
+    return (a.projectPath ?? '').localeCompare(b.projectPath ?? '');
+  })[0] ?? rows[0]!;
+}
+
+async function isGitWorktree(projectPath: string): Promise<boolean> {
+  const gitPath = path.join(projectPath, '.git');
+  const stat = await statPath(gitPath);
+  if (!stat || stat.type !== vscode.FileType.File) {
+    return false;
+  }
+  const content = await readFileText(gitPath);
+  if (!content) {
+    return false;
+  }
+  const match = /gitdir:\\s*(.+)/i.exec(content);
+  const gitDirValue = match?.[1]?.trim();
+  if (!gitDirValue) {
+    return false;
+  }
+  const normalized = gitDirValue.replace(/\\\\/g, '/').toLowerCase();
+  return normalized.includes('/worktrees/');
 }
 
 function mergeIdentity(existing: ProjectIdentity | undefined, detected: ProjectIdentity): ProjectIdentity {

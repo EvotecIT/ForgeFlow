@@ -3593,6 +3593,11 @@
           "description": "Automatically refresh the dashboard when it opens if the cache is stale.",
           "default": true
         },
+        "forgeflow.dashboard.groupDuplicates": {
+          "type": "boolean",
+          "description": "Group duplicate/worktree entries on the dashboard.",
+          "default": true
+        },
         "forgeflow.dashboard.health.enabled": {
           "type": "boolean",
           "description": "Enable dashboard health scoring (README, license, CI, tests, dependency freshness).",
