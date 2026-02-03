@@ -23,7 +23,7 @@ export interface DashboardRenderState {
 export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webview, state?: DashboardRenderState): string {
   const nonce = randomNonce();
   const rowsHtml = rows.length > 0
-    ? rows.map((row) => renderRow(row, state?.updatedAt)).join('')
+    ? rows.map((row) => renderRowWithChildren(row, state?.updatedAt)).join('')
     : renderEmptyState(state);
   const progressPercent = formatProgressPercent(state?.progressCurrent, state?.progressTotal);
   const progressHiddenClass = state?.loading ? '' : 'hidden';
@@ -131,7 +131,31 @@ ${renderDashboardScript(initialStateJson)}
 </html>`;
 }
 
-function renderRow(row: DashboardRow, updatedAt?: number): string {
+interface RenderRowOptions {
+  kind?: 'single' | 'group' | 'child';
+  groupId?: string;
+  groupCount?: number;
+  expanded?: boolean;
+}
+
+function renderRowWithChildren(row: DashboardRow, updatedAt?: number): string {
+  if (!row.groupChildren || row.groupChildren.length === 0) {
+    return renderRow(row, updatedAt, { kind: 'single' });
+  }
+  const groupId = row.groupId ?? '';
+  const groupRow = renderRow(row, updatedAt, {
+    kind: 'group',
+    groupId,
+    groupCount: row.groupCount,
+    expanded: false
+  });
+  const childRows = row.groupChildren
+    .map((child) => renderRow(child, updatedAt, { kind: 'child', groupId }))
+    .join('');
+  return groupRow + childRows;
+}
+
+function renderRow(row: DashboardRow, updatedAt?: number, options?: RenderRowOptions): string {
   const issues = numericValue(row.issues);
   const prs = numericValue(row.prs);
   const stars = numericValue(row.stars);
@@ -145,8 +169,15 @@ function renderRow(row: DashboardRow, updatedAt?: number): string {
   const highlightClass = row.highlight ? 'warn' : '';
   const archivedClass = row.archived ? 'archived' : '';
   const favoriteClass = row.favorite ? 'favorite' : '';
+  const kind = options?.kind ?? 'single';
+  const groupId = options?.groupId ?? '';
+  const groupCount = options?.groupCount;
+  const isGroup = kind === 'group';
+  const isChild = kind === 'child';
+  const expanded = options?.expanded ?? false;
   const tags = Array.isArray(row.tags) ? row.tags : [];
-  const rowClasses = [highlightClass, archivedClass, favoriteClass].filter(Boolean).join(' ');
+  const kindClass = isGroup ? 'row-group' : (isChild ? 'row-child' : '');
+  const rowClasses = [highlightClass, archivedClass, favoriteClass, kindClass].filter(Boolean).join(' ');
   const tagsLabel = tags.length > 0 ? tags.join(', ') : 'n/a';
   const tagsCell = renderTagsCell(tags);
   const tagsLower = tags.map((tag) => tag.toLowerCase());
@@ -158,9 +189,19 @@ function renderRow(row: DashboardRow, updatedAt?: number): string {
   const repoCell = row.repoUrl
     ? `<a class="repo-link" data-url="${escapeHtml(row.repoUrl)}">${escapeHtml(row.repo)}</a>`
     : `<span>${escapeHtml(row.repo)}</span>`;
-  const localCell = row.localPath
+  const localLabel = row.localPath
     ? `<span class="mono" title="${escapeHtml(row.projectPath ?? row.localPath)}">${escapeHtml(row.localPath)}</span>`
     : `<span class="mono">n/a</span>`;
+  const groupToggle = isGroup
+    ? `<button class="group-toggle" data-group-id="${escapeHtml(groupId)}" aria-label="Toggle group">${iconChevron()}</button>`
+    : '';
+  const groupCountBadge = isGroup && typeof groupCount === 'number'
+    ? `<span class="group-count">${escapeHtml(String(groupCount))}</span>`
+    : '';
+  const groupSummary = isGroup && row.groupSummary
+    ? `<span class="group-summary">${escapeHtml(row.groupSummary)}</span>`
+    : '';
+  const localCell = `<div class="local-cell">${groupToggle}${localLabel}${groupCountBadge}${groupSummary}</div>`;
   const actionsCell = buildActionsCell(row);
 
   const statusBadge = statusLabel
@@ -177,11 +218,13 @@ function renderRow(row: DashboardRow, updatedAt?: number): string {
     row.providerStatus,
     row.favorite ? 'favorite' : undefined,
     tags.join(' '),
-    healthIssues.join(' ')
+    healthIssues.join(' '),
+    row.groupSummary,
+    row.searchExtras
   ].filter(Boolean).join(' ');
 
   return `
-    <tr class="${rowClasses}" data-row="data"
+    <tr class="${rowClasses}" data-row="data" data-kind="${escapeHtml(kind)}"
       data-activityTs="${row.activityTimestamp}"
       data-issues="${issues}"
       data-prs="${prs}"
@@ -202,7 +245,9 @@ function renderRow(row: DashboardRow, updatedAt?: number): string {
       data-favorite="${row.favorite ? 'true' : 'false'}"
       data-highlight="${row.highlight ? 'true' : 'false'}"
       data-health="${healthScore ?? ''}"
-      data-search="${escapeHtml(searchText)}">
+      data-search="${escapeHtml(searchText)}"
+      ${groupId ? `data-group-id="${escapeHtml(groupId)}"` : ''}
+      ${isGroup ? `data-expanded="${expanded ? 'true' : 'false'}"` : ''}>
       <td data-col="local">${localCell}</td>
       <td data-col="host">${hostCell}</td>
       <td data-col="actions">${actionsCell}</td>
@@ -289,6 +334,10 @@ function iconClean(): string {
 
 function iconWindow(): string {
   return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5zm2 0v2h14V5H5zm0 4v10h14V9H5z"></path></svg>';
+}
+
+function iconChevron(): string {
+  return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6-1.4-1.4L12.2 12 7.6 7.4 9 6z"></path></svg>';
 }
 
 function renderEmptyState(state?: DashboardRenderState): string {

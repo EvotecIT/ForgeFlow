@@ -87,6 +87,19 @@ export const dashboardWebviewScriptPartB = `
         }
       });
     });
+    document.querySelectorAll('.group-toggle').forEach((button) => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const row = button.closest('tr[data-kind="group"]');
+        if (!row) {
+          return;
+        }
+        const expanded = row.dataset.expanded === 'true';
+        row.dataset.expanded = expanded ? 'false' : 'true';
+        applyFilter();
+      });
+    });
 
     const headers = document.querySelectorAll('th[data-key]');
     const tbody = document.querySelector('tbody');
@@ -186,14 +199,36 @@ export const dashboardWebviewScriptPartB = `
         return;
       }
       const rows = Array.from(tbody.querySelectorAll('tr[data-row="data"]'));
-      rows.sort((rowA, rowB) => {
+      const parents = rows.filter((row) => row.dataset.kind !== 'child');
+      const children = rows.filter((row) => row.dataset.kind === 'child');
+      const childMap = new Map();
+      children.forEach((row) => {
+        const groupId = row.dataset.groupId || '';
+        if (!groupId) {
+          return;
+        }
+        const list = childMap.get(groupId) || [];
+        list.push(row);
+        childMap.set(groupId, list);
+      });
+      parents.sort((rowA, rowB) => {
         const a = rowA.dataset[sortKey] || '';
         const b = rowB.dataset[sortKey] || '';
         const type = document.querySelector('th[data-key="' + sortKey + '"]')?.dataset.type || 'string';
         const result = compareValues(a, b, type);
         return sortDir === 'asc' ? result : -result;
       });
-      rows.forEach((row) => tbody.appendChild(row));
+      parents.forEach((row) => {
+        tbody.appendChild(row);
+        const groupId = row.dataset.groupId || '';
+        const groupChildren = groupId ? childMap.get(groupId) : undefined;
+        if (groupChildren) {
+          groupChildren.forEach((child) => tbody.appendChild(child));
+        }
+      });
+      if (emptyRow) {
+        tbody.appendChild(emptyRow);
+      }
     }
 
     function updateCount(visible, total) {

@@ -43,34 +43,76 @@ export const dashboardWebviewScriptPartC = `
       vscode.postMessage({ type: 'setTagFilter', tags: Array.from(activeTags.values()) });
     }
 
+    function rowMatchesFilter(row, filter, activeTagKeys) {
+      const haystack = (row.dataset.search || '').toLowerCase();
+      const tagsList = String(row.dataset.tagsList || '').toLowerCase().split('|').filter(Boolean);
+      const tagSet = new Set(tagsList);
+      const tagsMatch = activeTagKeys.length === 0
+        ? true
+        : activeTagKeys.every((tag) => tagSet.has(tag));
+      return matchesFilterQuery(haystack, filter) && tagsMatch;
+    }
+
     function applyFilter() {
       const raw = (filterInput && 'value' in filterInput) ? String(filterInput.value || '') : '';
       const trimmed = raw.trim();
       const filter = normalizeFilter(raw);
       const activeTagKeys = Array.from(activeTags.keys());
       const rows = Array.from(document.querySelectorAll('tr[data-row="data"]'));
+      const parents = rows.filter((row) => row.dataset.kind !== 'child');
+      const children = rows.filter((row) => row.dataset.kind === 'child');
+      const childMap = new Map();
+      children.forEach((row) => {
+        row.hidden = true;
+        const groupId = row.dataset.groupId || '';
+        if (!groupId) {
+          return;
+        }
+        const list = childMap.get(groupId) || [];
+        list.push(row);
+        childMap.set(groupId, list);
+      });
       let visible = 0;
-      rows.forEach((row) => {
-        const haystack = (row.dataset.search || '').toLowerCase();
-        const tagsList = String(row.dataset.tagsList || '').toLowerCase().split('|').filter(Boolean);
-        const tagSet = new Set(tagsList);
-        const tagsMatch = activeTagKeys.length === 0
-          ? true
-          : activeTagKeys.every((tag) => tagSet.has(tag));
-        const isMatch = matchesFilterQuery(haystack, filter) && tagsMatch;
-        row.hidden = !isMatch;
-        if (isMatch) {
-          visible += 1;
+      parents.forEach((row) => {
+        const kind = row.dataset.kind || 'single';
+        const groupId = row.dataset.groupId || '';
+        if (kind === 'group' && groupId) {
+          const groupChildren = childMap.get(groupId) || [];
+          let childMatchCount = 0;
+          groupChildren.forEach((child) => {
+            const childMatch = rowMatchesFilter(child, filter, activeTagKeys);
+            child.dataset.match = childMatch ? 'true' : 'false';
+            if (childMatch) {
+              childMatchCount += 1;
+            }
+          });
+          const groupMatch = rowMatchesFilter(row, filter, activeTagKeys);
+          const isMatch = groupMatch || childMatchCount > 0;
+          row.hidden = !isMatch;
+          if (!row.hidden) {
+            visible += 1;
+          }
+          const expanded = row.dataset.expanded === 'true';
+          groupChildren.forEach((child) => {
+            const childMatch = child.dataset.match === 'true';
+            child.hidden = !(expanded && isMatch && childMatch);
+          });
+        } else {
+          const isMatch = rowMatchesFilter(row, filter, activeTagKeys);
+          row.hidden = !isMatch;
+          if (isMatch) {
+            visible += 1;
+          }
         }
       });
       if (emptyRow) {
-        emptyRow.hidden = visible !== 0 || rows.length === 0;
+        emptyRow.hidden = visible !== 0 || parents.length === 0;
       }
       if (filterInput && filterConfig.minChars > 0) {
         filterInput.classList.toggle('minchars', trimmed.length > 0 && trimmed.length < filterConfig.minChars);
       }
-      updateCount(visible, rows.length);
-      updateSummary(rows, visible);
+      updateCount(visible, parents.length);
+      updateSummary(parents, visible);
       if (trimmed !== lastFilter) {
         lastFilter = trimmed;
         vscode.postMessage({ type: 'setFilter', filter: trimmed });

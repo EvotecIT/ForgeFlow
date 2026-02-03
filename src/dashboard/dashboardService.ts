@@ -45,6 +45,11 @@ export interface DashboardRow {
   tags: string[];
   duplicateKey?: string;
   isWorktree?: boolean;
+  groupId?: string;
+  groupCount?: number;
+  groupSummary?: string;
+  groupChildren?: DashboardRow[];
+  searchExtras?: string;
   healthScore?: number;
   healthIssues?: string[];
   healthStatus?: 'ok' | 'warn' | 'bad' | 'unknown';
@@ -557,7 +562,7 @@ function groupDashboardRows(rows: DashboardRow[]): DashboardRow[] {
     grouped.set(row.duplicateKey, list);
   }
   const result: DashboardRow[] = [...passthrough];
-  for (const list of grouped.values()) {
+  for (const [groupId, list] of grouped.entries()) {
     if (list.length === 1) {
       result.push(list[0]);
       continue;
@@ -576,15 +581,29 @@ function groupDashboardRows(rows: DashboardRow[]): DashboardRow[] {
     if (plainDuplicates > 0) {
       summaryParts.push(`${plainDuplicates} duplicate${plainDuplicates === 1 ? '' : 's'}`);
     }
-    const localPath = summaryParts.length > 0
-      ? (primary.localPath ? `${primary.localPath} • ${summaryParts.join(' • ')}` : summaryParts.join(' • '))
-      : primary.localPath;
+    const groupSummary = summaryParts.length > 0 ? summaryParts.join(' • ') : undefined;
+    const localPath = primary.localPath;
+    const groupChildren = list
+      .filter((row) => row !== primary)
+      .sort((a, b) => {
+        const aPath = a.projectPath ?? '';
+        const bPath = b.projectPath ?? '';
+        return aPath.localeCompare(bPath);
+      });
+    const searchExtras = list
+      .map((row) => [row.repo, row.projectPath, row.localPath, row.provider].filter(Boolean).join(' '))
+      .join(' ');
     result.push({
       ...primary,
       favorite,
       highlight,
       tags,
-      localPath
+      localPath,
+      groupId,
+      groupCount: list.length,
+      groupSummary,
+      groupChildren,
+      searchExtras
     });
   }
   return result;

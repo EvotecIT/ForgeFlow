@@ -162,12 +162,60 @@ export const dashboardWebviewStyles = `
     tbody tr:nth-child(even) {
       background: var(--ff-row);
     }
+    tbody tr.row-group {
+      background: color-mix(in srgb, var(--ff-fg) 12%, transparent);
+    }
+    tbody tr.row-child {
+      background: color-mix(in srgb, var(--ff-fg) 6%, transparent);
+    }
     tbody tr.hidden {
       display: none;
     }
     tbody td {
       padding: 6px 6px;
       vertical-align: top;
+    }
+    .local-cell {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .row-child .local-cell {
+      padding-left: 18px;
+    }
+    .group-toggle {
+      border: 1px solid var(--ff-border);
+      background: transparent;
+      color: var(--ff-fg);
+      width: 18px;
+      height: 18px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .group-toggle svg {
+      width: 12px;
+      height: 12px;
+      fill: currentColor;
+      transition: transform 0.12s ease;
+    }
+    tr[data-kind="group"][data-expanded="true"] .group-toggle svg {
+      transform: rotate(90deg);
+    }
+    .group-count {
+      border: 1px solid var(--ff-border);
+      border-radius: 999px;
+      padding: 2px 6px;
+      font-size: 9px;
+      color: var(--ff-muted);
+    }
+    .group-summary {
+      font-size: 9px;
+      color: var(--ff-muted);
     }
     tbody td.mono {
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
