@@ -128,6 +128,9 @@ ${dashboardWebviewStyles}
     <button class="context-item" data-action="revealInOs">Reveal in OS</button>
     <button class="context-item" data-action="copyPath">Copy Path</button>
     <button class="context-item" data-action="copyRelative">Copy Relative Path</button>
+    <button class="context-item" data-action="openGroupNewWindows">Open Group in New Windows</button>
+    <button class="context-item" data-action="openGroupWorkspace">Add Group to Workspace</button>
+    <button class="context-item" data-action="copyGroupPaths">Copy Group Paths</button>
   </div>
 
   <script nonce="${nonce}">
@@ -218,9 +221,13 @@ function renderRow(row: DashboardRow, updatedAt?: number, options?: RenderRowOpt
   const groupActions = isGroup && uniqueGroupPaths.length > 0
     ? [
         actionButton('group-open-all', JSON.stringify(uniqueGroupPaths), 'Open all in new windows', iconStackOpen(), 'data-paths'),
+        actionButton('group-add-workspace', JSON.stringify(uniqueGroupPaths), 'Add all to workspace', iconWorkspaceAdd(), 'data-paths'),
         actionButton('group-copy-paths', JSON.stringify(uniqueGroupPaths), 'Copy all paths', iconCopyList(), 'data-paths')
       ]
     : [];
+  const groupPathsAttr = isGroup && uniqueGroupPaths.length > 0
+    ? `data-group-paths="${escapeHtml(JSON.stringify(uniqueGroupPaths))}"`
+    : '';
   const actionsCell = buildActionsCell(row, groupActions);
 
   const statusBadge = statusLabel
@@ -266,6 +273,7 @@ function renderRow(row: DashboardRow, updatedAt?: number, options?: RenderRowOpt
       data-health="${healthScore ?? ''}"
       data-search="${escapeHtml(searchText)}"
       ${groupId ? `data-group-id="${escapeHtml(groupId)}"` : ''}
+      ${groupPathsAttr}
       ${isGroup ? `data-expanded="${expanded ? 'true' : 'false'}"` : ''}>
       <td data-col="local">${localCell}</td>
       <td data-col="host">${hostCell}</td>
@@ -377,6 +385,10 @@ function iconStackOpen(): string {
 
 function iconCopyList(): string {
   return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7h10v2H9V7zm0 4h10v2H9v-2zm0 4h10v2H9v-2zM5 7h2v2H5V7zm0 4h2v2H5v-2zm0 4h2v2H5v-2z"></path></svg>';
+}
+
+function iconWorkspaceAdd(): string {
+  return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h6v6H4V5zm0 8h6v6H4v-6zm8-8h8v6h-8V5zm4 8v-2h2v2h2v2h-2v2h-2v-2h-2v-2h2z"></path></svg>';
 }
 
 function renderEmptyState(state?: DashboardRenderState): string {

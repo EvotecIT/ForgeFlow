@@ -259,17 +259,23 @@ export const dashboardWebviewScriptPartC = `
       const repoUrl = row.dataset.repoUrl || '';
       const projectPath = row.dataset.projectPath || '';
       const localPath = row.dataset.localPath || row.dataset.local || '';
+      const groupPaths = parsePaths(row.dataset.groupPaths || '');
+      const isGroup = row.dataset.kind === 'group' && groupPaths.length > 0;
       contextTarget = {
         repoUrl,
         projectPath,
         localPath,
-        relativePath: localPath || projectPath
+        relativePath: localPath || projectPath,
+        groupPaths
       };
       setMenuItemState('openRepo', !!repoUrl);
       setMenuItemState('openProject', !!projectPath);
       setMenuItemState('revealInOs', !!projectPath);
       setMenuItemState('copyPath', !!projectPath);
       setMenuItemState('copyRelative', !!(localPath || projectPath));
+      setMenuItemState('openGroupNewWindows', isGroup);
+      setMenuItemState('openGroupWorkspace', isGroup);
+      setMenuItemState('copyGroupPaths', isGroup);
       contextMenu.style.left = x + 'px';
       contextMenu.style.top = y + 'px';
       contextMenu.classList.remove('hidden');
@@ -318,6 +324,15 @@ export const dashboardWebviewScriptPartC = `
           }
           if (action === 'copyRelative' && contextTarget.relativePath) {
             vscode.postMessage({ type: 'copyRelativePath', path: contextTarget.relativePath });
+          }
+          if (action === 'openGroupNewWindows' && contextTarget.groupPaths && contextTarget.groupPaths.length > 0) {
+            vscode.postMessage({ type: 'openProjects', paths: contextTarget.groupPaths });
+          }
+          if (action === 'openGroupWorkspace' && contextTarget.groupPaths && contextTarget.groupPaths.length > 0) {
+            vscode.postMessage({ type: 'openProjectsInWorkspace', paths: contextTarget.groupPaths });
+          }
+          if (action === 'copyGroupPaths' && contextTarget.groupPaths && contextTarget.groupPaths.length > 0) {
+            vscode.postMessage({ type: 'copyPaths', paths: contextTarget.groupPaths });
           }
           hideContextMenu();
         });

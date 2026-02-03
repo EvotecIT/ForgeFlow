@@ -168,6 +168,27 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(path), true);
         }
       }
+      if (message.type === 'openProjectsInWorkspace' && Array.isArray(message.paths)) {
+        const uniquePaths = Array.from(new Set(message.paths.filter((value) => typeof value === 'string' && value.trim())));
+        if (uniquePaths.length > 0) {
+          const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+          const existing = new Set(workspaceFolders.map((folder) => folder.uri.fsPath));
+          const toAdd = uniquePaths.filter((path) => !existing.has(path));
+          if (toAdd.length === 0) {
+            vscode.window.setStatusBarMessage('ForgeFlow: All group paths already in workspace.', 2000);
+          } else {
+            const index = workspaceFolders.length;
+            const added = vscode.workspace.updateWorkspaceFolders(
+              index,
+              0,
+              ...toAdd.map((path) => ({ uri: vscode.Uri.file(path) }))
+            );
+            if (!added) {
+              vscode.window.setStatusBarMessage('ForgeFlow: Unable to add group to workspace.', 3000);
+            }
+          }
+        }
+      }
       if (message.type === 'revealInOs' && message.path) {
         await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(message.path));
       }

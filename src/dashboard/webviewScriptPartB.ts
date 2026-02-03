@@ -111,6 +111,16 @@ export const dashboardWebviewScriptPartB = `
         }
       });
     });
+    document.querySelectorAll('.group-add-workspace').forEach((link) => {
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        const raw = link.getAttribute('data-paths');
+        const paths = parsePaths(raw);
+        if (paths.length > 0) {
+          vscode.postMessage({ type: 'openProjectsInWorkspace', paths });
+        }
+      });
+    });
     document.querySelectorAll('.group-copy-paths').forEach((link) => {
       link.addEventListener('click', (event) => {
         event.preventDefault();
