@@ -190,6 +190,7 @@ export const dashboardWebviewScriptPartB = `
     const cancelButton = document.getElementById('cancel');
     const toggleGroupsButton = document.getElementById('toggle-groups');
     const toggleChildrenButton = document.getElementById('toggle-children');
+    const toggleActionsButton = document.getElementById('toggle-actions');
     const countLabel = document.getElementById('count');
     const emptyRow = document.getElementById('filter-empty');
     const summaryEl = document.getElementById('summary');
@@ -214,6 +215,7 @@ export const dashboardWebviewScriptPartB = `
     let contextTarget = null;
     let expandAll = initialState.expandAllGroups === true;
     let showAllChildren = initialState.showAllChildren === true;
+    let hideActionsColumn = initialState.hideActionsColumn === true;
 
     document.querySelectorAll('.tag-chip').forEach((button) => {
       button.addEventListener('click', (event) => {
@@ -336,6 +338,13 @@ export const dashboardWebviewScriptPartB = `
       toggleChildrenButton.textContent = showAllChildren ? 'Hide non-matching children' : 'Show all children';
     }
 
+    function updateActionsToggle() {
+      if (!toggleActionsButton) {
+        return;
+      }
+      toggleActionsButton.textContent = hideActionsColumn ? 'Show actions' : 'Hide actions';
+    }
+
     function updateSummary(rows, visible) {
       if (!summaryEl) {
         return;
@@ -434,7 +443,8 @@ export const dashboardWebviewScriptPartB = `
         colWidths,
         activeTags: Array.from(activeTags.values()),
         expandAllGroups: expandAll,
-        showAllChildren
+        showAllChildren,
+        hideActionsColumn
       });
       vscode.postMessage({ type: 'setViewState', sortKey, sortDir, colWidths, expandAllGroups: expandAll, showAllChildren });
     }

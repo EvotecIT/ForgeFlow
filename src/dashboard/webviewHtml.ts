@@ -43,7 +43,8 @@ export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webvie
     filterMinChars,
     filterMatchMode: state?.filterMatchMode ?? 'substring',
     expandAllGroups: state?.expandAllGroups ?? false,
-    showAllChildren: state?.showAllChildren ?? false
+    showAllChildren: state?.showAllChildren ?? false,
+    hideActionsColumn: state?.hideActionsColumn ?? false
   };
   const initialStateJson = serializeJson(initialState);
 
@@ -75,6 +76,7 @@ ${dashboardWebviewStyles}
       <button class="focus" id="focus">Focus</button>
       <button class="toggle-groups" id="toggle-groups" title="Expand or collapse grouped duplicates">Expand groups</button>
       <button class="toggle-children" id="toggle-children" title="Toggle child rows when filtering">Show all children</button>
+      <button class="toggle-actions" id="toggle-actions" title="Toggle actions column visibility">Hide actions</button>
       <span class="count" id="count"></span>
       ${state?.loading ? '<button class="cancel" id="cancel">Cancel</button>' : ''}
       <button class="refresh" id="refresh">Refresh</button>

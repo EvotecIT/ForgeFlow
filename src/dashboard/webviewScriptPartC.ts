@@ -371,6 +371,7 @@ export const dashboardWebviewScriptPartC = `
     const seededWidths = seeded.colWidths || {};
     const seededExpandAll = seeded.expandAllGroups === true;
     const seededShowAll = seeded.showAllChildren === true;
+    const seededHideActions = seeded.hideActionsColumn === true;
     const savedTags = Array.isArray(saved.activeTags) ? saved.activeTags : [];
     const seededTags = Array.isArray(seeded.activeTags) ? seeded.activeTags : [];
     if (typeof saved.expandAllGroups === 'boolean') {
@@ -383,6 +384,11 @@ export const dashboardWebviewScriptPartC = `
     } else if (seededShowAll) {
       showAllChildren = true;
     }
+    if (typeof saved.hideActionsColumn === 'boolean') {
+      hideActionsColumn = saved.hideActionsColumn;
+    } else if (seededHideActions) {
+      hideActionsColumn = true;
+    }
     if (saved.sortKey || seededSortKey) {
       sortKey = String(saved.sortKey || seededSortKey);
     }
@@ -394,6 +400,9 @@ export const dashboardWebviewScriptPartC = `
     colWidths = saved.colWidths || seededWidths || {};
     setActiveTags(savedTags.length > 0 ? savedTags : seededTags);
     applyColumnWidths(colWidths);
+    if (document.body) {
+      document.body.dataset.hideActions = hideActionsColumn ? 'true' : 'false';
+    }
     updateHeaders();
     sortRows();
     if (filterInput && 'value' in filterInput) {
@@ -432,6 +441,16 @@ export const dashboardWebviewScriptPartC = `
         applyFilter();
       });
     }
+    if (toggleActionsButton) {
+      toggleActionsButton.addEventListener('click', () => {
+        hideActionsColumn = !hideActionsColumn;
+        if (document.body) {
+          document.body.dataset.hideActions = hideActionsColumn ? 'true' : 'false';
+        }
+        updateActionsToggle();
+        vscode.postMessage({ type: 'setDashboardActionsVisibility', hide: hideActionsColumn });
+      });
+    }
     if (cancelButton) {
       cancelButton.addEventListener('click', () => {
         vscode.postMessage({ type: 'cancelRefresh' });
@@ -445,6 +464,7 @@ export const dashboardWebviewScriptPartC = `
     updateHeaderHeight();
     updateGroupToggle();
     updateChildrenToggle();
+    updateActionsToggle();
     window.addEventListener('resize', () => {
       updateHeaderHeight();
     });

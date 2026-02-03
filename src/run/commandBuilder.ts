@@ -64,11 +64,12 @@ export function buildTerminalCommand(request: RunRequest, options?: TerminalComm
   const fileLiteral = quotePowerShellLiteral(request.filePath);
   parts.push(`& ${exeLiteral} ${argLine} -File ${fileLiteral}`);
   parts.push('$ffExit = $LASTEXITCODE');
+  parts.push('$ffOk = $?');
   if (keepOpen === 'always') {
     parts.push("Write-Host ''");
     parts.push("Read-Host 'Press Enter to close' | Out-Null");
   } else if (keepOpen === 'onError') {
-    parts.push("if ($ffExit -ne 0) { Write-Host ''; Write-Host ('Exit code: ' + $ffExit); Read-Host 'Press Enter to close' | Out-Null }");
+    parts.push("if ($ffExit -ne 0 -or -not $ffOk) { Write-Host ''; Write-Host ('Exit code: ' + $ffExit); Read-Host 'Press Enter to close' | Out-Null }");
   }
   return { commandLine: parts.join('; ') };
 }

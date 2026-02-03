@@ -111,6 +111,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       colWidths?: Record<string, number>;
       expandAllGroups?: boolean;
       showAllChildren?: boolean;
+      hide?: boolean;
     }) => {
       if (message.type === 'refresh') {
         await this.refresh();
@@ -160,6 +161,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           showAllChildren: typeof message.showAllChildren === 'boolean' ? message.showAllChildren : undefined
         };
         await this.viewStateStore.setState(next);
+      }
+      if (message.type === 'setDashboardActionsVisibility') {
+        const config = vscode.workspace.getConfiguration('forgeflow');
+        await config.update('dashboard.hideActionsColumn', message.hide === true, vscode.ConfigurationTarget.Workspace);
       }
       if (message.type === 'openUrl' && message.url) {
         await vscode.env.openExternal(vscode.Uri.parse(message.url));
