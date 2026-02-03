@@ -110,6 +110,9 @@ export function registerFileCommands(deps: FileCommandDeps): void {
     }),
     vscode.commands.registerCommand('forgeflow.worktrees.openDefault', async (target?: unknown) => {
       const action = getForgeFlowSettings().worktreesOpenAction;
+      if (action === 'expand') {
+        return;
+      }
       if (action === 'addToWorkspace') {
         const targets = collectSelectedPaths(target, filesView, filesPanelView);
         await addWorktreesToWorkspace(targets);

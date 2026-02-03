@@ -3174,11 +3174,12 @@
           "type": "string",
           "description": "Default action when selecting a worktree.",
           "enum": [
+            "expand",
             "addToWorkspace",
             "open",
             "openInNewWindow"
           ],
-          "default": "addToWorkspace"
+          "default": "expand"
         },
         "forgeflow.projects.identityScanDepth": {
           "type": "number",

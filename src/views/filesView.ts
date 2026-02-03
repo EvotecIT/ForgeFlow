@@ -361,6 +361,7 @@ class WorktreeItemNode implements FilesNode, PathNode {
     item.resourceUri = vscode.Uri.file(this.path);
     item.tooltip = this.path;
     item.contextValue = 'forgeflowWorktree';
+    const clickAction = getForgeFlowSettings().worktreesOpenAction;
     const detailParts: string[] = [];
     if (this.entry.detached) {
       detailParts.push('detached');
@@ -372,6 +373,9 @@ class WorktreeItemNode implements FilesNode, PathNode {
     }
     if (detailParts.length > 0) {
       item.description = detailParts.join(' • ');
+    }
+    if (clickAction !== 'expand') {
+      item.command = { command: 'forgeflow.worktrees.openDefault', title: 'Open worktree', arguments: [this.path] };
     }
     item.iconPath = new vscode.ThemeIcon('repo');
     return item;
