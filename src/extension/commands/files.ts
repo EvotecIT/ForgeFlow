@@ -1,4 +1,6 @@
+import { execFile } from 'child_process';
 import * as path from 'path';
+import { promisify } from 'util';
 import * as vscode from 'vscode';
 import type { FilesViewProvider } from '../../views/filesView';
 import type { ProjectsViewProvider } from '../../views/projectsView';
@@ -31,6 +33,7 @@ import {
 import { configureFavoritesViewMode } from '../filesFavorites';
 
 let fileClipboard: { mode: 'copy' | 'cut'; paths: string[] } | undefined;
+const execFileAsync = promisify(execFile);
 
 export interface FileCommandDeps {
   context: vscode.ExtensionContext;
@@ -92,6 +95,71 @@ export function registerFileCommands(deps: FileCommandDeps): void {
     }
   };
 
+  const resolveWorktreeRepoRoot = async (worktreePath: string): Promise<string | undefined> => {
+    try {
+      const result = await execFileAsync('git', ['-C', worktreePath, 'rev-parse', '--show-toplevel']);
+      const output = result.stdout?.trim();
+      return output ? path.resolve(worktreePath, output) : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
+  const removeWorktree = async (worktreePath: string): Promise<void> => {
+    const folders = vscode.workspace.workspaceFolders ?? [];
+    const normalized = path.resolve(worktreePath);
+    if (folders.some((folder) => path.resolve(folder.uri.fsPath) === normalized)) {
+      vscode.window.showWarningMessage('ForgeFlow: Cannot remove a worktree that is open in the workspace.');
+      return;
+    }
+    const repoRoot = await resolveWorktreeRepoRoot(worktreePath);
+    if (!repoRoot) {
+      vscode.window.showWarningMessage('ForgeFlow: Unable to resolve repository for this worktree.');
+      return;
+    }
+    const name = path.basename(worktreePath);
+    const confirm = await vscode.window.showWarningMessage(
+      `ForgeFlow: Remove worktree "${name}"? This deletes the worktree folder.`,
+      { modal: true },
+      'Remove'
+    );
+    if (confirm !== 'Remove') {
+      return;
+    }
+    try {
+      await execFileAsync('git', ['-C', repoRoot, 'worktree', 'remove', worktreePath]);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showWarningMessage(`ForgeFlow: Failed to remove worktree "${name}": ${message}`);
+      return;
+    }
+    filesProvider.refresh();
+  };
+
+  const pruneWorktrees = async (worktreePath: string): Promise<void> => {
+    const repoRoot = await resolveWorktreeRepoRoot(worktreePath);
+    if (!repoRoot) {
+      vscode.window.showWarningMessage('ForgeFlow: Unable to resolve repository for this worktree.');
+      return;
+    }
+    const confirm = await vscode.window.showWarningMessage(
+      'ForgeFlow: Prune stale worktree entries for this repo?',
+      { modal: true },
+      'Prune'
+    );
+    if (confirm !== 'Prune') {
+      return;
+    }
+    try {
+      await execFileAsync('git', ['-C', repoRoot, 'worktree', 'prune']);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      vscode.window.showWarningMessage(`ForgeFlow: Failed to prune worktrees: ${message}`);
+      return;
+    }
+    filesProvider.refresh();
+  };
+
   context.subscriptions.push(
     vscode.commands.registerCommand('forgeflow.files.open', async (target?: unknown) => {
       const targets = collectSelectedPaths(target, filesView, filesPanelView);
@@ -130,6 +198,22 @@ export function registerFileCommands(deps: FileCommandDeps): void {
     vscode.commands.registerCommand('forgeflow.worktrees.addToWorkspace', async (target?: unknown) => {
       const targets = collectSelectedPaths(target, filesView, filesPanelView);
       await addWorktreesToWorkspace(targets);
+    }),
+    vscode.commands.registerCommand('forgeflow.worktrees.remove', async (target?: unknown) => {
+      const targets = collectSelectedPaths(target, filesView, filesPanelView);
+      const first = targets[0];
+      if (!first) {
+        return;
+      }
+      await removeWorktree(first);
+    }),
+    vscode.commands.registerCommand('forgeflow.worktrees.prune', async (target?: unknown) => {
+      const targets = collectSelectedPaths(target, filesView, filesPanelView);
+      const first = targets[0];
+      if (!first) {
+        return;
+      }
+      await pruneWorktrees(first);
     }),
     vscode.commands.registerCommand('forgeflow.files.filter', async () => {
       await openLiveFilterInput({

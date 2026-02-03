@@ -439,6 +439,20 @@
         "category": "ForgeFlow"
       },
       {
+        "command": "forgeflow.worktrees.remove",
+        "title": "Remove Worktree...",
+        "shortTitle": "Remove Worktree",
+        "icon": "$(trash)",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.worktrees.prune",
+        "title": "Prune Stale Worktrees...",
+        "shortTitle": "Prune Stale Worktrees",
+        "icon": "$(clear-all)",
+        "category": "ForgeFlow"
+      },
+      {
         "command": "forgeflow.projects.delete",
         "title": "Delete Project...",
         "shortTitle": "Delete Project",
@@ -1404,6 +1418,18 @@
       {
         "id": "forgeflow.projects.dangerMenu",
         "label": "Danger"
+      },
+      {
+        "id": "forgeflow.files.runMenu",
+        "label": "Run"
+      },
+      {
+        "id": "forgeflow.files.favoriteMenu",
+        "label": "Favorites"
+      },
+      {
+        "id": "forgeflow.worktrees.manageMenu",
+        "label": "Worktree"
       }
     ],
     "menus": {
@@ -1735,6 +1761,88 @@
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
         }
       ],
+      "forgeflow.files.runMenu": [
+        {
+          "command": "forgeflow.run.integrated",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile && resourceExtname == .ps1"
+        },
+        {
+          "command": "forgeflow.run.external",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile && resourceExtname == .ps1"
+        },
+        {
+          "command": "forgeflow.run.external.chooseProfile",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile && resourceExtname == .ps1"
+        },
+        {
+          "command": "forgeflow.run.externalAdmin",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile && resourceExtname == .ps1 && isWindows"
+        },
+        {
+          "command": "forgeflow.run.externalAdmin.chooseProfile",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile && resourceExtname == .ps1 && isWindows"
+        },
+        {
+          "command": "forgeflow.run.integrated",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceExtname == .ps1"
+        },
+        {
+          "command": "forgeflow.run.external",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceExtname == .ps1"
+        },
+        {
+          "command": "forgeflow.run.external.chooseProfile",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceExtname == .ps1"
+        },
+        {
+          "command": "forgeflow.run.externalAdmin",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceExtname == .ps1 && isWindows"
+        },
+        {
+          "command": "forgeflow.run.externalAdmin.chooseProfile",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceExtname == .ps1 && isWindows"
+        },
+        {
+          "command": "forgeflow.run.setFavoriteProfile",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceExtname == .ps1"
+        },
+        {
+          "command": "forgeflow.run.clearFavoriteProfile",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceExtname == .ps1"
+        }
+      ],
+      "forgeflow.files.favoriteMenu": [
+        {
+          "command": "forgeflow.files.pinFavorite",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile"
+        },
+        {
+          "command": "forgeflow.files.pinFavorite",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowWorktree"
+        },
+        {
+          "command": "forgeflow.files.unpinFavorite",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite"
+        },
+        {
+          "command": "forgeflow.files.pinWorkspaceFavorite",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite"
+        },
+        {
+          "command": "forgeflow.files.unpinWorkspaceFavorite",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite"
+        }
+      ],
+      "forgeflow.worktrees.manageMenu": [
+        {
+          "command": "forgeflow.worktrees.remove",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowWorktree"
+        },
+        {
+          "command": "forgeflow.worktrees.prune",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && (viewItem == forgeflowWorktree || viewItem == forgeflowWorktreeMissing)"
+        }
+      ],
       "view/item/context": [
         {
           "command": "forgeflow.run",
@@ -1776,51 +1884,6 @@
           "icon": {
             "light": "resources/icons/open-sln-light.svg",
             "dark": "resources/icons/open-sln-dark.svg"
-          }
-        },
-        {
-          "command": "forgeflow.run.integrated",
-          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile && resourceExtname == .ps1",
-          "group": "5_forgeflow@11",
-          "icon": {
-            "light": "resources/icons/run-terminal-light.svg",
-            "dark": "resources/icons/run-terminal-dark.svg"
-          }
-        },
-        {
-          "command": "forgeflow.run.external",
-          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile && resourceExtname == .ps1",
-          "group": "5_forgeflow@12",
-          "icon": {
-            "light": "resources/icons/run-external-light.svg",
-            "dark": "resources/icons/run-external-dark.svg"
-          }
-        },
-        {
-          "command": "forgeflow.run.external.chooseProfile",
-          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile && resourceExtname == .ps1",
-          "group": "5_forgeflow@12b",
-          "icon": {
-            "light": "resources/icons/profile-light.svg",
-            "dark": "resources/icons/profile-dark.svg"
-          }
-        },
-        {
-          "command": "forgeflow.run.externalAdmin",
-          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile && resourceExtname == .ps1 && isWindows",
-          "group": "5_forgeflow@13",
-          "icon": {
-            "light": "resources/icons/run-admin-light.svg",
-            "dark": "resources/icons/run-admin-dark.svg"
-          }
-        },
-        {
-          "command": "forgeflow.run.externalAdmin.chooseProfile",
-          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile && resourceExtname == .ps1 && isWindows",
-          "group": "5_forgeflow@13b",
-          "icon": {
-            "light": "resources/icons/profile-admin-light.svg",
-            "dark": "resources/icons/profile-admin-dark.svg"
           }
         },
         {
@@ -1891,51 +1954,6 @@
           }
         },
         {
-          "command": "forgeflow.run.integrated",
-          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceExtname == .ps1",
-          "group": "5_forgeflow@11",
-          "icon": {
-            "light": "resources/icons/run-terminal-light.svg",
-            "dark": "resources/icons/run-terminal-dark.svg"
-          }
-        },
-        {
-          "command": "forgeflow.run.external",
-          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceExtname == .ps1",
-          "group": "5_forgeflow@12",
-          "icon": {
-            "light": "resources/icons/run-external-light.svg",
-            "dark": "resources/icons/run-external-dark.svg"
-          }
-        },
-        {
-          "command": "forgeflow.run.external.chooseProfile",
-          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceExtname == .ps1",
-          "group": "5_forgeflow@12b",
-          "icon": {
-            "light": "resources/icons/profile-light.svg",
-            "dark": "resources/icons/profile-dark.svg"
-          }
-        },
-        {
-          "command": "forgeflow.run.externalAdmin",
-          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceExtname == .ps1 && isWindows",
-          "group": "5_forgeflow@13",
-          "icon": {
-            "light": "resources/icons/run-admin-light.svg",
-            "dark": "resources/icons/run-admin-dark.svg"
-          }
-        },
-        {
-          "command": "forgeflow.run.externalAdmin.chooseProfile",
-          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceExtname == .ps1 && isWindows",
-          "group": "5_forgeflow@13b",
-          "icon": {
-            "light": "resources/icons/profile-admin-light.svg",
-            "dark": "resources/icons/profile-admin-dark.svg"
-          }
-        },
-        {
           "command": "forgeflow.powerforge.plan",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceFilename =~ /powerforge(\\.pipeline)?\\.json$/",
           "group": "5_forgeflow@40"
@@ -1959,26 +1977,6 @@
           "command": "forgeflow.powerforge.dotnetPublish.validate",
           "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceFilename =~ /powerforge\\.dotnetpublish\\.json$/",
           "group": "5_forgeflow@44"
-        },
-        {
-          "command": "forgeflow.run.setFavoriteProfile",
-          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceExtname == .ps1",
-          "group": "5_forgeflow@20"
-        },
-        {
-          "command": "forgeflow.run.clearFavoriteProfile",
-          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite && resourceExtname == .ps1",
-          "group": "5_forgeflow@21"
-        },
-        {
-          "command": "forgeflow.files.pinWorkspaceFavorite",
-          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite",
-          "group": "5_forgeflow@30"
-        },
-        {
-          "command": "forgeflow.files.unpinWorkspaceFavorite",
-          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite",
-          "group": "5_forgeflow@31"
         },
         {
           "command": "forgeflow.run.chooseProfile",
@@ -2074,14 +2072,19 @@
           "group": "navigation"
         },
         {
-          "command": "forgeflow.files.pinFavorite",
-          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFile",
-          "group": "5_forgeflow@1"
+          "submenu": "forgeflow.files.runMenu",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && (viewItem == forgeflowFile || viewItem == forgeflowFavorite) && resourceExtname == .ps1",
+          "group": "5_forgeflow@10"
         },
         {
-          "command": "forgeflow.files.unpinFavorite",
-          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && viewItem == forgeflowFavorite",
-          "group": "5_forgeflow@1"
+          "submenu": "forgeflow.files.favoriteMenu",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && (viewItem == forgeflowFile || viewItem == forgeflowFavorite || viewItem == forgeflowWorktree)",
+          "group": "5_forgeflow@20"
+        },
+        {
+          "submenu": "forgeflow.worktrees.manageMenu",
+          "when": "(view == forgeflow.files || view == forgeflow.files.panel) && (viewItem == forgeflowWorktree || viewItem == forgeflowWorktreeMissing)",
+          "group": "5_forgeflow@30"
         },
         {
           "command": "forgeflow.files.openToSide",

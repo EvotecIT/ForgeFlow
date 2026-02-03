@@ -194,7 +194,7 @@ class WorktreesRootNode implements FilesNode {
       return [new HintNode('No git worktrees found for current workspace')];
     }
     if (filtered.length === 1) {
-      return buildWorktreeNodes(filtered[0], this.filterText);
+      return await buildWorktreeNodes(filtered[0], this.filterText);
     }
     return filtered.map((group) => new WorktreeRepoNode(group, this.filterText));
   }
@@ -218,7 +218,7 @@ class WorktreeRepoNode implements FilesNode {
   }
 
   public async getChildren(): Promise<FilesNode[]> {
-    return buildWorktreeNodes(this.group, this.filterText);
+    return await buildWorktreeNodes(this.group, this.filterText);
   }
 
   public getTreeItem(): vscode.TreeItem {
@@ -341,13 +341,17 @@ class WorktreeItemNode implements FilesNode, PathNode {
   public constructor(
     private readonly entry: WorktreeEntry,
     private readonly isCurrent: boolean,
-    private readonly filterText: string
+    private readonly filterText: string,
+    private readonly missing: boolean
   ) {
     this.path = entry.path;
     this.id = treeId('worktree', entry.path);
   }
 
   public async getChildren(): Promise<FilesNode[]> {
+    if (this.missing) {
+      return [];
+    }
     const stat = await statPath(this.path);
     if (!stat || stat.type !== vscode.FileType.Directory) {
       return [];
@@ -360,13 +364,16 @@ class WorktreeItemNode implements FilesNode, PathNode {
     const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Collapsed);
     item.resourceUri = vscode.Uri.file(this.path);
     item.tooltip = this.path;
-    item.contextValue = 'forgeflowWorktree';
+    item.contextValue = this.missing ? 'forgeflowWorktreeMissing' : 'forgeflowWorktree';
     const clickAction = getForgeFlowSettings().worktreesOpenAction;
     const detailParts: string[] = [];
     if (this.entry.detached) {
       detailParts.push('detached');
     } else if (this.entry.branch) {
       detailParts.push(this.entry.branch);
+    }
+    if (this.missing) {
+      detailParts.push('missing');
     }
     if (this.isCurrent) {
       detailParts.push('current');
@@ -377,7 +384,7 @@ class WorktreeItemNode implements FilesNode, PathNode {
     if (clickAction !== 'expand') {
       item.command = { command: 'forgeflow.worktrees.openDefault', title: 'Open worktree', arguments: [this.path] };
     }
-    item.iconPath = new vscode.ThemeIcon('repo');
+    item.iconPath = new vscode.ThemeIcon(this.missing ? 'warning' : 'repo');
     return item;
   }
 }
@@ -621,7 +628,7 @@ async function listWorktrees(root: string, repoRoot: string): Promise<WorktreeEn
   return entries;
 }
 
-function buildWorktreeNodes(group: WorktreeGroup, filterText: string): FilesNode[] {
+async function buildWorktreeNodes(group: WorktreeGroup, filterText: string): Promise<FilesNode[]> {
   const minChars = getForgeFlowSettings().filtersFilesMinChars;
   const filter = normalizeFilter(filterText, minChars);
   const mode = getForgeFlowSettings().filtersMatchMode;
@@ -643,10 +650,12 @@ function buildWorktreeNodes(group: WorktreeGroup, filterText: string): FilesNode
     return baseName(a.path).localeCompare(baseName(b.path));
   };
   const sorted = filtered.sort(byName);
-  return sorted.map((entry) => {
+  const nodes = await Promise.all(sorted.map(async (entry) => {
     const normalized = normalizeFsPath(path.resolve(entry.path));
-    return new WorktreeItemNode(entry, currentRoots.has(normalized), filterText);
-  });
+    const missing = !(await statPath(entry.path));
+    return new WorktreeItemNode(entry, currentRoots.has(normalized), filterText, missing);
+  }));
+  return nodes;
 }
 
 async function execGit(cwd: string, args: string[]): Promise<string | undefined> {
