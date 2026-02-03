@@ -338,18 +338,26 @@ class WorktreeItemNode implements FilesNode, PathNode {
   public readonly id: string;
   public readonly path: string;
 
-  public constructor(private readonly entry: WorktreeEntry, private readonly isCurrent: boolean) {
+  public constructor(
+    private readonly entry: WorktreeEntry,
+    private readonly isCurrent: boolean,
+    private readonly filterText: string
+  ) {
     this.path = entry.path;
     this.id = treeId('worktree', entry.path);
   }
 
   public async getChildren(): Promise<FilesNode[]> {
-    return [];
+    const stat = await statPath(this.path);
+    if (!stat || stat.type !== vscode.FileType.Directory) {
+      return [];
+    }
+    return await readChildren(this.path, this.filterText);
   }
 
   public getTreeItem(): vscode.TreeItem {
     const label = baseName(this.path);
-    const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
+    const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Collapsed);
     item.resourceUri = vscode.Uri.file(this.path);
     item.tooltip = this.path;
     item.contextValue = 'forgeflowWorktree';
@@ -365,7 +373,6 @@ class WorktreeItemNode implements FilesNode, PathNode {
     if (detailParts.length > 0) {
       item.description = detailParts.join(' • ');
     }
-    item.command = { command: 'forgeflow.worktrees.openDefault', title: 'Open worktree', arguments: [this.path] };
     item.iconPath = new vscode.ThemeIcon('repo');
     return item;
   }
@@ -634,7 +641,7 @@ function buildWorktreeNodes(group: WorktreeGroup, filterText: string): FilesNode
   const sorted = filtered.sort(byName);
   return sorted.map((entry) => {
     const normalized = normalizeFsPath(path.resolve(entry.path));
-    return new WorktreeItemNode(entry, currentRoots.has(normalized));
+    return new WorktreeItemNode(entry, currentRoots.has(normalized), filterText);
   });
 }
 
