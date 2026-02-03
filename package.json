@@ -3168,6 +3168,15 @@
           "description": "Show a Worktrees group in the Projects view.",
           "default": true
         },
+        "forgeflow.projects.worktreesGroupMode": {
+          "type": "string",
+          "description": "Worktrees group layout: grouped merges duplicates; flat shows every worktree.",
+          "enum": [
+            "grouped",
+            "flat"
+          ],
+          "default": "grouped"
+        },
         "forgeflow.projects.duplicateGroupMainFirst": {
           "type": "boolean",
           "description": "Keep the primary project at the top of duplicate/worktree groups, regardless of sort order.",

@@ -164,6 +164,7 @@ function getRootGroups(context: ProjectChildrenContext, settings: ReturnType<typ
   }
   const worktrees = settings.projectShowWorktreesGroup ? getWorktreeProjects(context, settings) : [];
   if (worktrees.length > 0) {
+    const groupWorktrees = settings.projectWorktreesGroupMode !== 'flat';
     groups.push(new ProjectGroupNode(
       'Worktrees',
       'forgeflowGroup',
@@ -171,7 +172,7 @@ function getRootGroups(context: ProjectChildrenContext, settings: ReturnType<typ
       false,
       undefined,
       context.duplicateInfo,
-      true,
+      groupWorktrees,
       summaries,
       showSummary,
       undefined,

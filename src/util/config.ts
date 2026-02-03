@@ -12,6 +12,7 @@ export interface ForgeFlowSettings {
   projectSortDirection: SortDirection;
   projectDuplicateGroupMainFirst: boolean;
   projectShowWorktreesGroup: boolean;
+  projectWorktreesGroupMode: 'grouped' | 'flat';
   worktreesOpenAction: 'expand' | 'addToWorkspace' | 'open' | 'openInNewWindow';
   identityScanDepth: number;
   identityPreferredFolders: string[];
@@ -92,6 +93,7 @@ export function getForgeFlowSettings(): ForgeFlowSettings {
     projectSortDirection: config.get<SortDirection>('projects.sortDirection', 'desc'),
     projectDuplicateGroupMainFirst: config.get<boolean>('projects.duplicateGroupMainFirst', true),
     projectShowWorktreesGroup: config.get<boolean>('projects.showWorktreesGroup', true),
+    projectWorktreesGroupMode: config.get<'grouped' | 'flat'>('projects.worktreesGroupMode', 'grouped'),
     worktreesOpenAction: config.get<'expand' | 'addToWorkspace' | 'open' | 'openInNewWindow'>(
       'worktrees.openAction',
       'expand'
