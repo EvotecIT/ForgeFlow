@@ -449,6 +449,10 @@ ${projectsWebviewStyles}
       const presets = details.runPresets || [];
       const runs = details.recentRuns || [];
       const browseRoot = details.browseRoot || [];
+      const runTarget = details.preferredRunTarget || 'default';
+      const runProfile = details.preferredRunProfileLabel || details.preferredRunProfileId || 'default';
+      const runCwd = details.preferredRunWorkingDirectory || 'default';
+      const runKeepOpen = details.preferredRunKeepOpen || 'default';
 
       const renderList = (items, type) => {
         if (!items.length) {
@@ -474,6 +478,37 @@ ${projectsWebviewStyles}
       };
 
       return \`
+        <div class="detail-section">
+          <div class="detail-title">Run Settings</div>
+          <div class="detail-item">
+            <span>Run target: \${escapeHtml(runTarget)}</span>
+            <span class="detail-actions">
+              <button class="action-button" data-action="set-run-target">Set</button>
+              <button class="action-button" data-action="clear-run-target">Clear</button>
+            </span>
+          </div>
+          <div class="detail-item">
+            <span>Run profile: \${escapeHtml(runProfile)}</span>
+            <span class="detail-actions">
+              <button class="action-button" data-action="set-run-profile">Set</button>
+              <button class="action-button" data-action="clear-run-profile">Clear</button>
+            </span>
+          </div>
+          <div class="detail-item">
+            <span>Run keep-open: \${escapeHtml(runKeepOpen)}</span>
+            <span class="detail-actions">
+              <button class="action-button" data-action="set-run-keep-open">Set</button>
+              <button class="action-button" data-action="clear-run-keep-open">Clear</button>
+            </span>
+          </div>
+          <div class="detail-item">
+            <span>Run cwd: \${escapeHtml(runCwd)}</span>
+            <span class="detail-actions">
+              <button class="action-button" data-action="set-run-cwd">Set</button>
+              <button class="action-button" data-action="clear-run-cwd">Clear</button>
+            </span>
+          </div>
+        </div>
         <div class="detail-section">
           <div class="detail-title">Pinned Items</div>
           \${renderList(pinned, 'pinned')}

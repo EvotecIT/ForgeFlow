@@ -176,6 +176,38 @@ export class ProjectsWebviewProvider implements vscode.WebviewViewProvider {
       case 'set-tags':
         await vscode.commands.executeCommand('forgeflow.projects.setTags', project);
         return;
+      case 'set-run-target':
+        await vscode.commands.executeCommand('forgeflow.run.setProjectTarget', project);
+        await this.refresh();
+        return;
+      case 'clear-run-target':
+        await vscode.commands.executeCommand('forgeflow.run.clearProjectTarget', project);
+        await this.refresh();
+        return;
+      case 'set-run-profile':
+        await vscode.commands.executeCommand('forgeflow.run.setProjectProfile', project);
+        await this.refresh();
+        return;
+      case 'clear-run-profile':
+        await vscode.commands.executeCommand('forgeflow.run.clearProjectProfile', project);
+        await this.refresh();
+        return;
+      case 'set-run-keep-open':
+        await vscode.commands.executeCommand('forgeflow.run.setProjectKeepOpen', project);
+        await this.refresh();
+        return;
+      case 'clear-run-keep-open':
+        await vscode.commands.executeCommand('forgeflow.run.clearProjectKeepOpen', project);
+        await this.refresh();
+        return;
+      case 'set-run-cwd':
+        await vscode.commands.executeCommand('forgeflow.run.setProjectWorkingDirectory', project);
+        await this.refresh();
+        return;
+      case 'clear-run-cwd':
+        await vscode.commands.executeCommand('forgeflow.run.clearProjectWorkingDirectory', project);
+        await this.refresh();
+        return;
       case 'open-pinned': {
         const path = message.extra;
         if (path) {

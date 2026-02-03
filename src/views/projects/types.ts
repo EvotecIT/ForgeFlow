@@ -107,6 +107,11 @@ export interface ProjectsWebviewPinnedItem {
 
 export interface ProjectsWebviewDetails {
   projectId: string;
+  preferredRunProfileId?: string;
+  preferredRunProfileLabel?: string;
+  preferredRunTarget?: Project['preferredRunTarget'];
+  preferredRunWorkingDirectory?: string;
+  preferredRunKeepOpen?: Project['preferredRunKeepOpen'];
   pinnedItems: ProjectsWebviewPinnedItem[];
   entryPoints: ProjectsWebviewEntry[];
   buildScripts: ProjectsWebviewEntry[];

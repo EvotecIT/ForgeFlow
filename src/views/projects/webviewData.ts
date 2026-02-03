@@ -19,6 +19,7 @@ import {
   collectTagCounts,
   formatProjectDescription,
   formatSummaryTooltip,
+  resolveProjectProfileLabel,
   sortProjects,
   toWebviewEntry
 } from './helpers';
@@ -146,8 +147,14 @@ export async function buildProjectsWebviewDetails(
   const recentRuns = params.getRecentRuns(params.project);
   const runPresets = params.project.runPresets ?? [];
   const browseRoot = await readBrowseEntries(params.project.path);
+  const profileLabel = resolveProjectProfileLabel(params.project);
   return {
     projectId: params.project.id,
+    preferredRunProfileId: params.project.preferredRunProfileId,
+    preferredRunProfileLabel: profileLabel,
+    preferredRunTarget: params.project.preferredRunTarget,
+    preferredRunWorkingDirectory: params.project.preferredRunWorkingDirectory,
+    preferredRunKeepOpen: params.project.preferredRunKeepOpen,
     pinnedItems,
     entryPoints: groups.entryPoints.map((entry) => toWebviewEntry(entry)),
     buildScripts: groups.buildScripts.map((entry) => toWebviewEntry(entry)),
