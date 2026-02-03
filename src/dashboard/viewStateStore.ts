@@ -4,6 +4,8 @@ export interface DashboardViewState {
   sortKey?: string;
   sortDir?: 'asc' | 'desc';
   colWidths?: Record<string, number>;
+  expandAllGroups?: boolean;
+  showAllChildren?: boolean;
 }
 
 const DASHBOARD_VIEW_STATE_KEY = 'forgeflow.dashboard.viewState.v1';

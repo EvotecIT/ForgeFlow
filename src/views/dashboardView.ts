@@ -58,7 +58,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           authSummary: this.authSummary,
           sortKey: viewState.sortKey,
           sortDir: viewState.sortDir,
-          colWidths: viewState.colWidths
+          colWidths: viewState.colWidths,
+          expandAllGroups: viewState.expandAllGroups,
+          showAllChildren: viewState.showAllChildren
         });
       }
     });
@@ -82,7 +84,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         progressTotal: this.progressTotal,
         sortKey: viewState.sortKey,
         sortDir: viewState.sortDir,
-        colWidths: viewState.colWidths
+        colWidths: viewState.colWidths,
+        expandAllGroups: viewState.expandAllGroups,
+        showAllChildren: viewState.showAllChildren
       });
     }
 
@@ -91,7 +95,19 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       void webviewView.webview.postMessage({ type: 'focusFilter' });
     }
 
-    webviewView.webview.onDidReceiveMessage(async (message: { type?: string; url?: string; path?: string; filter?: string; tags?: string[]; sortKey?: string; sortDir?: string; colWidths?: Record<string, number> }) => {
+    webviewView.webview.onDidReceiveMessage(async (message: {
+      type?: string;
+      url?: string;
+      path?: string;
+      paths?: string[];
+      filter?: string;
+      tags?: string[];
+      sortKey?: string;
+      sortDir?: string;
+      colWidths?: Record<string, number>;
+      expandAllGroups?: boolean;
+      showAllChildren?: boolean;
+    }) => {
       if (message.type === 'refresh') {
         await this.refresh();
       }
@@ -100,6 +116,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           this.refreshController.abort();
           vscode.window.setStatusBarMessage('ForgeFlow: Dashboard refresh cancelled.', 3000);
           const filter = this.filterStore.getFilter();
+          const viewState = this.viewStateStore.getState();
           const settings = getForgeFlowSettings();
           this.tagFilter = this.tagFilterStore.getFilter();
           if (this.view) {
@@ -111,7 +128,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
               filterMatchMode: settings.filtersMatchMode,
               authSummary: this.authSummary,
               progressCurrent: this.progressCurrent,
-              progressTotal: this.progressTotal
+              progressTotal: this.progressTotal,
+              expandAllGroups: viewState.expandAllGroups,
+              showAllChildren: viewState.showAllChildren
             });
           }
         }
@@ -131,7 +150,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         const next: DashboardViewState = {
           sortKey: typeof message.sortKey === 'string' ? message.sortKey : undefined,
           sortDir,
-          colWidths: message.colWidths ?? undefined
+          colWidths: message.colWidths ?? undefined,
+          expandAllGroups: typeof message.expandAllGroups === 'boolean' ? message.expandAllGroups : undefined,
+          showAllChildren: typeof message.showAllChildren === 'boolean' ? message.showAllChildren : undefined
         };
         await this.viewStateStore.setState(next);
       }
@@ -141,12 +162,25 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       if (message.type === 'openProject' && message.path) {
         await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(message.path), false);
       }
+      if (message.type === 'openProjects' && Array.isArray(message.paths)) {
+        const uniquePaths = Array.from(new Set(message.paths.filter((value) => typeof value === 'string' && value.trim())));
+        for (const path of uniquePaths) {
+          await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(path), true);
+        }
+      }
       if (message.type === 'revealInOs' && message.path) {
         await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(message.path));
       }
       if (message.type === 'copyPath' && message.path) {
         await vscode.env.clipboard.writeText(message.path);
         vscode.window.setStatusBarMessage('ForgeFlow: Path copied.', 2000);
+      }
+      if (message.type === 'copyPaths' && Array.isArray(message.paths)) {
+        const uniquePaths = Array.from(new Set(message.paths.filter((value) => typeof value === 'string' && value.trim())));
+        if (uniquePaths.length > 0) {
+          await vscode.env.clipboard.writeText(uniquePaths.join('\\n'));
+          vscode.window.setStatusBarMessage('ForgeFlow: Paths copied.', 2000);
+        }
       }
       if (message.type === 'copyRelativePath' && message.path) {
         await vscode.env.clipboard.writeText(message.path);
@@ -225,7 +259,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       progressTotal: this.progressTotal,
       sortKey: viewState.sortKey,
       sortDir: viewState.sortDir,
-      colWidths: viewState.colWidths
+      colWidths: viewState.colWidths,
+      expandAllGroups: viewState.expandAllGroups,
+      showAllChildren: viewState.showAllChildren
     });
     try {
       const rows = await this.dashboardService.buildRows(signal, (current, total, label) => {
@@ -256,7 +292,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         progressTotal: this.progressTotal,
         sortKey: viewState.sortKey,
         sortDir: viewState.sortDir,
-        colWidths: viewState.colWidths
+        colWidths: viewState.colWidths,
+        expandAllGroups: viewState.expandAllGroups,
+        showAllChildren: viewState.showAllChildren
       });
     } catch (error) {
       if (signal.aborted) {
@@ -282,7 +320,9 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         progressTotal: this.progressTotal,
         sortKey: viewState.sortKey,
         sortDir: viewState.sortDir,
-        colWidths: viewState.colWidths
+        colWidths: viewState.colWidths,
+        expandAllGroups: viewState.expandAllGroups,
+        showAllChildren: viewState.showAllChildren
       });
     }
   }

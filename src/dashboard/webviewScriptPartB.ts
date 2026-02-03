@@ -87,6 +87,40 @@ export const dashboardWebviewScriptPartB = `
         }
       });
     });
+    function parsePaths(raw) {
+      if (!raw) {
+        return [];
+      }
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          return parsed.filter((item) => typeof item === 'string');
+        }
+      } catch {
+        // ignore parse errors
+      }
+      return [];
+    }
+    document.querySelectorAll('.group-open-all').forEach((link) => {
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        const raw = link.getAttribute('data-paths');
+        const paths = parsePaths(raw);
+        if (paths.length > 0) {
+          vscode.postMessage({ type: 'openProjects', paths });
+        }
+      });
+    });
+    document.querySelectorAll('.group-copy-paths').forEach((link) => {
+      link.addEventListener('click', (event) => {
+        event.preventDefault();
+        const raw = link.getAttribute('data-paths');
+        const paths = parsePaths(raw);
+        if (paths.length > 0) {
+          vscode.postMessage({ type: 'copyPaths', paths });
+        }
+      });
+    });
     document.querySelectorAll('.group-toggle').forEach((button) => {
       button.addEventListener('click', (event) => {
         event.preventDefault();
@@ -114,6 +148,7 @@ export const dashboardWebviewScriptPartB = `
     const focusButton = document.getElementById('focus');
     const cancelButton = document.getElementById('cancel');
     const toggleGroupsButton = document.getElementById('toggle-groups');
+    const toggleChildrenButton = document.getElementById('toggle-children');
     const countLabel = document.getElementById('count');
     const emptyRow = document.getElementById('filter-empty');
     const summaryEl = document.getElementById('summary');
@@ -136,7 +171,8 @@ export const dashboardWebviewScriptPartB = `
     let headerHeight = 48;
     let colWidths = {};
     let contextTarget = null;
-    let expandAll = false;
+    let expandAll = initialState.expandAllGroups === true;
+    let showAllChildren = initialState.showAllChildren === true;
 
     document.querySelectorAll('.tag-chip').forEach((button) => {
       button.addEventListener('click', (event) => {
@@ -252,6 +288,13 @@ export const dashboardWebviewScriptPartB = `
       toggleGroupsButton.textContent = expandAll ? 'Collapse groups' : 'Expand groups';
     }
 
+    function updateChildrenToggle() {
+      if (!toggleChildrenButton) {
+        return;
+      }
+      toggleChildrenButton.textContent = showAllChildren ? 'Hide non-matching children' : 'Show all children';
+    }
+
     function updateSummary(rows, visible) {
       if (!summaryEl) {
         return;
@@ -348,9 +391,11 @@ export const dashboardWebviewScriptPartB = `
         sortKey,
         sortDir,
         colWidths,
-        activeTags: Array.from(activeTags.values())
+        activeTags: Array.from(activeTags.values()),
+        expandAllGroups: expandAll,
+        showAllChildren
       });
-      vscode.postMessage({ type: 'setViewState', sortKey, sortDir, colWidths });
+      vscode.postMessage({ type: 'setViewState', sortKey, sortDir, colWidths, expandAllGroups: expandAll, showAllChildren });
     }
 
     function normalizeFilter(value) {

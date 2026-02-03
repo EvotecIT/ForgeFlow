@@ -99,7 +99,8 @@ export const dashboardWebviewScriptPartC = `
           row.dataset.expanded = expanded ? 'true' : 'false';
           groupChildren.forEach((child) => {
             const childMatch = child.dataset.match === 'true';
-            child.hidden = !(expanded && isMatch && childMatch);
+            const showChild = expanded && isMatch && (showAllChildren || childMatch);
+            child.hidden = !showChild;
           });
         } else {
           const isMatch = rowMatchesFilter(row, filter, activeTagKeys);
@@ -344,8 +345,20 @@ export const dashboardWebviewScriptPartC = `
     const seededSortKey = typeof seeded.sortKey === 'string' ? seeded.sortKey : undefined;
     const seededSortDir = seeded.sortDir === 'asc' || seeded.sortDir === 'desc' ? seeded.sortDir : undefined;
     const seededWidths = seeded.colWidths || {};
+    const seededExpandAll = seeded.expandAllGroups === true;
+    const seededShowAll = seeded.showAllChildren === true;
     const savedTags = Array.isArray(saved.activeTags) ? saved.activeTags : [];
     const seededTags = Array.isArray(seeded.activeTags) ? seeded.activeTags : [];
+    if (typeof saved.expandAllGroups === 'boolean') {
+      expandAll = saved.expandAllGroups;
+    } else if (seededExpandAll) {
+      expandAll = true;
+    }
+    if (typeof saved.showAllChildren === 'boolean') {
+      showAllChildren = saved.showAllChildren;
+    } else if (seededShowAll) {
+      showAllChildren = true;
+    }
     if (saved.sortKey || seededSortKey) {
       sortKey = String(saved.sortKey || seededSortKey);
     }
@@ -388,6 +401,13 @@ export const dashboardWebviewScriptPartC = `
         applyFilter();
       });
     }
+    if (toggleChildrenButton) {
+      toggleChildrenButton.addEventListener('click', () => {
+        showAllChildren = !showAllChildren;
+        updateChildrenToggle();
+        applyFilter();
+      });
+    }
     if (cancelButton) {
       cancelButton.addEventListener('click', () => {
         vscode.postMessage({ type: 'cancelRefresh' });
@@ -400,6 +420,7 @@ export const dashboardWebviewScriptPartC = `
     }
     updateHeaderHeight();
     updateGroupToggle();
+    updateChildrenToggle();
     window.addEventListener('resize', () => {
       updateHeaderHeight();
     });

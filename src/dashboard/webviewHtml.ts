@@ -18,6 +18,8 @@ export interface DashboardRenderState {
   sortKey?: string;
   sortDir?: 'asc' | 'desc';
   colWidths?: Record<string, number>;
+  expandAllGroups?: boolean;
+  showAllChildren?: boolean;
 }
 
 export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webview, state?: DashboardRenderState): string {
@@ -38,7 +40,9 @@ export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webvie
     colWidths: state?.colWidths,
     activeTags: state?.activeTags ?? [],
     filterMinChars,
-    filterMatchMode: state?.filterMatchMode ?? 'substring'
+    filterMatchMode: state?.filterMatchMode ?? 'substring',
+    expandAllGroups: state?.expandAllGroups ?? false,
+    showAllChildren: state?.showAllChildren ?? false
   };
   const initialStateJson = serializeJson(initialState);
 
@@ -69,6 +73,7 @@ ${dashboardWebviewStyles}
       <button class="clear" id="clear">Clear</button>
       <button class="focus" id="focus">Focus</button>
       <button class="toggle-groups" id="toggle-groups" title="Expand or collapse grouped duplicates">Expand groups</button>
+      <button class="toggle-children" id="toggle-children" title="Toggle child rows when filtering">Show all children</button>
       <span class="count" id="count"></span>
       ${state?.loading ? '<button class="cancel" id="cancel">Cancel</button>' : ''}
       <button class="refresh" id="refresh">Refresh</button>
@@ -206,7 +211,17 @@ function renderRow(row: DashboardRow, updatedAt?: number, options?: RenderRowOpt
     ? `<span class="group-summary">${escapeHtml(row.groupSummary)}</span>`
     : '';
   const localCell = `<div class="local-cell">${groupToggle}${localLabel}${childBadge}${groupCountBadge}${groupSummary}</div>`;
-  const actionsCell = buildActionsCell(row);
+  const groupPaths = isGroup
+    ? [row.projectPath, ...(row.groupChildren ?? []).map((child) => child.projectPath)].filter((value): value is string => Boolean(value))
+    : [];
+  const uniqueGroupPaths = Array.from(new Set(groupPaths));
+  const groupActions = isGroup && uniqueGroupPaths.length > 0
+    ? [
+        actionButton('group-open-all', JSON.stringify(uniqueGroupPaths), 'Open all in new windows', iconStackOpen(), 'data-paths'),
+        actionButton('group-copy-paths', JSON.stringify(uniqueGroupPaths), 'Copy all paths', iconCopyList(), 'data-paths')
+      ]
+    : [];
+  const actionsCell = buildActionsCell(row, groupActions);
 
   const statusBadge = statusLabel
     ? `<span class="badge status ${statusClass}" title="${escapeHtml(formatStatusTooltip(row.providerStatus))}">${escapeHtml(statusLabel)}</span>`
@@ -269,7 +284,7 @@ function renderRow(row: DashboardRow, updatedAt?: number, options?: RenderRowOpt
   `;
 }
 
-function buildActionsCell(row: DashboardRow): string {
+function buildActionsCell(row: DashboardRow, extraActions: string[] = []): string {
   const actions: string[] = [];
   if (row.repoUrl) {
     actions.push(actionButton('repo-open', row.repoUrl, 'Open repository', iconLink(), 'data-url'));
@@ -285,7 +300,13 @@ function buildActionsCell(row: DashboardRow): string {
     actions.push(actionButton('open-vs', row.projectPath, 'Open in Visual Studio', iconWindow(), 'data-path'));
   }
   if (actions.length === 0) {
-    return `<span class="mono">n/a</span>`;
+    if (extraActions.length === 0) {
+      return `<span class="mono">n/a</span>`;
+    }
+    return `<span class="actions">${extraActions.join('')}</span>`;
+  }
+  if (extraActions.length > 0) {
+    actions.push(...extraActions);
   }
   return `<span class="actions">${actions.join('')}</span>`;
 }
@@ -299,7 +320,13 @@ function renderTagsCell(tags: string[]): string {
     .join('');
 }
 
-function actionButton(className: string, value: string, title: string, icon: string, attr: 'data-path' | 'data-url' | 'data-relative'): string {
+function actionButton(
+  className: string,
+  value: string,
+  title: string,
+  icon: string,
+  attr: 'data-path' | 'data-url' | 'data-relative' | 'data-paths'
+): string {
   const dataValue = escapeHtml(value);
   return `<button class="action-button ${className}" ${attr}="${dataValue}" title="${escapeHtml(title)}">${icon}<span class="sr-only">${escapeHtml(title)}</span></button>`;
 }
@@ -342,6 +369,14 @@ function iconWindow(): string {
 
 function iconChevron(): string {
   return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6-1.4-1.4L12.2 12 7.6 7.4 9 6z"></path></svg>';
+}
+
+function iconStackOpen(): string {
+  return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6l8-4 8 4-8 4-8-4zm0 6l8 4 8-4v3l-8 4-8-4v-3zm0-3l8 4 8-4v-2l-8 4-8-4v2z"></path></svg>';
+}
+
+function iconCopyList(): string {
+  return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7h10v2H9V7zm0 4h10v2H9v-2zm0 4h10v2H9v-2zM5 7h2v2H5V7zm0 4h2v2H5v-2zm0 4h2v2H5v-2z"></path></svg>';
 }
 
 function renderEmptyState(state?: DashboardRenderState): string {
