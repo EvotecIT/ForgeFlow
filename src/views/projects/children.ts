@@ -171,7 +171,7 @@ function getRootGroups(context: ProjectChildrenContext, settings: ReturnType<typ
       false,
       undefined,
       context.duplicateInfo,
-      false,
+      true,
       summaries,
       showSummary,
       undefined,
