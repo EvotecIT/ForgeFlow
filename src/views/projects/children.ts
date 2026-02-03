@@ -70,7 +70,7 @@ export async function getProjectChildren(context: ProjectChildrenContext, elemen
   if (context.isScanning) {
     return withRootHint([
       new ProjectHintNode('Scanning projects...', 'forgeflow.projects.refresh'),
-      ...getRootGroups(context)
+      ...getRootGroups(context, settings)
     ]);
   }
   if (context.gitCommitLoading) {
@@ -79,7 +79,7 @@ export async function getProjectChildren(context: ProjectChildrenContext, elemen
       : 'Loading git commit data...';
     return withRootHint([
       new ProjectHintNode(label, 'forgeflow.projects.refresh'),
-      ...getRootGroups(context)
+      ...getRootGroups(context, settings)
     ]);
   }
   if (context.modifiedLoading) {
@@ -88,7 +88,7 @@ export async function getProjectChildren(context: ProjectChildrenContext, elemen
       : 'Loading modified times...';
     return withRootHint([
       new ProjectHintNode(label, 'forgeflow.projects.refresh'),
-      ...getRootGroups(context)
+      ...getRootGroups(context, settings)
     ]);
   }
   if (context.projects.length === 0) {
@@ -103,7 +103,7 @@ export async function getProjectChildren(context: ProjectChildrenContext, elemen
   if (trimmedFilter && !hasTextFilter) {
     return withRootHint([
       new ProjectHintNode(`Filter needs at least ${minChars} characters.`, 'forgeflow.projects.filter'),
-      ...getRootGroups(context)
+      ...getRootGroups(context, settings)
     ]);
   }
   if ((trimmedFilter || context.tagFilter.length > 0) && filteredProjects.length === 0) {
