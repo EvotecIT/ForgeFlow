@@ -49,6 +49,7 @@ export interface ProjectsWebviewProject {
   preferredRunProfileId?: string;
   preferredRunTarget?: Project['preferredRunTarget'];
   preferredRunWorkingDirectory?: string;
+  preferredRunKeepOpen?: Project['preferredRunKeepOpen'];
   lastOpened?: number;
   lastActivity?: number;
   lastModified?: number;

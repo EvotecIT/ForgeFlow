@@ -416,6 +416,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     void this.view.webview.postMessage({ type: 'focusFilter' });
   }
 
+  public async setActionsColumnHidden(hidden: boolean): Promise<void> {
+    const config = vscode.workspace.getConfiguration('forgeflow');
+    await config.update('dashboard.hideActionsColumn', hidden, vscode.ConfigurationTarget.Workspace);
+    if (this.view) {
+      void this.view.webview.postMessage({ type: 'setActionsVisibility', hide: hidden });
+    }
+  }
+
   private async getAuthSummary(): Promise<string> {
     const entries: string[] = [];
     const gitHub = await this.getGitHubSummary();

@@ -29,6 +29,7 @@ export interface Project {
   preferredRunProfileId?: string;
   preferredRunTarget?: 'integrated' | 'external' | 'externalAdmin';
   preferredRunWorkingDirectory?: string;
+  preferredRunKeepOpen?: 'never' | 'onError' | 'always';
   runPresets?: RunPreset[];
   identity?: ProjectIdentity;
 }

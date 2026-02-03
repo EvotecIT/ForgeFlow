@@ -302,6 +302,21 @@ export function registerRunCommands({
       }
       await configureProjectWorkingDirectory(project, projectsStore, projectsProvider);
     }),
+    vscode.commands.registerCommand('forgeflow.run.setProjectKeepOpen', async (target?: unknown) => {
+      const project = resolveProjectFromTarget(target, projectsStore);
+      if (!project) {
+        return;
+      }
+      await configureProjectRunKeepOpen(project, projectsStore, projectsProvider);
+    }),
+    vscode.commands.registerCommand('forgeflow.run.clearProjectKeepOpen', async (target?: unknown) => {
+      const project = resolveProjectFromTarget(target, projectsStore);
+      if (!project) {
+        return;
+      }
+      await projectsStore.updatePreferredRunKeepOpen(project.id, undefined);
+      await projectsProvider.refresh();
+    }),
     vscode.commands.registerCommand('forgeflow.run.clearProjectWorkingDirectory', async (target?: unknown) => {
       const project = resolveProjectFromTarget(target, projectsStore);
       if (!project) {
@@ -367,5 +382,26 @@ async function configureProjectWorkingDirectory(
     }
   }
   await projectsStore.updatePreferredRunWorkingDirectory(project.id, trimmed || undefined);
+  await projectsProvider.refresh();
+}
+
+async function configureProjectRunKeepOpen(
+  project: { id: string; name: string; preferredRunKeepOpen?: 'never' | 'onError' | 'always' },
+  projectsStore: ProjectsStore,
+  projectsProvider: ProjectsViewProvider
+): Promise<void> {
+  const options: Array<{ label: string; value: 'never' | 'onError' | 'always'; description?: string }> = [
+    { label: 'Never', value: 'never', description: 'Close immediately after run' },
+    { label: 'On Error', value: 'onError', description: 'Pause only if exit code or error' },
+    { label: 'Always', value: 'always', description: 'Always pause after run' }
+  ];
+  const pick = await vscode.window.showQuickPick(
+    options.map((option) => ({ ...option, picked: option.value === project.preferredRunKeepOpen })),
+    { placeHolder: `Select keep-open behavior for ${project.name}` }
+  );
+  if (!pick) {
+    return;
+  }
+  await projectsStore.updatePreferredRunKeepOpen(project.id, pick.value);
   await projectsProvider.refresh();
 }

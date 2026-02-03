@@ -485,6 +485,14 @@ export const dashboardWebviewScriptPartC = `
         setActiveTags(tags);
         applyFilter();
       }
+      if (message.type === 'setActionsVisibility') {
+        hideActionsColumn = message.hide === true;
+        if (document.body) {
+          document.body.dataset.hideActions = hideActionsColumn ? 'true' : 'false';
+        }
+        updateActionsToggle();
+        persistState();
+      }
       if (message.type === 'progress') {
         const current = Number(message.current || 0);
         const total = Number(message.total || 0);

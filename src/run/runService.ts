@@ -31,6 +31,9 @@ export class RunService implements vscode.Disposable {
       return;
     }
     const { profile, executable, reasonOverride } = resolved;
+    const project = request.projectId
+      ? this.projectsStore.list().find((item) => item.id === request.projectId)
+      : undefined;
 
     if (profile.kind === 'custom' && !profile.executablePath) {
       vscode.window.showErrorMessage('ForgeFlow: Custom profile is missing executablePath.');
@@ -63,6 +66,7 @@ export class RunService implements vscode.Disposable {
       vscode.window.setStatusBarMessage(`ForgeFlow: Run ${targetLabel} (${profileDetail})${reasonSuffix}.`, 3000);
     }
     if (target === 'integrated') {
+      const keepOpen = request.keepOpenMode ?? project?.preferredRunKeepOpen ?? settings.runIntegratedKeepOpen;
       await this.runIntegrated(
         request,
         profile,
@@ -70,7 +74,7 @@ export class RunService implements vscode.Disposable {
         settings.runIntegratedReuseTerminal,
         settings.runIntegratedReuseScope,
         settings.runIntegratedPerProjectTerminal,
-        settings.runIntegratedKeepOpen
+        keepOpen
       );
       return;
     }

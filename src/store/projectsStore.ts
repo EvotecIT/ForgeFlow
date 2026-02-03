@@ -24,6 +24,7 @@ interface ProjectWorkspaceOverride {
   preferredRunProfileId?: string;
   preferredRunTarget?: 'integrated' | 'external' | 'externalAdmin';
   preferredRunWorkingDirectory?: string;
+  preferredRunKeepOpen?: 'never' | 'onError' | 'always';
 }
 
 interface ProjectScanLock {
@@ -82,6 +83,7 @@ export class ProjectsStore {
       preferredRunProfileId: overrides[project.id]?.preferredRunProfileId ?? project.preferredRunProfileId,
       preferredRunTarget: overrides[project.id]?.preferredRunTarget ?? project.preferredRunTarget,
       preferredRunWorkingDirectory: overrides[project.id]?.preferredRunWorkingDirectory ?? project.preferredRunWorkingDirectory,
+      preferredRunKeepOpen: overrides[project.id]?.preferredRunKeepOpen ?? project.preferredRunKeepOpen,
       entryPointOverrides: project.entryPointOverrides ?? [],
       pinnedItems: project.pinnedItems ?? [],
       runPresets: project.runPresets ?? []
@@ -267,6 +269,13 @@ export class ProjectsStore {
     await this.bumpWorkspaceRevision();
   }
 
+  public async updatePreferredRunKeepOpen(projectId: string, keepOpen?: 'never' | 'onError' | 'always'): Promise<void> {
+    const overrides = this.state.getWorkspace<Record<string, ProjectWorkspaceOverride>>(WORKSPACE_OVERRIDES_KEY, {});
+    overrides[projectId] = { ...overrides[projectId], preferredRunKeepOpen: keepOpen };
+    await this.state.setWorkspace(WORKSPACE_OVERRIDES_KEY, overrides);
+    await this.bumpWorkspaceRevision();
+  }
+
   public async removeProject(projectId: string): Promise<void> {
     const projects = this.state.getGlobal<Project[]>(PROJECTS_KEY, []);
     const next = projects.filter((project) => project.id !== projectId);
@@ -347,6 +356,7 @@ export class ProjectsStore {
     delete sanitized.preferredRunProfileId;
     delete sanitized.preferredRunTarget;
     delete sanitized.preferredRunWorkingDirectory;
+    delete sanitized.preferredRunKeepOpen;
     return sanitized;
   }
 
@@ -378,6 +388,10 @@ export class ProjectsStore {
         && project.preferredRunWorkingDirectory !== current.preferredRunWorkingDirectory
       ) {
         next = { ...next, preferredRunWorkingDirectory: project.preferredRunWorkingDirectory };
+        changed = true;
+      }
+      if (project.preferredRunKeepOpen !== undefined && project.preferredRunKeepOpen !== current.preferredRunKeepOpen) {
+        next = { ...next, preferredRunKeepOpen: project.preferredRunKeepOpen };
         changed = true;
       }
       if (changed) {

@@ -55,6 +55,10 @@ export function registerDashboardCommands({
     }),
     vscode.commands.registerCommand('forgeflow.dashboard.configureIdentity', async () => {
       await configureProjectIdentity(projectsStore, dashboardProvider);
+    }),
+    vscode.commands.registerCommand('forgeflow.dashboard.toggleActionsColumn', async () => {
+      const settings = getForgeFlowSettings();
+      await dashboardProvider.setActionsColumnHidden(!settings.dashboardHideActionsColumn);
     })
   );
 }

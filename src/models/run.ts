@@ -15,6 +15,7 @@ export interface RunRequest {
   projectId?: string;
   profileId?: string;
   target?: RunTarget;
+  keepOpenMode?: 'never' | 'onError' | 'always';
 }
 
 export type RunHistoryKind = 'powershell' | 'command' | 'task';

@@ -115,6 +115,7 @@ export function buildProjectsWebviewSnapshot(params: WebviewSnapshotParams): Pro
         preferredRunProfileId: project.preferredRunProfileId,
         preferredRunTarget: project.preferredRunTarget,
         preferredRunWorkingDirectory: project.preferredRunWorkingDirectory,
+        preferredRunKeepOpen: project.preferredRunKeepOpen,
         lastOpened: project.lastOpened,
         lastActivity: project.lastActivity,
         lastModified: project.lastModified,

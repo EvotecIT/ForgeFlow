@@ -378,6 +378,11 @@ export class ProjectItemNode implements ProjectNode, ProjectNodeWithProject {
         ? `${tooltip}\nRun cwd: ${this.project.preferredRunWorkingDirectory}`
         : `Run cwd: ${this.project.preferredRunWorkingDirectory}`;
     }
+    if (this.project.preferredRunKeepOpen) {
+      tooltip = tooltip
+        ? `${tooltip}\nRun keep-open: ${this.project.preferredRunKeepOpen}`
+        : `Run keep-open: ${this.project.preferredRunKeepOpen}`;
+    }
     if (tooltip) {
       item.tooltip = tooltip;
     }

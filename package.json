@@ -977,9 +977,21 @@
         "category": "ForgeFlow"
       },
       {
+        "command": "forgeflow.run.setProjectKeepOpen",
+        "title": "Set Project Run Keep-Open",
+        "shortTitle": "Set Run Keep-Open",
+        "category": "ForgeFlow"
+      },
+      {
         "command": "forgeflow.run.clearProjectTarget",
         "title": "Clear Project Run Target",
         "shortTitle": "Clear Run Target",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.run.clearProjectKeepOpen",
+        "title": "Clear Project Run Keep-Open",
+        "shortTitle": "Clear Run Keep-Open",
         "category": "ForgeFlow"
       },
       {
@@ -1125,6 +1137,12 @@
       {
         "command": "forgeflow.dashboard.configureIdentity",
         "title": "Configure Project Identity",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.dashboard.toggleActionsColumn",
+        "title": "Toggle Dashboard Actions Column",
+        "shortTitle": "Toggle Actions Column",
         "category": "ForgeFlow"
       },
       {
@@ -1708,6 +1726,14 @@
         },
         {
           "command": "forgeflow.run.clearProjectTarget",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        },
+        {
+          "command": "forgeflow.run.setProjectKeepOpen",
+          "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        },
+        {
+          "command": "forgeflow.run.clearProjectKeepOpen",
           "when": "(view == forgeflow.projects || view == forgeflow.projects.panel) && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
         },
         {
