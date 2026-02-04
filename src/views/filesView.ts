@@ -66,11 +66,14 @@ export class FilesViewProvider implements vscode.TreeDataProvider<FilesNode> {
 
   public async getChildren(element?: FilesNode): Promise<FilesNode[]> {
     if (!element) {
-      return [
+      const nodes: FilesNode[] = [
         new FavoritesRootNode(this.favoritesStore, this.filterText),
-        new WorkspaceRootNode(this.filterText),
-        new WorktreesRootNode(this.filterText, () => this.getWorktreeGroups())
+        new WorkspaceRootNode(this.filterText)
       ];
+      if (await this.shouldShowWorktreesRoot()) {
+        nodes.push(new WorktreesRootNode(this.filterText, () => this.getWorktreeGroups()));
+      }
+      return nodes;
     }
     return await element.getChildren();
   }
@@ -85,6 +88,11 @@ export class FilesViewProvider implements vscode.TreeDataProvider<FilesNode> {
       return [];
     }
     return await loadWorktreeGroups(roots, this.worktreeCache, this.worktreeCacheTtlMs);
+  }
+
+  private async shouldShowWorktreesRoot(): Promise<boolean> {
+    const groups = await this.getWorktreeGroups();
+    return groups.some((group) => group.worktrees.length > 1);
   }
 }
 
@@ -189,9 +197,9 @@ class WorktreesRootNode implements FilesNode {
     if (groups.length === 0) {
       return [new HintNode('No git worktrees found for current workspace')];
     }
-    const filtered = groups.filter((group) => group.worktrees.length > 0);
+    const filtered = groups.filter((group) => group.worktrees.length > 1);
     if (filtered.length === 0) {
-      return [new HintNode('No git worktrees found for current workspace')];
+      return [new HintNode('No additional git worktrees found for current workspace')];
     }
     if (filtered.length === 1) {
       return await buildWorktreeNodes(filtered[0], this.filterText);
