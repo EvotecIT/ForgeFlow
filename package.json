@@ -3833,6 +3833,7 @@
     "typescript": "^5.9.3"
   },
   "overrides": {
+    "@isaacs/brace-expansion": "^5.0.1",
     "diff": "^8.0.3",
     "lodash": "^4.17.22"
   }
