@@ -32,7 +32,7 @@ export function updateSegment(
 ): void {
   const index = findSegmentIndex(segments, type);
   if (enabled) {
-    const segment = index >= 0 ? segments[index] : { Type: type };
+    const segment = index >= 0 ? segments[index]! : { Type: type };
     if (index < 0) {
       segments.push(segment);
     }
@@ -51,7 +51,7 @@ export function updateArtefactSegment(
 ): void {
   const index = findArtefactSegmentIndex(segments, type);
   if (enabled) {
-    const segment = index >= 0 ? segments[index] : { Type: type };
+    const segment = index >= 0 ? segments[index]! : { Type: type };
     if (index < 0) {
       segments.push(segment);
     }

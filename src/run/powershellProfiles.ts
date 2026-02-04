@@ -106,7 +106,7 @@ export function profileKindIcon(kind: PowerShellProfileKind): string {
 }
 
 function findExecutableOnPath(command: string): string | undefined {
-  const pathValue = process.env.PATH ?? '';
+  const pathValue = process.env['PATH'] ?? '';
   if (!pathValue) {
     return undefined;
   }
@@ -130,14 +130,14 @@ function getPathExtensions(command: string): string[] {
   if (path.extname(command)) {
     return [''];
   }
-  const pathext = process.env.PATHEXT ?? '.EXE;.CMD;.BAT;.COM';
+  const pathext = process.env['PATHEXT'] ?? '.EXE;.CMD;.BAT;.COM';
   return pathext.split(';').filter(Boolean);
 }
 
 function getCommonLocations(kind: PowerShellProfileKind): string[] {
   if (process.platform === 'win32') {
-    const systemRoot = process.env.SystemRoot ?? 'C:\\Windows';
-    const programFiles = process.env.ProgramFiles ?? 'C:\\Program Files';
+    const systemRoot = process.env['SystemRoot'] ?? 'C:\\Windows';
+    const programFiles = process.env['ProgramFiles'] ?? 'C:\\Program Files';
     switch (kind) {
       case 'windows-powershell':
         return [path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')];

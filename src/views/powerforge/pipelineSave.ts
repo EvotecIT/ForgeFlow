@@ -22,30 +22,32 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
   const payload = data as Record<string, unknown>;
   const build = ensureRecordField(parsed, 'Build');
   const install = ensureRecordField(parsed, 'Install');
-  const segments: PowerForgeSegment[] = Array.isArray(parsed.Segments) ? (parsed.Segments as PowerForgeSegment[]) : [];
-  parsed.Segments = segments;
-  build.Name = String(payload['buildName'] ?? '').trim() || build.Name;
-  build.SourcePath = String(payload['buildSourcePath'] ?? '').trim() || build.SourcePath;
-  build.CsprojPath = String(payload['buildCsprojPath'] ?? '').trim() || build.CsprojPath;
-  build.Version = String(payload['buildVersion'] ?? '').trim() || build.Version;
-  build.Configuration = String(payload['buildConfiguration'] ?? '').trim() || build.Configuration;
+  const segments: PowerForgeSegment[] = Array.isArray(parsed['Segments'])
+    ? (parsed['Segments'] as PowerForgeSegment[])
+    : [];
+  parsed['Segments'] = segments;
+  build['Name'] = String(payload['buildName'] ?? '').trim() || build['Name'];
+  build['SourcePath'] = String(payload['buildSourcePath'] ?? '').trim() || build['SourcePath'];
+  build['CsprojPath'] = String(payload['buildCsprojPath'] ?? '').trim() || build['CsprojPath'];
+  build['Version'] = String(payload['buildVersion'] ?? '').trim() || build['Version'];
+  build['Configuration'] = String(payload['buildConfiguration'] ?? '').trim() || build['Configuration'];
   const frameworks = String(payload['buildFrameworks'] ?? '')
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean);
   if (frameworks.length > 0) {
-    build.Frameworks = frameworks;
+    build['Frameworks'] = frameworks;
   }
   if (typeof payload['installEnabled'] === 'boolean') {
-    install.Enabled = payload['installEnabled'];
+    install['Enabled'] = payload['installEnabled'];
   }
   const strategy = String(payload['installStrategy'] ?? '').trim();
   if (strategy) {
-    install.Strategy = strategy;
+    install['Strategy'] = strategy;
   }
   const keep = Number(String(payload['installKeepVersions'] ?? '').trim());
   if (!Number.isNaN(keep) && keep > 0) {
-    install.KeepVersions = keep;
+    install['KeepVersions'] = keep;
   }
   const manifestEnabled = Boolean(payload['manifestSegmentEnabled']);
   updateSegment(segments, 'Manifest', manifestEnabled, (segment) => {
@@ -63,18 +65,18 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
     applyStringField(manifestConfig, 'Prerelease', payload['manifestPrerelease']);
     const editions = parseCsv(payload['manifestCompatiblePSEditions']);
     if (editions.length > 0) {
-      manifestConfig.CompatiblePSEditions = editions;
+      manifestConfig['CompatiblePSEditions'] = editions;
     } else {
-      delete manifestConfig.CompatiblePSEditions;
+      delete manifestConfig['CompatiblePSEditions'];
     }
     const tags = parseCsv(payload['manifestTags']);
     if (tags.length > 0) {
-      manifestConfig.Tags = tags;
+      manifestConfig['Tags'] = tags;
     } else {
-      delete manifestConfig.Tags;
+      delete manifestConfig['Tags'];
     }
     if (typeof payload['manifestRequireLicense'] === 'boolean') {
-      manifestConfig.RequireLicenseAcceptance = payload['manifestRequireLicense'];
+      manifestConfig['RequireLicenseAcceptance'] = payload['manifestRequireLicense'];
     }
   });
 
@@ -82,7 +84,7 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
   updateSegment(segments, 'Publish', publishSegmentEnabled, (segment) => {
     const publishConfig = ensureRecordField(segment, 'Configuration');
     if (typeof payload['publishEnabled'] === 'boolean') {
-      publishConfig.Enabled = payload['publishEnabled'];
+      publishConfig['Enabled'] = payload['publishEnabled'];
     }
     applyStringField(publishConfig, 'Destination', payload['publishDestination']);
     applyStringField(publishConfig, 'Tool', payload['publishTool']);
@@ -92,16 +94,16 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
     applyStringField(publishConfig, 'RepositoryName', payload['publishRepositoryName']);
     applyStringField(publishConfig, 'OverwriteTagName', payload['publishOverwriteTag']);
     if (typeof payload['publishForce'] === 'boolean') {
-      publishConfig.Force = payload['publishForce'];
+      publishConfig['Force'] = payload['publishForce'];
     }
     if (typeof payload['publishDoNotMarkPre'] === 'boolean') {
-      publishConfig.DoNotMarkAsPreRelease = payload['publishDoNotMarkPre'];
+      publishConfig['DoNotMarkAsPreRelease'] = payload['publishDoNotMarkPre'];
     }
     if (typeof payload['publishGenerateReleaseNotes'] === 'boolean') {
-      publishConfig.GenerateReleaseNotes = payload['publishGenerateReleaseNotes'];
+      publishConfig['GenerateReleaseNotes'] = payload['publishGenerateReleaseNotes'];
     }
     if (typeof payload['publishVerbose'] === 'boolean') {
-      publishConfig.Verbose = payload['publishVerbose'];
+      publishConfig['Verbose'] = payload['publishVerbose'];
     }
     const repoEnabled = Boolean(payload['publishRepositoryEnabled']);
     if (repoEnabled) {
@@ -113,21 +115,21 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
       applyStringField(repoConfig, 'ApiVersion', payload['publishRepositoryApiVersion']);
       const priority = parseInteger(payload['publishRepositoryPriority']);
       if (priority !== undefined) {
-        repoConfig.Priority = priority;
+        repoConfig['Priority'] = priority;
       } else {
-        delete repoConfig.Priority;
+        delete repoConfig['Priority'];
       }
       if (typeof payload['publishRepositoryTrusted'] === 'boolean') {
-        repoConfig.Trusted = payload['publishRepositoryTrusted'];
+        repoConfig['Trusted'] = payload['publishRepositoryTrusted'];
       }
       if (typeof payload['publishRepositoryEnsureRegistered'] === 'boolean') {
-        repoConfig.EnsureRegistered = payload['publishRepositoryEnsureRegistered'];
+        repoConfig['EnsureRegistered'] = payload['publishRepositoryEnsureRegistered'];
       }
       if (typeof payload['publishRepositoryUnregisterAfterUse'] === 'boolean') {
-        repoConfig.UnregisterAfterUse = payload['publishRepositoryUnregisterAfterUse'];
+        repoConfig['UnregisterAfterUse'] = payload['publishRepositoryUnregisterAfterUse'];
       }
     } else {
-      delete publishConfig.Repository;
+      delete publishConfig['Repository'];
     }
   });
 
@@ -142,21 +144,21 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
   updateSegment(segments, 'BuildDocumentation', buildDocsEnabled, (segment) => {
     const config = ensureRecordField(segment, 'Configuration');
     if (typeof payload['buildDocsEnable'] === 'boolean') {
-      config.Enable = payload['buildDocsEnable'];
+      config['Enable'] = payload['buildDocsEnable'];
     }
     applyStringField(config, 'Tool', payload['buildDocsTool']);
     applyStringField(config, 'ExternalHelpCulture', payload['buildDocsExternalHelpCulture']);
     if (typeof payload['buildDocsStartClean'] === 'boolean') {
-      config.StartClean = payload['buildDocsStartClean'];
+      config['StartClean'] = payload['buildDocsStartClean'];
     }
     if (typeof payload['buildDocsUpdateWhenNew'] === 'boolean') {
-      config.UpdateWhenNew = payload['buildDocsUpdateWhenNew'];
+      config['UpdateWhenNew'] = payload['buildDocsUpdateWhenNew'];
     }
     if (typeof payload['buildDocsSyncExternalHelp'] === 'boolean') {
-      config.SyncExternalHelpToProjectRoot = payload['buildDocsSyncExternalHelp'];
+      config['SyncExternalHelpToProjectRoot'] = payload['buildDocsSyncExternalHelp'];
     }
     if (typeof payload['buildDocsGenerateExternalHelp'] === 'boolean') {
-      config.GenerateExternalHelp = payload['buildDocsGenerateExternalHelp'];
+      config['GenerateExternalHelp'] = payload['buildDocsGenerateExternalHelp'];
     }
   });
 
@@ -164,132 +166,132 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
   updateSegment(segments, 'Validation', validationEnabled, (segment) => {
     const settings = ensureRecordField(segment, 'Settings');
     if (typeof payload['validationEnable'] === 'boolean') {
-      settings.Enable = payload['validationEnable'];
+      settings['Enable'] = payload['validationEnable'];
     }
     const scriptAnalyzer = ensureRecordField(settings, 'ScriptAnalyzer');
     if (typeof payload['validationScriptAnalyzer'] === 'boolean') {
-      scriptAnalyzer.Enable = payload['validationScriptAnalyzer'];
+      scriptAnalyzer['Enable'] = payload['validationScriptAnalyzer'];
     }
     const fileIntegrity = ensureRecordField(settings, 'FileIntegrity');
     if (typeof payload['validationCheckTrailingWhitespace'] === 'boolean') {
-      fileIntegrity.CheckTrailingWhitespace = payload['validationCheckTrailingWhitespace'];
+      fileIntegrity['CheckTrailingWhitespace'] = payload['validationCheckTrailingWhitespace'];
     }
     if (typeof payload['validationCheckSyntax'] === 'boolean') {
-      fileIntegrity.CheckSyntax = payload['validationCheckSyntax'];
+      fileIntegrity['CheckSyntax'] = payload['validationCheckSyntax'];
     }
     const structure = ensureRecordField(settings, 'Structure');
     applyStringField(structure, 'Severity', payload['validationStructureSeverity']);
     const publicPaths = parseCsv(payload['validationStructurePublicPaths']);
     if (publicPaths.length > 0) {
-      structure.PublicFunctionPaths = publicPaths;
+      structure['PublicFunctionPaths'] = publicPaths;
     } else {
-      delete structure.PublicFunctionPaths;
+      delete structure['PublicFunctionPaths'];
     }
     const internalPaths = parseCsv(payload['validationStructureInternalPaths']);
     if (internalPaths.length > 0) {
-      structure.InternalFunctionPaths = internalPaths;
+      structure['InternalFunctionPaths'] = internalPaths;
     } else {
-      delete structure.InternalFunctionPaths;
+      delete structure['InternalFunctionPaths'];
     }
     if (typeof payload['validationStructureValidateManifest'] === 'boolean') {
-      structure.ValidateManifestFiles = payload['validationStructureValidateManifest'];
+      structure['ValidateManifestFiles'] = payload['validationStructureValidateManifest'];
     }
     if (typeof payload['validationStructureValidateExports'] === 'boolean') {
-      structure.ValidateExports = payload['validationStructureValidateExports'];
+      structure['ValidateExports'] = payload['validationStructureValidateExports'];
     }
     if (typeof payload['validationStructureValidateInternalNotExported'] === 'boolean') {
-      structure.ValidateInternalNotExported = payload['validationStructureValidateInternalNotExported'];
+      structure['ValidateInternalNotExported'] = payload['validationStructureValidateInternalNotExported'];
     }
     if (typeof payload['validationStructureAllowWildcardExports'] === 'boolean') {
-      structure.AllowWildcardExports = payload['validationStructureAllowWildcardExports'];
+      structure['AllowWildcardExports'] = payload['validationStructureAllowWildcardExports'];
     }
 
     const docs = ensureRecordField(settings, 'Documentation');
     applyStringField(docs, 'Severity', payload['validationDocsSeverity']);
     const synopsis = parseInteger(payload['validationDocsMinSynopsis']);
     if (synopsis !== undefined) {
-      docs.MinSynopsisPercent = synopsis;
+      docs['MinSynopsisPercent'] = synopsis;
     } else {
-      delete docs.MinSynopsisPercent;
+      delete docs['MinSynopsisPercent'];
     }
     const description = parseInteger(payload['validationDocsMinDescription']);
     if (description !== undefined) {
-      docs.MinDescriptionPercent = description;
+      docs['MinDescriptionPercent'] = description;
     } else {
-      delete docs.MinDescriptionPercent;
+      delete docs['MinDescriptionPercent'];
     }
     const minExamples = parseInteger(payload['validationDocsMinExamples']);
     if (minExamples !== undefined) {
-      docs.MinExampleCountPerCommand = minExamples;
+      docs['MinExampleCountPerCommand'] = minExamples;
     } else {
-      delete docs.MinExampleCountPerCommand;
+      delete docs['MinExampleCountPerCommand'];
     }
     const excludeCommands = parseCsv(payload['validationDocsExcludeCommands']);
     if (excludeCommands.length > 0) {
-      docs.ExcludeCommands = excludeCommands;
+      docs['ExcludeCommands'] = excludeCommands;
     } else {
-      delete docs.ExcludeCommands;
+      delete docs['ExcludeCommands'];
     }
     const docsTimeout = parseInteger(payload['validationDocsTimeout']);
     if (docsTimeout !== undefined) {
-      docs.TimeoutSeconds = docsTimeout;
+      docs['TimeoutSeconds'] = docsTimeout;
     } else {
-      delete docs.TimeoutSeconds;
+      delete docs['TimeoutSeconds'];
     }
 
     const tests = ensureRecordField(settings, 'Tests');
     applyStringField(tests, 'Severity', payload['validationTestsSeverity']);
     if (typeof payload['validationTestsEnable'] === 'boolean') {
-      tests.Enable = payload['validationTestsEnable'];
+      tests['Enable'] = payload['validationTestsEnable'];
     }
     applyStringField(tests, 'TestPath', payload['validationTestsPath']);
     const additionalModules = parseCsv(payload['validationTestsAdditional']);
     if (additionalModules.length > 0) {
-      tests.AdditionalModules = additionalModules;
+      tests['AdditionalModules'] = additionalModules;
     } else {
-      delete tests.AdditionalModules;
+      delete tests['AdditionalModules'];
     }
     const skipModules = parseCsv(payload['validationTestsSkip']);
     if (skipModules.length > 0) {
-      tests.SkipModules = skipModules;
+      tests['SkipModules'] = skipModules;
     } else {
-      delete tests.SkipModules;
+      delete tests['SkipModules'];
     }
     if (typeof payload['validationTestsSkipDependencies'] === 'boolean') {
-      tests.SkipDependencies = payload['validationTestsSkipDependencies'];
+      tests['SkipDependencies'] = payload['validationTestsSkipDependencies'];
     }
     if (typeof payload['validationTestsSkipImport'] === 'boolean') {
-      tests.SkipImport = payload['validationTestsSkipImport'];
+      tests['SkipImport'] = payload['validationTestsSkipImport'];
     }
     if (typeof payload['validationTestsForce'] === 'boolean') {
-      tests.Force = payload['validationTestsForce'];
+      tests['Force'] = payload['validationTestsForce'];
     }
     const testsTimeout = parseInteger(payload['validationTestsTimeout']);
     if (testsTimeout !== undefined) {
-      tests.TimeoutSeconds = testsTimeout;
+      tests['TimeoutSeconds'] = testsTimeout;
     } else {
-      delete tests.TimeoutSeconds;
+      delete tests['TimeoutSeconds'];
     }
 
     const binary = ensureRecordField(settings, 'Binary');
     applyStringField(binary, 'Severity', payload['validationBinarySeverity']);
     if (typeof payload['validationBinaryValidateAssemblies'] === 'boolean') {
-      binary.ValidateAssembliesExist = payload['validationBinaryValidateAssemblies'];
+      binary['ValidateAssembliesExist'] = payload['validationBinaryValidateAssemblies'];
     }
     if (typeof payload['validationBinaryValidateManifestExports'] === 'boolean') {
-      binary.ValidateManifestExports = payload['validationBinaryValidateManifestExports'];
+      binary['ValidateManifestExports'] = payload['validationBinaryValidateManifestExports'];
     }
     if (typeof payload['validationBinaryAllowWildcardExports'] === 'boolean') {
-      binary.AllowWildcardExports = payload['validationBinaryAllowWildcardExports'];
+      binary['AllowWildcardExports'] = payload['validationBinaryAllowWildcardExports'];
     }
 
     const csproj = ensureRecordField(settings, 'Csproj');
     applyStringField(csproj, 'Severity', payload['validationCsprojSeverity']);
     if (typeof payload['validationCsprojRequireTargetFramework'] === 'boolean') {
-      csproj.RequireTargetFramework = payload['validationCsprojRequireTargetFramework'];
+      csproj['RequireTargetFramework'] = payload['validationCsprojRequireTargetFramework'];
     }
     if (typeof payload['validationCsprojRequireLibraryOutput'] === 'boolean') {
-      csproj.RequireLibraryOutput = payload['validationCsprojRequireLibraryOutput'];
+      csproj['RequireLibraryOutput'] = payload['validationCsprojRequireLibraryOutput'];
     }
   });
 
@@ -297,25 +299,25 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
   updateSegment(segments, 'FileConsistency', fileConsistencyEnabled, (segment) => {
     const settings = ensureRecordField(segment, 'Settings');
     if (typeof payload['fileConsistencyEnable'] === 'boolean') {
-      settings.Enable = payload['fileConsistencyEnable'];
+      settings['Enable'] = payload['fileConsistencyEnable'];
     }
     applyStringField(settings, 'RequiredEncoding', payload['fileConsistencyRequiredEncoding']);
     applyStringField(settings, 'RequiredLineEnding', payload['fileConsistencyRequiredLineEnding']);
     applyStringField(settings, 'Scope', payload['fileConsistencyScope']);
     const excludes = parseCsv(payload['fileConsistencyExcludeDirectories']);
     if (excludes.length > 0) {
-      settings.ExcludeDirectories = excludes;
+      settings['ExcludeDirectories'] = excludes;
     } else {
-      delete settings.ExcludeDirectories;
+      delete settings['ExcludeDirectories'];
     }
     if (typeof payload['fileConsistencyExportReport'] === 'boolean') {
-      settings.ExportReport = payload['fileConsistencyExportReport'];
+      settings['ExportReport'] = payload['fileConsistencyExportReport'];
     }
     if (typeof payload['fileConsistencyCheckMixed'] === 'boolean') {
-      settings.CheckMixedLineEndings = payload['fileConsistencyCheckMixed'];
+      settings['CheckMixedLineEndings'] = payload['fileConsistencyCheckMixed'];
     }
     if (typeof payload['fileConsistencyCheckMissingFinalNewline'] === 'boolean') {
-      settings.CheckMissingFinalNewline = payload['fileConsistencyCheckMissingFinalNewline'];
+      settings['CheckMissingFinalNewline'] = payload['fileConsistencyCheckMissingFinalNewline'];
     }
   });
 
@@ -323,19 +325,19 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
   updateSegment(segments, 'Compatibility', compatibilityEnabled, (segment) => {
     const settings = ensureRecordField(segment, 'Settings');
     if (typeof payload['compatibilityEnable'] === 'boolean') {
-      settings.Enable = payload['compatibilityEnable'];
+      settings['Enable'] = payload['compatibilityEnable'];
     }
     if (typeof payload['compatibilityRequireCross'] === 'boolean') {
-      settings.RequireCrossCompatibility = payload['compatibilityRequireCross'];
+      settings['RequireCrossCompatibility'] = payload['compatibilityRequireCross'];
     }
     const min = parseInteger(payload['compatibilityMinimum']);
     if (min !== undefined) {
-      settings.MinimumCompatibilityPercentage = min;
+      settings['MinimumCompatibilityPercentage'] = min;
     } else {
-      delete settings.MinimumCompatibilityPercentage;
+      delete settings['MinimumCompatibilityPercentage'];
     }
     if (typeof payload['compatibilityExportReport'] === 'boolean') {
-      settings.ExportReport = payload['compatibilityExportReport'];
+      settings['ExportReport'] = payload['compatibilityExportReport'];
     }
   });
 
@@ -343,11 +345,11 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
   updateArtefactSegment(segments, 'Packed', packedEnabled, (segment) => {
     const config = ensureRecordField(segment, 'Configuration');
     if (typeof payload['packedEnabled'] === 'boolean') {
-      config.Enabled = payload['packedEnabled'];
+      config['Enabled'] = payload['packedEnabled'];
     }
     applyStringField(config, 'Path', payload['packedPath']);
     if (typeof payload['packedIncludeTagName'] === 'boolean') {
-      config.IncludeTagName = payload['packedIncludeTagName'];
+      config['IncludeTagName'] = payload['packedIncludeTagName'];
     }
   });
 
@@ -355,11 +357,11 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
   updateArtefactSegment(segments, 'Unpacked', unpackedEnabled, (segment) => {
     const config = ensureRecordField(segment, 'Configuration');
     if (typeof payload['unpackedEnabled'] === 'boolean') {
-      config.Enabled = payload['unpackedEnabled'];
+      config['Enabled'] = payload['unpackedEnabled'];
     }
     applyStringField(config, 'Path', payload['unpackedPath']);
     if (typeof payload['unpackedIncludeTagName'] === 'boolean') {
-      config.IncludeTagName = payload['unpackedIncludeTagName'];
+      config['IncludeTagName'] = payload['unpackedIncludeTagName'];
     }
   });
 
@@ -368,38 +370,38 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
     const options = ensureRecordField(segment, 'Options');
     const signing = ensureRecordField(options, 'Signing');
     if (typeof payload['optionsSigningIncludeInternals'] === 'boolean') {
-      signing.IncludeInternals = payload['optionsSigningIncludeInternals'];
+      signing['IncludeInternals'] = payload['optionsSigningIncludeInternals'];
     }
     if (typeof payload['optionsSigningIncludeBinaries'] === 'boolean') {
-      signing.IncludeBinaries = payload['optionsSigningIncludeBinaries'];
+      signing['IncludeBinaries'] = payload['optionsSigningIncludeBinaries'];
     }
     applyStringField(signing, 'CertificateThumbprint', payload['optionsSigningThumbprint']);
     applyStringField(signing, 'CertificatePFXPath', payload['optionsSigningPfxPath']);
     applyStringField(signing, 'CertificatePFXPassword', payload['optionsSigningPfxPassword']);
     const includePaths = parseCsv(payload['optionsSigningInclude']);
     if (includePaths.length > 0) {
-      signing.Include = includePaths;
+      signing['Include'] = includePaths;
     } else {
-      delete signing.Include;
+      delete signing['Include'];
     }
     const excludePaths = parseCsv(payload['optionsSigningExcludePaths']);
     if (excludePaths.length > 0) {
-      signing.ExcludePaths = excludePaths;
+      signing['ExcludePaths'] = excludePaths;
     } else {
-      delete signing.ExcludePaths;
+      delete signing['ExcludePaths'];
     }
     const delivery = ensureRecordField(options, 'Delivery');
     if (typeof payload['optionsDeliveryEnable'] === 'boolean') {
-      delivery.Enable = payload['optionsDeliveryEnable'];
+      delivery['Enable'] = payload['optionsDeliveryEnable'];
     }
     if (typeof payload['optionsDeliveryIncludeRootReadme'] === 'boolean') {
-      delivery.IncludeRootReadme = payload['optionsDeliveryIncludeRootReadme'];
+      delivery['IncludeRootReadme'] = payload['optionsDeliveryIncludeRootReadme'];
     }
     if (typeof payload['optionsDeliveryIncludeRootChangelog'] === 'boolean') {
-      delivery.IncludeRootChangelog = payload['optionsDeliveryIncludeRootChangelog'];
+      delivery['IncludeRootChangelog'] = payload['optionsDeliveryIncludeRootChangelog'];
     }
     if (typeof payload['optionsDeliveryIncludeRootLicense'] === 'boolean') {
-      delivery.IncludeRootLicense = payload['optionsDeliveryIncludeRootLicense'];
+      delivery['IncludeRootLicense'] = payload['optionsDeliveryIncludeRootLicense'];
     }
     applyStringField(delivery, 'Schema', payload['optionsDeliverySchema']);
     applyStringField(delivery, 'ReadmeDestination', payload['optionsDeliveryReadmeDestination']);
@@ -407,51 +409,53 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
     applyStringField(delivery, 'LicenseDestination', payload['optionsDeliveryLicenseDestination']);
     const repoPaths = parseCsv(payload['optionsDeliveryRepositoryPaths']);
     if (repoPaths.length > 0) {
-      delivery.RepositoryPaths = repoPaths;
+      delivery['RepositoryPaths'] = repoPaths;
     } else {
-      delete delivery.RepositoryPaths;
+      delete delivery['RepositoryPaths'];
     }
     applyStringField(delivery, 'RepositoryBranch', payload['optionsDeliveryRepositoryBranch']);
     const docOrder = parseCsv(payload['optionsDeliveryDocumentationOrder']);
     if (docOrder.length > 0) {
-      delivery.DocumentationOrder = docOrder;
+      delivery['DocumentationOrder'] = docOrder;
     } else {
-      delete delivery.DocumentationOrder;
+      delete delivery['DocumentationOrder'];
     }
     const introText = parseLines(payload['optionsDeliveryIntroText']);
     if (introText.length > 0) {
-      delivery.IntroText = introText;
+      delivery['IntroText'] = introText;
     } else {
-      delete delivery.IntroText;
+      delete delivery['IntroText'];
     }
     const upgradeText = parseLines(payload['optionsDeliveryUpgradeText']);
     if (upgradeText.length > 0) {
-      delivery.UpgradeText = upgradeText;
+      delivery['UpgradeText'] = upgradeText;
     } else {
-      delete delivery.UpgradeText;
+      delete delivery['UpgradeText'];
     }
     if (typeof payload['optionsDeliveryGenerateInstallCommand'] === 'boolean') {
-      delivery.GenerateInstallCommand = payload['optionsDeliveryGenerateInstallCommand'];
+      delivery['GenerateInstallCommand'] = payload['optionsDeliveryGenerateInstallCommand'];
     }
     if (typeof payload['optionsDeliveryGenerateUpdateCommand'] === 'boolean') {
-      delivery.GenerateUpdateCommand = payload['optionsDeliveryGenerateUpdateCommand'];
+      delivery['GenerateUpdateCommand'] = payload['optionsDeliveryGenerateUpdateCommand'];
     }
     applyStringField(delivery, 'InstallCommandName', payload['optionsDeliveryInstallCommandName']);
     applyStringField(delivery, 'UpdateCommandName', payload['optionsDeliveryUpdateCommandName']);
     const linksRaw = Array.isArray(payload['deliveryImportantLinks']) ? payload['deliveryImportantLinks'] : [];
     if (linksRaw.length > 0) {
-      delivery.ImportantLinks = linksRaw
+      const importantLinks = linksRaw
         .filter((entry) => entry && typeof entry === 'object')
         .map((entry) => {
           const record = entry as JsonRecord;
           return { Title: String(record['title'] ?? '').trim(), Url: String(record['url'] ?? '').trim() };
         })
         .filter((entry) => entry.Title && entry.Url);
-      if (delivery.ImportantLinks.length === 0) {
-        delete delivery.ImportantLinks;
+      if (importantLinks.length > 0) {
+        delivery['ImportantLinks'] = importantLinks;
+      } else {
+        delete delivery['ImportantLinks'];
       }
     } else {
-      delete delivery.ImportantLinks;
+      delete delivery['ImportantLinks'];
     }
   });
 
@@ -459,37 +463,37 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
   updateSegment(segments, 'Formatting', formattingEnabled, (segment) => {
     const options = ensureRecordField(segment, 'Options');
     if (typeof payload['formattingUpdateProjectRoot'] === 'boolean') {
-      options.UpdateProjectRoot = payload['formattingUpdateProjectRoot'];
+      options['UpdateProjectRoot'] = payload['formattingUpdateProjectRoot'];
     }
     const standard = ensureRecordField(options, 'Standard');
     const formatPS1 = ensureRecordField(standard, 'FormatCodePS1');
     const formatPSM1 = ensureRecordField(standard, 'FormatCodePSM1');
     const formatPSD1 = ensureRecordField(standard, 'FormatCodePSD1');
     if (typeof payload['formattingPS1Enabled'] === 'boolean') {
-      formatPS1.Enabled = payload['formattingPS1Enabled'];
+      formatPS1['Enabled'] = payload['formattingPS1Enabled'];
     }
     if (typeof payload['formattingPS1RemoveComments'] === 'boolean') {
-      formatPS1.RemoveComments = payload['formattingPS1RemoveComments'];
+      formatPS1['RemoveComments'] = payload['formattingPS1RemoveComments'];
     }
     if (typeof payload['formattingRemoveEmptyLines'] === 'boolean') {
-      formatPS1.RemoveEmptyLines = payload['formattingRemoveEmptyLines'];
+      formatPS1['RemoveEmptyLines'] = payload['formattingRemoveEmptyLines'];
     }
     if (typeof payload['formattingRemoveAllEmptyLines'] === 'boolean') {
-      formatPS1.RemoveAllEmptyLines = payload['formattingRemoveAllEmptyLines'];
+      formatPS1['RemoveAllEmptyLines'] = payload['formattingRemoveAllEmptyLines'];
     }
     if (typeof payload['formattingRemoveCommentsInParamBlock'] === 'boolean') {
-      formatPS1.RemoveCommentsInParamBlock = payload['formattingRemoveCommentsInParamBlock'];
+      formatPS1['RemoveCommentsInParamBlock'] = payload['formattingRemoveCommentsInParamBlock'];
     }
     if (typeof payload['formattingRemoveCommentsBeforeParamBlock'] === 'boolean') {
-      formatPS1.RemoveCommentsBeforeParamBlock = payload['formattingRemoveCommentsBeforeParamBlock'];
+      formatPS1['RemoveCommentsBeforeParamBlock'] = payload['formattingRemoveCommentsBeforeParamBlock'];
     }
     applyStringField(formatPS1, 'Sort', payload['formattingSort']);
     const includeRules = parseCsv(payload['formattingIncludeRules']);
     const formatterSettings = ensureRecordField(formatPS1, 'FormatterSettings');
     if (includeRules.length > 0) {
-      formatterSettings.IncludeRules = includeRules;
+      formatterSettings['IncludeRules'] = includeRules;
     } else {
-      delete formatterSettings.IncludeRules;
+      delete formatterSettings['IncludeRules'];
     }
     const rules = ensureRecordField(formatterSettings, 'Rules');
     setRuleToggle(rules, 'PSPlaceOpenBrace', payload['formattingRuleOpenBrace']);
@@ -499,10 +503,10 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
     setRuleToggle(rules, 'PSAlignAssignmentStatement', payload['formattingRuleAlignAssignment']);
     setRuleToggle(rules, 'PSUseCorrectCasing', payload['formattingRuleCorrectCasing']);
     if (typeof payload['formattingPSM1Enabled'] === 'boolean') {
-      formatPSM1.Enabled = payload['formattingPSM1Enabled'];
+      formatPSM1['Enabled'] = payload['formattingPSM1Enabled'];
     }
     if (typeof payload['formattingPSD1Enabled'] === 'boolean') {
-      formatPSD1.Enabled = payload['formattingPSD1Enabled'];
+      formatPSD1['Enabled'] = payload['formattingPSD1Enabled'];
     }
   });
 
@@ -510,22 +514,22 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
   updateSegment(segments, 'BuildLibraries', buildLibrariesEnabled, (segment) => {
     const config = ensureRecordField(segment, 'BuildLibraries');
     if (typeof payload['buildLibrariesEnable'] === 'boolean') {
-      config.Enable = payload['buildLibrariesEnable'];
+      config['Enable'] = payload['buildLibrariesEnable'];
     }
     applyStringField(config, 'Configuration', payload['buildLibrariesConfiguration']);
     applyStringField(config, 'ProjectName', payload['buildLibrariesProjectName']);
     applyStringField(config, 'NETProjectPath', payload['buildLibrariesNetProjectPath']);
     const librariesFrameworks = parseCsv(payload['buildLibrariesFrameworks']);
     if (librariesFrameworks.length > 0) {
-      config.Framework = librariesFrameworks;
+      config['Framework'] = librariesFrameworks;
     } else {
-      delete config.Framework;
+      delete config['Framework'];
     }
     if (typeof payload['buildLibrariesExcludeMainLibrary'] === 'boolean') {
-      config.ExcludeMainLibrary = payload['buildLibrariesExcludeMainLibrary'];
+      config['ExcludeMainLibrary'] = payload['buildLibrariesExcludeMainLibrary'];
     }
     if (typeof payload['buildLibrariesBinaryModuleCmdletScanDisabled'] === 'boolean') {
-      config.BinaryModuleCmdletScanDisabled = payload['buildLibrariesBinaryModuleCmdletScanDisabled'];
+      config['BinaryModuleCmdletScanDisabled'] = payload['buildLibrariesBinaryModuleCmdletScanDisabled'];
     }
   });
 
@@ -533,20 +537,21 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
   updateSegment(segments, 'ImportModules', importModulesEnabled, (segment) => {
     const config = ensureRecordField(segment, 'ImportModules');
     if (typeof payload['importModulesSelf'] === 'boolean') {
-      config.Self = payload['importModulesSelf'];
+      config['Self'] = payload['importModulesSelf'];
     }
     if (typeof payload['importModulesRequiredModules'] === 'boolean') {
-      config.RequiredModules = payload['importModulesRequiredModules'];
+      config['RequiredModules'] = payload['importModulesRequiredModules'];
     }
     if (typeof payload['importModulesVerbose'] === 'boolean') {
-      config.Verbose = payload['importModulesVerbose'];
+      config['Verbose'] = payload['importModulesVerbose'];
     }
   });
 
   const depsEnabled = Boolean(payload['moduleDependenciesSegmentEnabled']);
   const dependencyKinds = new Set(['RequiredModule', 'ExternalModule', 'ApprovedModule']);
   for (let i = segments.length - 1; i >= 0; i -= 1) {
-    if (isModuleDependencySegment(segments[i])) {
+    const segment = segments[i];
+    if (segment && isModuleDependencySegment(segment)) {
       segments.splice(i, 1);
     }
   }
@@ -577,7 +582,7 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
   updateSegment(segments, 'PlaceHolderOption', placeholderOptionEnabled, (segment) => {
     const optionConfig = ensureRecordField(segment, 'PlaceHolderOption');
     if (typeof payload['placeHolderOptionSkipBuiltin'] === 'boolean') {
-      optionConfig.SkipBuiltinReplacements = payload['placeHolderOptionSkipBuiltin'];
+      optionConfig['SkipBuiltinReplacements'] = payload['placeHolderOptionSkipBuiltin'];
     }
   });
 
@@ -609,7 +614,7 @@ export async function savePipelineConfig(filePath: string, data: Record<string, 
     applyStringField(config, 'When', payload['testsAfterMergeWhen']);
     applyStringField(config, 'TestsPath', payload['testsAfterMergePath']);
     if (typeof payload['testsAfterMergeForce'] === 'boolean') {
-      config.Force = payload['testsAfterMergeForce'];
+      config['Force'] = payload['testsAfterMergeForce'];
     }
   });
 

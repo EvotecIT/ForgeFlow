@@ -202,7 +202,11 @@ class WorktreesRootNode implements FilesNode {
       return [new HintNode('No additional git worktrees found for current workspace')];
     }
     if (filtered.length === 1) {
-      return await buildWorktreeNodes(filtered[0], this.filterText);
+      const [group] = filtered;
+      if (!group) {
+        return [];
+      }
+      return await buildWorktreeNodes(group, this.filterText);
     }
     return filtered.map((group) => new WorktreeRepoNode(group, this.filterText));
   }

@@ -564,7 +564,10 @@ function groupDashboardRows(rows: DashboardRow[]): DashboardRow[] {
   const result: DashboardRow[] = [...passthrough];
   for (const [groupId, list] of grouped.entries()) {
     if (list.length === 1) {
-      result.push(list[0]);
+      const only = list[0];
+      if (only) {
+        result.push(only);
+      }
       continue;
     }
     const primary = pickPrimaryRow(list);

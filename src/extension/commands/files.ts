@@ -62,7 +62,7 @@ export function registerFileCommands(deps: FileCommandDeps): void {
     }
     const folders = vscode.workspace.workspaceFolders ?? [];
     const existing = new Set(folders.map((folder) => path.resolve(folder.uri.fsPath)));
-    const additions: vscode.WorkspaceFolder[] = [];
+    const additions: Array<{ uri: vscode.Uri; name?: string }> = [];
     for (const folderPath of paths) {
       const resolved = path.resolve(folderPath);
       if (existing.has(resolved)) {

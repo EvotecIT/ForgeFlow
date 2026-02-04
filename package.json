@@ -3798,8 +3798,10 @@
     }
   },
   "scripts": {
+    "precompile": "node scripts/ensure-esbuild.cjs",
     "compile": "node scripts/bundle.cjs",
     "compile:test": "tsc -p tsconfig.test.json",
+    "prewatch": "node scripts/ensure-esbuild.cjs",
     "watch": "node scripts/bundle.cjs --watch",
     "lint": "eslint . && npm run lint:package",
     "lint:package": "node scripts/validate-package.cjs",
