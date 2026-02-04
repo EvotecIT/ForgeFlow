@@ -71,6 +71,7 @@ export interface ForgeFlowSettings {
   dashboardAutoRefreshMinutes: number;
   dashboardAutoRefreshOnOpen: boolean;
   dashboardGroupDuplicates: boolean;
+  dashboardGroupDuplicateChildren: boolean;
   dashboardHealthEnabled: boolean;
   dashboardHealthDepStaleDays: number;
   dashboardHideActionsColumn: boolean;
@@ -209,6 +210,7 @@ export function getForgeFlowSettings(): ForgeFlowSettings {
     dashboardAutoRefreshMinutes: config.get<number>('dashboard.autoRefreshMinutes', 2),
     dashboardAutoRefreshOnOpen: config.get<boolean>('dashboard.autoRefreshOnOpen', true),
     dashboardGroupDuplicates: config.get<boolean>('dashboard.groupDuplicates', true),
+    dashboardGroupDuplicateChildren: config.get<boolean>('dashboard.groupDuplicateChildren', false),
     dashboardHealthEnabled: config.get<boolean>('dashboard.health.enabled', true),
     dashboardHealthDepStaleDays: config.get<number>('dashboard.health.depStaleDays', 180),
     dashboardHideActionsColumn: config.get<boolean>('dashboard.hideActionsColumn', false),

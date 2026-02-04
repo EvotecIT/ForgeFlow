@@ -3672,6 +3672,11 @@
           "description": "Group duplicate/worktree entries on the dashboard.",
           "default": true
         },
+        "forgeflow.dashboard.groupDuplicateChildren": {
+          "type": "boolean",
+          "description": "Show grouped duplicate/worktree entries as child rows in the dashboard.",
+          "default": false
+        },
         "forgeflow.dashboard.hideActionsColumn": {
           "type": "boolean",
           "description": "Hide the actions column in the dashboard table.",

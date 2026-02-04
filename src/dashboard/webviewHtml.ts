@@ -21,12 +21,14 @@ export interface DashboardRenderState {
   expandAllGroups?: boolean;
   showAllChildren?: boolean;
   hideActionsColumn?: boolean;
+  showGroupChildren?: boolean;
 }
 
 export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webview, state?: DashboardRenderState): string {
   const nonce = randomNonce();
+  const showGroupChildren = state?.showGroupChildren ?? true;
   const rowsHtml = rows.length > 0
-    ? rows.map((row) => renderRowWithChildren(row, state?.updatedAt)).join('')
+    ? rows.map((row) => renderRowWithChildren(row, state?.updatedAt, showGroupChildren)).join('')
     : renderEmptyState(state);
   const progressPercent = formatProgressPercent(state?.progressCurrent, state?.progressTotal);
   const progressHiddenClass = state?.loading ? '' : 'hidden';
@@ -74,8 +76,8 @@ ${dashboardWebviewStyles}
       <input class="filter" id="filter" type="text" placeholder="${escapeHtml(filterPlaceholder)}" value="${escapeHtml(state?.filter ?? '')}" />
       <button class="clear" id="clear">Clear</button>
       <button class="focus" id="focus">Focus</button>
-      <button class="toggle-groups" id="toggle-groups" title="Expand or collapse grouped duplicates">Expand groups</button>
-      <button class="toggle-children" id="toggle-children" title="Toggle child rows when filtering">Show all children</button>
+      ${showGroupChildren ? '<button class="toggle-groups" id="toggle-groups" title="Expand or collapse grouped duplicates">Expand groups</button>' : ''}
+      ${showGroupChildren ? '<button class="toggle-children" id="toggle-children" title="Toggle child rows when filtering">Show all children</button>' : ''}
       <button class="toggle-actions" id="toggle-actions" title="Toggle actions column visibility">Hide actions</button>
       <span class="count" id="count"></span>
       ${state?.loading ? '<button class="cancel" id="cancel">Cancel</button>' : ''}
@@ -149,10 +151,12 @@ interface RenderRowOptions {
   groupId?: string;
   groupCount?: number;
   expanded?: boolean;
+  showGroupToggle?: boolean;
 }
 
-function renderRowWithChildren(row: DashboardRow, updatedAt?: number): string {
-  if (!row.groupChildren || row.groupChildren.length === 0) {
+function renderRowWithChildren(row: DashboardRow, updatedAt?: number, showGroupChildren = true): string {
+  const hasChildren = !!row.groupChildren && row.groupChildren.length > 0;
+  if (!hasChildren) {
     return renderRow(row, updatedAt, { kind: 'single' });
   }
   const groupId = row.groupId ?? '';
@@ -160,10 +164,14 @@ function renderRowWithChildren(row: DashboardRow, updatedAt?: number): string {
     kind: 'group',
     groupId,
     groupCount: row.groupCount,
-    expanded: false
+    expanded: false,
+    showGroupToggle: showGroupChildren
   });
+  if (!showGroupChildren) {
+    return groupRow;
+  }
   const headerRow = renderGroupHeaderRow(row, groupId);
-  const childRows = row.groupChildren
+  const childRows = (row.groupChildren ?? [])
     .map((child) => renderRow(child, updatedAt, { kind: 'child', groupId }))
     .join('');
   return groupRow + headerRow + childRows;
@@ -235,7 +243,8 @@ function renderRow(row: DashboardRow, updatedAt?: number, options?: RenderRowOpt
   const childBadge = isChild
     ? `<span class="badge child-badge ${row.isWorktree ? 'worktree' : 'duplicate'}">${row.isWorktree ? 'worktree' : 'duplicate'}</span>`
     : '';
-  const groupToggle = isGroup
+  const showGroupToggle = options?.showGroupToggle ?? true;
+  const groupToggle = isGroup && showGroupToggle
     ? `<button class="group-toggle" data-group-id="${escapeHtml(groupId)}" aria-label="Toggle group">${iconChevron()}</button>`
     : '';
   const groupCountBadge = isGroup && typeof groupCount === 'number'

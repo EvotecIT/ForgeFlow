@@ -63,7 +63,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
           colWidths: viewState.colWidths,
           expandAllGroups: viewState.expandAllGroups,
           showAllChildren: viewState.showAllChildren,
-          hideActionsColumn: settings.dashboardHideActionsColumn
+          hideActionsColumn: settings.dashboardHideActionsColumn,
+          showGroupChildren: settings.dashboardGroupDuplicateChildren
         });
       }
     });
@@ -90,7 +91,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         colWidths: viewState.colWidths,
         expandAllGroups: viewState.expandAllGroups,
         showAllChildren: viewState.showAllChildren,
-        hideActionsColumn: settings.dashboardHideActionsColumn
+        hideActionsColumn: settings.dashboardHideActionsColumn,
+        showGroupChildren: settings.dashboardGroupDuplicateChildren
       });
     }
 
