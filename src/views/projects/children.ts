@@ -163,7 +163,7 @@ function getRootGroups(context: ProjectChildrenContext, settings: ReturnType<typ
     ));
   }
   const worktrees = settings.projectShowWorktreesGroup ? getWorktreeProjects(context, settings) : [];
-  if (worktrees.length > 0) {
+  if (worktrees.length > 1) {
     const groupWorktrees = settings.projectWorktreesGroupMode !== 'flat';
     groups.push(new ProjectGroupNode(
       'Worktrees',
