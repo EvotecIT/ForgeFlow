@@ -16,6 +16,7 @@ export type TerminalKeepOpenMode = 'never' | 'onError' | 'always';
 export interface TerminalCommandOptions {
   keepOpen?: TerminalKeepOpenMode;
   executable?: string;
+  keepOpenPrompt?: boolean;
 }
 
 export function quotePowerShellLiteral(value: string): string {
@@ -50,6 +51,7 @@ export function buildTerminalCommand(request: RunRequest, options?: TerminalComm
     parts.push(`Set-Location -LiteralPath ${quotePowerShellLiteral(request.workingDirectory)}`);
   }
   const keepOpen = options?.keepOpen ?? 'never';
+  const keepOpenPrompt = options?.keepOpenPrompt ?? true;
   if (keepOpen === 'never' || !options?.executable) {
     parts.push(`& ${quotePowerShellLiteral(request.filePath)}`);
     return { commandLine: parts.join('; ') };
@@ -63,15 +65,66 @@ export function buildTerminalCommand(request: RunRequest, options?: TerminalComm
   const exeLiteral = quotePowerShellLiteral(options.executable);
   const fileLiteral = quotePowerShellLiteral(request.filePath);
   parts.push(`& ${exeLiteral} ${argLine} -File ${fileLiteral}`);
-  parts.push('$ffExit = $LASTEXITCODE');
-  parts.push('$ffOk = $?');
-  if (keepOpen === 'always') {
-    parts.push("Write-Host ''");
-    parts.push("Read-Host 'Press Enter to close' | Out-Null");
-  } else if (keepOpen === 'onError') {
-    parts.push("if ($ffExit -ne 0 -or -not $ffOk) { Write-Host ''; Write-Host ('Exit code: ' + $ffExit); Read-Host 'Press Enter to close' | Out-Null }");
+  if (keepOpenPrompt) {
+    parts.push('$ffExit = $LASTEXITCODE');
+    parts.push('$ffOk = $?');
+    if (keepOpen === 'always') {
+      parts.push("Write-Host ''");
+      parts.push("Read-Host 'Press Enter to close' | Out-Null");
+    } else if (keepOpen === 'onError') {
+      parts.push("if ($ffExit -ne 0 -or -not $ffOk) { Write-Host ''; Write-Host ('Exit code: ' + $ffExit); Read-Host 'Press Enter to close' | Out-Null }");
+    }
   }
   return { commandLine: parts.join('; ') };
+}
+
+export function buildInlinePowerShellArgs(
+  request: RunRequest,
+  keepOpen: TerminalKeepOpenMode,
+  executable?: string,
+  keepOpenPrompt = true
+): string[] {
+  const args: string[] = ['-NoProfile'];
+  if (process.platform === 'win32') {
+    args.push('-ExecutionPolicy', 'Bypass');
+  }
+  args.push('-Command', buildInlinePowerShellScript(request, keepOpen, executable, keepOpenPrompt));
+  return args;
+}
+
+function buildInlinePowerShellScript(
+  request: RunRequest,
+  keepOpen: TerminalKeepOpenMode,
+  executable?: string,
+  keepOpenPrompt = true
+): string {
+  const parts: string[] = [];
+  if (request.workingDirectory) {
+    parts.push(`Set-Location -LiteralPath ${quotePowerShellLiteral(request.workingDirectory)}`);
+  }
+  if (keepOpen !== 'never' && executable) {
+    const childArgs: string[] = ['-NoProfile'];
+    if (process.platform === 'win32') {
+      childArgs.push('-ExecutionPolicy', 'Bypass');
+    }
+    const argLine = childArgs.map((arg) => quotePowerShellLiteral(arg)).join(' ');
+    const exeLiteral = quotePowerShellLiteral(executable);
+    const fileLiteral = quotePowerShellLiteral(request.filePath);
+    parts.push(`& ${exeLiteral} ${argLine} -File ${fileLiteral}`);
+  } else {
+    parts.push(`& ${quotePowerShellLiteral(request.filePath)}`);
+  }
+  if (keepOpen !== 'never' && keepOpenPrompt) {
+    parts.push('$ffExit = $LASTEXITCODE');
+    parts.push('$ffOk = $?');
+    if (keepOpen === 'always') {
+      parts.push("Write-Host ''");
+      parts.push("Read-Host 'Press Enter to close' | Out-Null");
+    } else if (keepOpen === 'onError') {
+      parts.push("if ($ffExit -ne 0 -or -not $ffOk) { Write-Host ''; Write-Host ('Exit code: ' + $ffExit); Read-Host 'Press Enter to close' | Out-Null }");
+    }
+  }
+  return parts.join('; ');
 }
 
 export function buildAdminCommand(

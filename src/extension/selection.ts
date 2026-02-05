@@ -11,6 +11,7 @@ import type {
   ProjectNodeWithProject
 } from '../views/projectsView';
 import { statPath } from '../util/fs';
+import { normalizeFsPath } from './pathUtils';
 
 export function extractPath(target: unknown): string | undefined {
   if (typeof target === 'string') {
@@ -46,15 +47,77 @@ export function collectSelectedPaths(
   filesView: vscode.TreeView<unknown>,
   filesPanelView: vscode.TreeView<unknown>
 ): string[] {
-  const selection = filesView.selection.length > 0 ? filesView.selection : filesPanelView.selection;
+  const targetPath = extractPath(target);
+  const targetKey = targetPath ? normalizePathForCompare(targetPath) : undefined;
+  const selectionFromView = (view: vscode.TreeView<unknown>): readonly unknown[] | undefined => {
+    const selection = view.selection ?? [];
+    if (selection.length === 0) {
+      return undefined;
+    }
+    if (!target) {
+      return selection;
+    }
+    if (selection.includes(target)) {
+      return selection;
+    }
+    if (targetKey) {
+      const selectedKeys = selection
+        .map((item) => extractPath(item))
+        .filter((value): value is string => Boolean(value))
+        .map((value) => normalizePathForCompare(value));
+      if (selectedKeys.includes(targetKey)) {
+        return selection;
+      }
+    }
+    return undefined;
+  };
+
+  if (targetPath) {
+    const selection = selectionFromView(filesView) ?? selectionFromView(filesPanelView);
+    if (selection) {
+      return dedupeSelectionPaths(selection);
+    }
+    return [targetPath];
+  }
+
+  const preferredSelection = filesView.visible
+    ? filesView.selection
+    : (filesPanelView.visible ? filesPanelView.selection : undefined);
+  if (preferredSelection && preferredSelection.length > 0) {
+    return dedupeSelectionPaths(preferredSelection);
+  }
+
+  if (filesView.selection.length > 0) {
+    return dedupeSelectionPaths(filesView.selection);
+  }
+  if (filesPanelView.selection.length > 0) {
+    return dedupeSelectionPaths(filesPanelView.selection);
+  }
+
+  const fallbackPath = resolveTargetPath(target);
+  return fallbackPath ? [fallbackPath] : [];
+}
+
+function dedupeSelectionPaths(selection: readonly unknown[]): string[] {
   const selectedPaths = selection
     .map((item) => extractPath(item))
     .filter((value): value is string => Boolean(value));
-  if (selectedPaths.length > 0) {
-    return [...new Set(selectedPaths)];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of selectedPaths) {
+    const key = normalizePathForCompare(value);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    result.push(value);
   }
-  const targetPath = resolveTargetPath(target);
-  return targetPath ? [targetPath] : [];
+  return result;
+}
+
+function normalizePathForCompare(value: string): string {
+  const resolved = normalizeFsPath(path.resolve(value));
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
 }
 
 export async function resolveBaseDirectory(target: unknown): Promise<string | undefined> {

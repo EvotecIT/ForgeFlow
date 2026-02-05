@@ -7,6 +7,7 @@ import type { ProjectsViewProvider } from '../../views/projectsView';
 import type { FavoritesStore } from '../../store/favoritesStore';
 import type { FilterPresetStore } from '../../store/filterPresetStore';
 import { getForgeFlowSettings } from '../../util/config';
+import { statPath } from '../../util/fs';
 import { deleteFilterPreset, openLiveFilterInput, pickFilterPreset, saveFilterPreset } from '../filters';
 import {
   collectSelectedPaths,
@@ -166,10 +167,24 @@ export function registerFileCommands(deps: FileCommandDeps): void {
       if (targets.length === 0) {
         return;
       }
+      if (targets.length === 1) {
+        const [only] = targets;
+        if (only) {
+          const stat = await statPath(only);
+          if (stat?.type === vscode.FileType.Directory) {
+            await vscode.commands.executeCommand('list.toggleExpand');
+            return;
+          }
+        }
+      }
       if (targets.length > 1) {
         vscode.window.setStatusBarMessage(`ForgeFlow: Opening ${targets.length} items.`, 2000);
       }
       for (const filePath of targets) {
+        const stat = await statPath(filePath);
+        if (stat?.type === vscode.FileType.Directory) {
+          continue;
+        }
         await openPath(filePath);
       }
     }),

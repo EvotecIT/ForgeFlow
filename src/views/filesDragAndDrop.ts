@@ -75,11 +75,14 @@ async function resolveDestination(target: FilesNode | undefined): Promise<string
 
   if (target && isPathNode(target)) {
     const targetStat = await statPath(target.path);
-    if (targetStat?.type !== vscode.FileType.Directory) {
-      vscode.window.showWarningMessage('ForgeFlow: Drop on a folder or empty area to move/copy.');
-      return undefined;
+    if (targetStat?.type === vscode.FileType.Directory) {
+      return target.path;
     }
-    return target.path;
+    if (targetStat?.type === vscode.FileType.File) {
+      return path.dirname(target.path);
+    }
+    vscode.window.showWarningMessage('ForgeFlow: Drop on a folder or empty area to move/copy.');
+    return undefined;
   }
 
   const folders = vscode.workspace.workspaceFolders ?? [];

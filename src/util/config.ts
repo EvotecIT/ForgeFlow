@@ -40,6 +40,8 @@ export interface ForgeFlowSettings {
   runIntegratedReuseScope: 'profile' | 'shared';
   runIntegratedPerProjectTerminal: boolean;
   runIntegratedKeepOpen: 'never' | 'onError' | 'always';
+  runIntegratedEchoCommand: boolean;
+  runIntegratedKeepOpenPrompt: boolean;
   runExternalKeepOpen: boolean;
   runExternalLogOutput: boolean;
   runExternalReuseSession: boolean;
@@ -179,6 +181,8 @@ export function getForgeFlowSettings(): ForgeFlowSettings {
     runIntegratedReuseScope: config.get<'profile' | 'shared'>('run.integrated.reuseScope', 'profile'),
     runIntegratedPerProjectTerminal: config.get<boolean>('run.integrated.perProjectTerminal', true),
     runIntegratedKeepOpen: config.get<'never' | 'onError' | 'always'>('run.integrated.keepOpen', 'onError'),
+    runIntegratedEchoCommand: config.get<boolean>('run.integrated.echoCommand', false),
+    runIntegratedKeepOpenPrompt: config.get<boolean>('run.integrated.keepOpenPrompt', true),
     runExternalKeepOpen: config.get<boolean>('run.external.keepOpen', true),
     runExternalLogOutput: config.get<boolean>('run.external.logOutput', false),
     runExternalReuseSession: config.get<boolean>('run.external.reuseSession', false),

@@ -86,8 +86,18 @@ export async function deletePaths(targetPaths: string[]): Promise<void> {
   if (confirmation !== 'Delete') {
     return;
   }
+  const failures: string[] = [];
   for (const targetPath of targetPaths) {
-    await vscode.workspace.fs.delete(vscode.Uri.file(targetPath), { recursive: true, useTrash: true });
+    try {
+      await vscode.workspace.fs.delete(vscode.Uri.file(targetPath), { recursive: true, useTrash: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      failures.push(`${path.basename(targetPath)}: ${message}`);
+    }
+  }
+  if (failures.length > 0) {
+    const count = failures.length;
+    vscode.window.showWarningMessage(`ForgeFlow: Failed to delete ${count} item${count === 1 ? '' : 's'}.`);
   }
 }
 
@@ -96,12 +106,19 @@ export async function pastePaths(
   clipboard: { mode: 'copy' | 'cut'; paths: string[] }
 ): Promise<void> {
   let completed = 0;
+  const normalizedBase = normalizeFsPath(path.resolve(baseDirectory));
   for (const sourcePath of clipboard.paths) {
     const sourceStat = await statPath(sourcePath);
     if (sourceStat?.type === vscode.FileType.Directory && isWithin(sourcePath, baseDirectory)) {
       const label = clipboard.mode === 'copy' ? 'copy' : 'move';
       vscode.window.showWarningMessage(`ForgeFlow: Cannot ${label} a folder into its own subfolder.`);
       continue;
+    }
+    if (clipboard.mode === 'cut') {
+      const sourceDir = normalizeFsPath(path.resolve(path.dirname(sourcePath)));
+      if (sourceDir === normalizedBase) {
+        continue;
+      }
     }
     const targetPath = await buildUniqueTargetPath(baseDirectory, sourcePath);
     if (!targetPath) {

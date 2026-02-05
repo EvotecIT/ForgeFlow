@@ -5,7 +5,7 @@ import type { ProjectsStore } from '../store/projectsStore';
 import { getForgeFlowSettings } from '../util/config';
 import type { PowerShellProfile, RunRequest } from '../models/run';
 import type { ForgeFlowLogger } from '../util/log';
-import { buildAdminCommand, buildProcessCommand, buildTerminalCommand } from './commandBuilder';
+import { buildAdminCommand, buildInlinePowerShellArgs, buildProcessCommand, buildTerminalCommand } from './commandBuilder';
 import { getAllProfiles, resolveExecutable, resolveExecutablePath } from './powershellProfiles';
 import type { TerminalManager } from './terminalManager';
 
@@ -74,7 +74,9 @@ export class RunService implements vscode.Disposable {
         settings.runIntegratedReuseTerminal,
         settings.runIntegratedReuseScope,
         settings.runIntegratedPerProjectTerminal,
-        keepOpen
+        keepOpen,
+        settings.runIntegratedEchoCommand,
+        settings.runIntegratedKeepOpenPrompt
       );
       return;
     }
@@ -250,8 +252,14 @@ export class RunService implements vscode.Disposable {
     reuseTerminal: boolean,
     reuseScope: 'profile' | 'shared',
     perProject: boolean,
-    keepOpen: 'never' | 'onError' | 'always'
+    keepOpen: 'never' | 'onError' | 'always',
+    echoCommand: boolean,
+    keepOpenPrompt: boolean
   ): Promise<void> {
+    if (!echoCommand) {
+      await this.runIntegratedTask(request, profile, executable, reuseTerminal, reuseScope, perProject, keepOpen, keepOpenPrompt);
+      return;
+    }
     const terminal = this.terminalManager.getTerminal(profile, {
       reuseTerminal,
       reuseScope,
@@ -260,10 +268,75 @@ export class RunService implements vscode.Disposable {
       workingDirectory: request.workingDirectory,
       shellPath: executable
     });
-    const command = buildTerminalCommand(request, { keepOpen, executable });
+    const command = buildTerminalCommand(request, { keepOpen, executable, keepOpenPrompt });
     terminal.show(true);
     terminal.sendText(command.commandLine, true);
     this.logger.info(`Run integrated: ${request.filePath}`);
+  }
+
+  private async runIntegratedTask(
+    request: RunRequest,
+    profile: PowerShellProfile,
+    executable: string,
+    reuseTerminal: boolean,
+    reuseScope: 'profile' | 'shared',
+    perProject: boolean,
+    keepOpen: 'never' | 'onError' | 'always',
+    keepOpenPrompt: boolean
+  ): Promise<void> {
+    const taskKey = this.buildIntegratedTaskKey(profile, {
+      reuseTerminal,
+      reuseScope,
+      perProject,
+      projectId: request.projectId
+    });
+    const taskName = taskKey === 'shared' ? 'ForgeFlow: Run' : `ForgeFlow: Run (${taskKey})`;
+    const definition = { type: 'forgeflow', task: 'integratedRun', key: taskKey };
+    const args = buildInlinePowerShellArgs(request, keepOpen, executable, keepOpenPrompt);
+    const execution = new vscode.ProcessExecution(executable, args, {
+      cwd: request.workingDirectory
+    });
+    const task = new vscode.Task(definition, vscode.TaskScope.Workspace, taskName, 'ForgeFlow', execution);
+    const panel = reuseTerminal
+      ? (reuseScope === 'shared' ? vscode.TaskPanelKind.Shared : vscode.TaskPanelKind.Dedicated)
+      : vscode.TaskPanelKind.New;
+    task.presentationOptions = {
+      reveal: vscode.TaskRevealKind.Always,
+      panel,
+      focus: false,
+      echo: false,
+      clear: false,
+      showReuseMessage: false
+    };
+    task.runOptions = { reevaluateOnRerun: true };
+    await vscode.tasks.executeTask(task);
+    this.logger.info(`Run integrated (task): ${request.filePath}`);
+  }
+
+  private buildIntegratedTaskKey(
+    profile: PowerShellProfile,
+    options: {
+      reuseTerminal: boolean;
+      reuseScope: 'profile' | 'shared';
+      perProject: boolean;
+      projectId?: string;
+    }
+  ): string {
+    if (!options.reuseTerminal) {
+      const stamp = Date.now().toString(36);
+      const rand = Math.random().toString(36).slice(2, 8);
+      return `run-${stamp}-${rand}`;
+    }
+    if (options.reuseScope === 'shared') {
+      if (options.perProject && options.projectId) {
+        return `shared:${options.projectId}`;
+      }
+      return 'shared';
+    }
+    if (options.perProject && options.projectId) {
+      return `${profile.id}:${options.projectId}`;
+    }
+    return profile.id;
   }
 
   private async runExternal(

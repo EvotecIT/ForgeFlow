@@ -1,5 +1,5 @@
 import { strict as assert } from 'assert';
-import { buildAdminCommand, buildProcessCommand, buildTerminalCommand, quotePowerShellLiteral } from '../../src/run/commandBuilder';
+import { buildAdminCommand, buildInlinePowerShellArgs, buildProcessCommand, buildTerminalCommand, quotePowerShellLiteral } from '../../src/run/commandBuilder';
 import type { PowerShellProfile, RunRequest } from '../../src/models/run';
 
 const profile: PowerShellProfile = {
@@ -42,6 +42,33 @@ describe('PowerShell command builder', () => {
     const command = buildTerminalCommand(request, { keepOpen: 'onError', executable: 'pwsh' });
     assert.ok(command.commandLine.includes('pwsh'));
     assert.ok(command.commandLine.includes('Press Enter'));
+  });
+
+  it('builds inline args with child process when keepOpen enabled', () => {
+    const request: RunRequest = { filePath: '/tmp/test.ps1', workingDirectory: '/tmp' };
+    const args = buildInlinePowerShellArgs(request, 'onError', 'pwsh');
+    const scriptIndex = args.findIndex((arg) => arg === '-Command');
+    assert.ok(scriptIndex >= 0);
+    const script = args[scriptIndex + 1];
+    assert.equal(typeof script, 'string');
+    if (typeof script === 'string') {
+      assert.ok(script.includes('pwsh'));
+      assert.ok(script.includes('-File'));
+      assert.ok(script.includes('Press Enter'));
+    }
+  });
+
+  it('omits prompt when keepOpenPrompt is false', () => {
+    const request: RunRequest = { filePath: '/tmp/test.ps1', workingDirectory: '/tmp' };
+    const args = buildInlinePowerShellArgs(request, 'onError', 'pwsh', false);
+    const scriptIndex = args.findIndex((arg) => arg === '-Command');
+    assert.ok(scriptIndex >= 0);
+    const script = args[scriptIndex + 1];
+    assert.equal(typeof script, 'string');
+    if (typeof script === 'string') {
+      assert.equal(script.includes('Press Enter'), false);
+      assert.equal(script.includes('$ffExit'), false);
+    }
   });
 
   it('builds admin command with Start-Process', () => {

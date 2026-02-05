@@ -3455,6 +3455,16 @@
           ],
           "default": "onError"
         },
+        "forgeflow.run.integrated.echoCommand": {
+          "type": "boolean",
+          "description": "Echo the full PowerShell command in the terminal (disable to reduce verbosity).",
+          "default": false
+        },
+        "forgeflow.run.integrated.keepOpenPrompt": {
+          "type": "boolean",
+          "description": "Show the \"Press Enter to close\" prompt when keepOpen is onError or always.",
+          "default": true
+        },
         "forgeflow.run.integrated.reuseScope": {
           "type": "string",
           "description": "Reuse scope for integrated terminals.",
