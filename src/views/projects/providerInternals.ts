@@ -160,12 +160,11 @@ export async function hydrateModifiedTimes(params: {
       return results;
     }
     const lastModified = recent ?? project.lastModified;
-    const latest = params.projectsStore.list().find((item) => item.id === project.id) ?? project;
-    const updated = { ...latest, lastModified };
-    await params.projectsStore.updateProject(updated);
+    const updated = { ...project, lastModified };
     results.push(updated);
     params.onProgress(results.length, total);
   }
+  await persistProjectField(params.projectsStore, results, 'lastModified');
   return results;
 }
 
@@ -217,9 +216,6 @@ export async function hydrateGitCommits(params: {
     if (needsRefresh) {
       pending.push({ project: baseProject, index, headMtime, headHash });
     } else {
-      if (baseProject !== project) {
-        await params.projectsStore.updateProject(baseProject);
-      }
       if (cacheEntry && (headMtime !== undefined || headHash)) {
         const nextHeadMtime = headMtime ?? cacheEntry.headMtime;
         const nextHeadHash = headHash ?? cacheEntry.headHash;
@@ -257,9 +253,7 @@ export async function hydrateGitCommits(params: {
     }
     const lastCommit = gitInfo?.lastCommit ? Date.parse(gitInfo.lastCommit) : undefined;
     const lastGitCommit = Number.isNaN(lastCommit ?? NaN) ? undefined : lastCommit;
-    const latest = params.projectsStore.list().find((project) => project.id === entry.project.id) ?? entry.project;
-    const updated = { ...latest, lastGitCommit };
-    await params.projectsStore.updateProject(updated);
+    const updated = { ...entry.project, lastGitCommit };
     cacheUpdates.push({
       projectId: entry.project.id,
       path: entry.project.path,
@@ -273,8 +267,40 @@ export async function hydrateGitCommits(params: {
     params.onProgress(completed, pending.length);
   }
 
+  await persistProjectField(params.projectsStore, results, 'lastGitCommit');
   if (cacheUpdates.length > 0) {
     await params.gitCommitCacheStore.upsertEntries(cacheUpdates);
   }
   return results;
+}
+
+async function persistProjectField(
+  projectsStore: ProjectsStore,
+  updates: Project[],
+  field: 'lastModified' | 'lastGitCommit'
+): Promise<void> {
+  if (updates.length === 0) {
+    return;
+  }
+  const latest = projectsStore.list();
+  const updatesById = new Map(updates.map((project) => [project.id, project]));
+  let changed = false;
+  const merged = latest.map((project) => {
+    const update = updatesById.get(project.id);
+    if (!update) {
+      return project;
+    }
+    if (project[field] === update[field]) {
+      return project;
+    }
+    changed = true;
+    return {
+      ...project,
+      [field]: update[field]
+    };
+  });
+  if (!changed) {
+    return;
+  }
+  await projectsStore.saveProjects(merged);
 }

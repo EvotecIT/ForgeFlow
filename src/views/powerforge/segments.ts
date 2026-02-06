@@ -32,8 +32,12 @@ export function updateSegment(
 ): void {
   const index = findSegmentIndex(segments, type);
   if (enabled) {
-    const segment = index >= 0 ? segments[index]! : { Type: type };
-    if (index < 0) {
+    let segment: PowerForgeSegment;
+    if (index >= 0) {
+      segment = segments[index] ?? { Type: type };
+      segments[index] = segment;
+    } else {
+      segment = { Type: type };
       segments.push(segment);
     }
     segment.Type = type;
@@ -51,8 +55,12 @@ export function updateArtefactSegment(
 ): void {
   const index = findArtefactSegmentIndex(segments, type);
   if (enabled) {
-    const segment = index >= 0 ? segments[index]! : { Type: type };
-    if (index < 0) {
+    let segment: PowerForgeSegment;
+    if (index >= 0) {
+      segment = segments[index] ?? { Type: type };
+      segments[index] = segment;
+    } else {
+      segment = { Type: type };
       segments.push(segment);
     }
     segment.Type = type;

@@ -29,6 +29,7 @@ interface ProjectWorkspaceOverride {
 
 interface ProjectScanLock {
   owner: string;
+  token: string;
   expiresAt: number;
 }
 
@@ -112,6 +113,7 @@ export class ProjectsStore {
 
   public async setFavoritesOnly(value: boolean): Promise<void> {
     await this.state.setWorkspace(FAVORITES_ONLY_KEY, value);
+    await this.bumpWorkspaceRevision();
   }
 
   public getScanMeta(): ProjectScanMeta | undefined {
@@ -327,16 +329,25 @@ export class ProjectsStore {
   }
 
   public async tryAcquireScanLock(owner: string, ttlMs: number): Promise<boolean> {
-    const now = Date.now();
-    const lock = this.state.getGlobal<ProjectScanLock | undefined>(SCAN_LOCK_KEY, undefined);
-    if (!lock || lock.expiresAt <= now || lock.owner === owner) {
+    const attempts = 5;
+    const lockTtl = Math.max(1_000, ttlMs);
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const now = Date.now();
+      const lock = this.state.getGlobal<ProjectScanLock | undefined>(SCAN_LOCK_KEY, undefined);
+      if (lock && lock.expiresAt > now && lock.owner !== owner) {
+        return false;
+      }
       const next: ProjectScanLock = {
         owner,
-        expiresAt: now + Math.max(1_000, ttlMs)
+        token: createRevisionStamp(),
+        expiresAt: now + lockTtl
       };
       await this.state.setGlobal(SCAN_LOCK_KEY, next);
+      await delay(20 + Math.floor(Math.random() * 30));
       const stored = this.state.getGlobal<ProjectScanLock | undefined>(SCAN_LOCK_KEY, undefined);
-      return stored?.owner === owner;
+      if (stored?.owner === next.owner && stored.token === next.token && stored.expiresAt === next.expiresAt) {
+        return true;
+      }
     }
     return false;
   }
@@ -426,4 +437,10 @@ function createRevisionStamp(): string {
 function normalizeRootKey(value: string): string {
   const normalized = value.replace(/\\/g, '/');
   return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+}
+
+async function delay(ms: number): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }

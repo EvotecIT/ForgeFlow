@@ -325,9 +325,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       const viewState = this.viewStateStore.getState();
       const settings = getForgeFlowSettings();
       this.tagFilter = this.tagFilterStore.getFilter();
+      const latestFilter = this.filterStore.getFilter();
       this.view.webview.html = renderDashboardHtml(rows, this.view.webview, {
         updatedAt: this.lastUpdated,
-        filter,
+        filter: latestFilter,
         activeTags: this.tagFilter,
         filterMinChars: settings.filtersDashboardMinChars,
         filterMatchMode: settings.filtersMatchMode,
@@ -353,10 +354,11 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       const viewState = this.viewStateStore.getState();
       const settings = getForgeFlowSettings();
       this.tagFilter = this.tagFilterStore.getFilter();
+      const latestFilter = this.filterStore.getFilter();
       this.view.webview.html = renderDashboardHtml(this.lastRows, this.view.webview, {
         message: 'Dashboard refresh failed.',
         updatedAt: this.lastUpdated,
-        filter,
+        filter: latestFilter,
         activeTags: this.tagFilter,
         filterMinChars: settings.filtersDashboardMinChars,
         filterMatchMode: settings.filtersMatchMode,
@@ -400,8 +402,10 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  public async applyFilter(value: string): Promise<void> {
-    await this.filterStore.setFilter(value);
+  public async applyFilter(value: string, persist = true): Promise<void> {
+    if (persist) {
+      await this.filterStore.setFilter(value);
+    }
     if (this.view) {
       void this.view.webview.postMessage({ type: 'applyFilter', filter: value });
     }
@@ -416,6 +420,42 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     }
     this.view.show?.(false);
     void this.view.webview.postMessage({ type: 'focusFilter' });
+  }
+
+  public syncFromCache(): void {
+    const cached = this.cache.load();
+    if (!cached) {
+      return;
+    }
+    if (this.lastUpdated === cached.updatedAt) {
+      return;
+    }
+    this.lastRows = cached.rows;
+    this.lastUpdated = cached.updatedAt;
+    if (!this.view) {
+      return;
+    }
+    const filter = this.filterStore.getFilter();
+    const viewState = this.viewStateStore.getState();
+    const settings = getForgeFlowSettings();
+    this.tagFilter = this.tagFilterStore.getFilter();
+    this.view.webview.html = renderDashboardHtml(this.lastRows, this.view.webview, {
+      updatedAt: this.lastUpdated,
+      filter,
+      activeTags: this.tagFilter,
+      filterMinChars: settings.filtersDashboardMinChars,
+      filterMatchMode: settings.filtersMatchMode,
+      authSummary: this.authSummary,
+      progressCurrent: this.progressCurrent,
+      progressTotal: this.progressTotal,
+      sortKey: viewState.sortKey,
+      sortDir: viewState.sortDir,
+      colWidths: viewState.colWidths,
+      expandAllGroups: viewState.expandAllGroups,
+      showAllChildren: viewState.showAllChildren,
+      hideActionsColumn: settings.dashboardHideActionsColumn,
+      showGroupChildren: settings.dashboardGroupDuplicateChildren
+    });
   }
 
   public async setActionsColumnHidden(hidden: boolean): Promise<void> {

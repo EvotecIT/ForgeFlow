@@ -163,9 +163,15 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
 
     const lockAcquired = await this.projectsStore.tryAcquireScanLock(this.scanLockId, this.scanLockTtlMs);
     if (!lockAcquired) {
-      this.scanDeferredAt = Date.now();
+      const now = Date.now();
+      const lock = this.projectsStore.getScanLock();
+      const minRetryMs = 2_000;
+      const nextRetryAt = lock && lock.owner !== this.scanLockId && lock.expiresAt > now
+        ? lock.expiresAt + 1_000
+        : now + minRetryMs;
+      this.scanDeferredAt = now;
       this.scanDeferredMessage = 'Scan deferred (another window is scanning).';
-      this.scanBackoffUntil = Date.now() + this.scanBackoffMs;
+      this.scanBackoffUntil = Math.min(now + this.scanBackoffMs, Math.max(now + minRetryMs, nextRetryAt));
       this.onDidUpdateProjectsEmitter.fire(this.projects);
       this.onDidChangeTreeDataEmitter.fire(undefined);
       this.isScanning = false;
@@ -345,6 +351,7 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
 
   private async hydrateIdentities(projects: Project[], runId: number): Promise<Project[]> {
     const results: Project[] = [];
+    let changed = false;
     for (const project of projects) {
       if (runId !== this.scanVersion) {
         return results;
@@ -365,9 +372,16 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
         continue;
       }
       const merged = mergeIdentity(project.identity, detected.identity, { overrideRepository: isWorktree });
+      if (identitiesEqual(project.identity, merged)) {
+        results.push(project);
+        continue;
+      }
       const updated = { ...project, identity: merged };
-      await this.projectsStore.updateProject(updated);
       results.push(updated);
+      changed = true;
+    }
+    if (changed) {
+      await this.projectsStore.saveProjects(results);
     }
     this.updateDuplicateInfo(results);
     return results;
@@ -714,4 +728,8 @@ function mapEquals(left: Map<string, boolean>, right: Map<string, boolean>): boo
     }
   }
   return true;
+}
+
+function identitiesEqual(left: Project['identity'], right: Project['identity']): boolean {
+  return JSON.stringify(left ?? {}) === JSON.stringify(right ?? {});
 }
