@@ -85,12 +85,14 @@ export class GitViewProvider implements vscode.TreeDataProvider<GitNode> {
     }
     try {
       const overrides = this.gitStore.getProjectSettings(project.id);
-      this.status = await this.gitService.getRepoStatus(project.path, project.name, overrides);
-      this.errorMessage = undefined;
-      this.lastErrorProjectId = undefined;
-      if (this.status) {
-        await this.gitStore.setSummary(project.id, buildProjectSummary(this.status));
+      const status = await this.gitService.getRepoStatus(project.path, project.name, overrides);
+      if (status) {
+        this.status = status;
+        this.errorMessage = undefined;
+        this.lastErrorProjectId = undefined;
+        await this.gitStore.setSummary(project.id, buildProjectSummary(status));
       } else {
+        this.status = undefined;
         this.errorMessage = `ForgeFlow: Git status failed for ${project.name}. See Output > ForgeFlow for details.`;
         if (this.lastErrorProjectId !== project.id) {
           this.lastErrorProjectId = project.id;

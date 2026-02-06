@@ -613,6 +613,10 @@ function groupDashboardRows(rows: DashboardRow[]): DashboardRow[] {
 }
 
 function pickPrimaryRow(rows: DashboardRow[]): DashboardRow {
+  const first = rows.at(0);
+  if (!first) {
+    throw new Error('pickPrimaryRow requires at least one row');
+  }
   const nonWorktree = rows.filter((row) => row.isWorktree === false);
   const pool = nonWorktree.length > 0 ? nonWorktree : rows;
   return [...pool].sort((a, b) => {
@@ -622,7 +626,7 @@ function pickPrimaryRow(rows: DashboardRow[]): DashboardRow {
       return aLen - bLen;
     }
     return (a.projectPath ?? '').localeCompare(b.projectPath ?? '');
-  })[0] ?? rows[0]!;
+  })[0] ?? first;
 }
 
 async function isGitWorktree(projectPath: string): Promise<boolean> {

@@ -59,6 +59,30 @@ import { registerFileCommands } from './extension/commands/files';
 import { registerProjectCommands } from './extension/commands/projects';
 import { schedulePowerShellProfileHealthCheck } from './extension/run/health';
 
+const GLOBAL_STATE_SYNC_KEYS = [
+  'forgeflow.layout.mode.v1',
+  'forgeflow.filters.revision.v1',
+  'forgeflow.filters.presets.v1',
+  'forgeflow.filters.presets.revision.v1',
+  'forgeflow.tags.presets.v1',
+  'forgeflow.tags.presets.revision.v1',
+  'forgeflow.files.favorites.v1',
+  'forgeflow.files.favorites.revision.v1',
+  'forgeflow.projects.items.v1',
+  'forgeflow.projects.revision.v1',
+  'forgeflow.projects.favorites.v1',
+  'forgeflow.projects.tags.v1',
+  'forgeflow.projects.tags.revision.v1',
+  'forgeflow.projects.sortOrder.v1',
+  'forgeflow.files.filter.v1',
+  'forgeflow.projects.filter.v1',
+  'forgeflow.git.filter.v1',
+  'forgeflow.dashboard.filter.v1',
+  'forgeflow.tags.filter.v1',
+  'forgeflow.run.history.v1',
+  'forgeflow.run.history.revision.v1'
+];
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const logger = new ForgeFlowLogger();
   const stateStore = new StateStore(context);
@@ -84,6 +108,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const gitWatchService = new GitWatchService(projectsStore, gitCommitCacheStore, logger);
   const layoutMode = layoutStore.getMode();
   void vscode.commands.executeCommand('setContext', 'forgeflow.layout', layoutMode);
+  context.globalState.setKeysForSync(GLOBAL_STATE_SYNC_KEYS);
   schedulePowerShellProfileHealthCheck();
   let filesRefreshTimer: NodeJS.Timeout | undefined;
   let lastFilesRefreshAt = 0;
@@ -322,46 +347,70 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     return [
       projectsStore.getRevision(),
       projectsStore.getWorkspaceRevision(),
-      tagsStore.getRevision(),
-      getFiltersRevision(stateStore)
+      tagsStore.getRevision()
+    ].join('::');
+  };
+
+  const computeFilterSyncKey = (): string => {
+    const tagFilter = tagFilterStore.getFilter().map((tag) => tag.toLowerCase()).sort().join('\u001f');
+    return [
+      getFiltersRevision(stateStore),
+      getForgeFlowSettings().filtersScope,
+      filesFilterStore.getFilter(),
+      projectsStore.getFilter(),
+      gitFilterStore.getFilter(),
+      dashboardFilterStore.getFilter(),
+      tagFilter,
+      projectsStore.getFavoritesOnly() ? '1' : '0'
     ].join('::');
   };
 
   const computeFavoritesSyncKey = (): string => favoritesStore.getRevision();
   const computeRunHistorySyncKey = (): string => runHistoryStore.getRevision();
   const computeGitSyncKey = (): string => gitStore.getRevision();
+  const computeDashboardSyncKey = (): string => String(dashboardCache.load()?.updatedAt ?? 0);
   const computePresetsSyncKey = (): string => [
     filterPresetStore.getRevision(),
     tagFilterStore.getPresetsRevision()
   ].join('::');
 
   let lastProjectsSyncKey = computeProjectsSyncKey();
+  let lastFilterSyncKey = computeFilterSyncKey();
   let lastFavoritesSyncKey = computeFavoritesSyncKey();
   let lastRunHistorySyncKey = computeRunHistorySyncKey();
   let lastGitSyncKey = computeGitSyncKey();
+  let lastDashboardSyncKey = computeDashboardSyncKey();
   let lastPresetsSyncKey = computePresetsSyncKey();
   const syncProjectsAcrossWindows = async (): Promise<void> => {
     const nextProjectsKey = computeProjectsSyncKey();
+    const nextFilterKey = computeFilterSyncKey();
     const nextFavoritesKey = computeFavoritesSyncKey();
     const nextRunHistoryKey = computeRunHistorySyncKey();
     const nextGitKey = computeGitSyncKey();
+    const nextDashboardKey = computeDashboardSyncKey();
     const nextPresetsKey = computePresetsSyncKey();
     if (nextProjectsKey === lastProjectsSyncKey
+      && nextFilterKey === lastFilterSyncKey
       && nextFavoritesKey === lastFavoritesSyncKey
       && nextRunHistoryKey === lastRunHistorySyncKey
       && nextGitKey === lastGitSyncKey
+      && nextDashboardKey === lastDashboardSyncKey
       && nextPresetsKey === lastPresetsSyncKey) {
       return;
     }
 
     const projectsChanged = nextProjectsKey !== lastProjectsSyncKey;
+    const filtersChanged = nextFilterKey !== lastFilterSyncKey;
     const favoritesChanged = nextFavoritesKey !== lastFavoritesSyncKey;
     const runHistoryChanged = nextRunHistoryKey !== lastRunHistorySyncKey;
     const gitChanged = nextGitKey !== lastGitSyncKey;
+    const dashboardChanged = nextDashboardKey !== lastDashboardSyncKey;
     lastProjectsSyncKey = nextProjectsKey;
+    lastFilterSyncKey = nextFilterKey;
     lastFavoritesSyncKey = nextFavoritesKey;
     lastRunHistorySyncKey = nextRunHistoryKey;
     lastGitSyncKey = nextGitKey;
+    lastDashboardSyncKey = nextDashboardKey;
     lastPresetsSyncKey = nextPresetsKey;
 
     if (projectsChanged) {
@@ -373,6 +422,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       await projectsWebviewProvider.refresh();
       await projectsWebviewPanelProvider.refresh();
       gitProvider.refreshView();
+    }
+
+    if (filtersChanged) {
+      if (!projectsChanged) {
+        projectsProvider.syncFromStore();
+        filesProvider.syncFilterFromStore();
+        gitProvider.syncFilterFromStore();
+      }
+      await dashboardProvider.applyFilter(dashboardFilterStore.getFilter(), false);
+      await dashboardProvider.applyTagFilter(tagFilterStore.getFilter(), false, true);
+      if (!projectsChanged) {
+        await projectsWebviewProvider.refresh();
+        await projectsWebviewPanelProvider.refresh();
+      }
     }
 
     if (favoritesChanged) {
@@ -389,6 +452,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     if (gitChanged && !projectsChanged) {
       gitProvider.refreshView();
+    }
+
+    if (dashboardChanged) {
+      dashboardProvider.syncFromCache();
     }
   };
 
@@ -577,7 +644,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(async () => {
-      filesProvider.refresh();
       await projectsProvider.refresh();
       await powerForgeViewProvider.refresh();
       await powerForgePanelProvider.refresh();

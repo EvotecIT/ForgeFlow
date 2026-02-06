@@ -1,5 +1,5 @@
 import { strict as assert } from 'assert';
-import * as vscode from 'vscode';
+import type * as vscode from 'vscode';
 import { collectSelectedPaths } from '../../src/extension/selection';
 
 function makeView(selection: unknown[], visible = true): vscode.TreeView<unknown> {
