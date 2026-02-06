@@ -10,7 +10,10 @@ const violations = [];
 
 function countLines(text) {
   if (!text) return 0;
-  return text.split(/\r\n|\r|\n/).length;
+  return text
+    .split(/\r\n|\r|\n/)
+    .filter((line) => line.trim().length > 0)
+    .length;
 }
 
 function walk(dir) {
