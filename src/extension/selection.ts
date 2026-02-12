@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import type { PathNode } from '../views/filesView';
 import type { Project, ProjectEntryPoint } from '../models/project';
 import type { RunHistoryEntry, RunPreset } from '../models/run';
+import type { ProjectsStore } from '../store/projectsStore';
 import type {
   ProjectNodeWithEntry,
   ProjectNodeWithHistory,
@@ -11,7 +12,11 @@ import type {
   ProjectNodeWithProject
 } from '../views/projectsView';
 import { statPath } from '../util/fs';
-import { normalizeFsPath } from './pathUtils';
+import { isWithin, normalizePathKey } from './pathUtils';
+import { hasWorkspaceFolders, pickWorkspaceFolderPath } from './workspaceFolders';
+
+export type FilesViewId = 'forgeflow.files' | 'forgeflow.files.panel';
+export type ProjectViewId = 'forgeflow.projects' | 'forgeflow.projects.panel';
 
 export function extractPath(target: unknown): string | undefined {
   if (typeof target === 'string') {
@@ -47,29 +52,23 @@ export function collectSelectedPaths(
   filesView: vscode.TreeView<unknown>,
   filesPanelView: vscode.TreeView<unknown>
 ): string[] {
+  const preferredViewId = extractFilesViewId(target);
   const targetPath = extractPath(target);
   const targetKey = targetPath ? normalizePathForCompare(targetPath) : undefined;
   const selectionFromView = (view: vscode.TreeView<unknown>): readonly unknown[] | undefined => {
-    const selection = view.selection ?? [];
-    if (selection.length === 0) {
-      return undefined;
-    }
-    if (!target) {
-      return selection;
-    }
-    if (selection.includes(target)) {
-      return selection;
-    }
-    if (targetKey) {
+    return selectMatchingSelection(target, view.selection ?? [], (selection) => {
+      if (selection.includes(target)) {
+        return true;
+      }
+      if (!targetKey) {
+        return false;
+      }
       const selectedKeys = selection
         .map((item) => extractPath(item))
         .filter((value): value is string => Boolean(value))
         .map((value) => normalizePathForCompare(value));
-      if (selectedKeys.includes(targetKey)) {
-        return selection;
-      }
-    }
-    return undefined;
+      return selectedKeys.includes(targetKey);
+    });
   };
 
   if (targetPath) {
@@ -78,6 +77,13 @@ export function collectSelectedPaths(
       return dedupeSelectionPaths(selection);
     }
     return [targetPath];
+  }
+
+  if (preferredViewId) {
+    const preferredView = preferredViewId === 'forgeflow.files' ? filesView : filesPanelView;
+    if (preferredView.selection.length > 0) {
+      return dedupeSelectionPaths(preferredView.selection);
+    }
   }
 
   const preferredSelection = filesView.visible
@@ -98,6 +104,73 @@ export function collectSelectedPaths(
   return fallbackPath ? [fallbackPath] : [];
 }
 
+export function collectSelectedProjects(
+  target: unknown,
+  projectsStore: ProjectsStore,
+  projectsView: vscode.TreeView<unknown>,
+  projectsPanelView: vscode.TreeView<unknown>
+): Project[] {
+  const preferredViewId = extractProjectViewId(target);
+  const targetProject = extractProject(target);
+  const targetProjectId = targetProject?.id;
+  const targetPath = extractPath(target);
+  const targetPathProject = targetPath ? resolveProjectFromPath(projectsStore, targetPath) : undefined;
+  const targetPathProjectId = targetPathProject?.id;
+
+  const selectionFromView = (view: vscode.TreeView<unknown>): readonly unknown[] | undefined => {
+    return selectMatchingSelection(target, view.selection ?? [], (selection) => {
+      if (targetProjectId) {
+        const selectedIds = projectIdsFromSelection(selection, projectsStore);
+        return selectedIds.includes(targetProjectId);
+      }
+      if (targetPathProjectId) {
+        const selectedIds = projectIdsFromSelection(selection, projectsStore);
+        return selectedIds.includes(targetPathProjectId);
+      }
+      return selection.includes(target);
+    });
+  };
+
+  if (targetProject) {
+    const selection = selectionFromView(projectsView) ?? selectionFromView(projectsPanelView);
+    if (selection) {
+      return dedupeSelectionProjects(selection, projectsStore);
+    }
+    return [targetProject];
+  }
+
+  if (targetPathProject) {
+    const selection = selectionFromView(projectsView) ?? selectionFromView(projectsPanelView);
+    if (selection) {
+      return dedupeSelectionProjects(selection, projectsStore);
+    }
+    return [targetPathProject];
+  }
+
+  if (preferredViewId) {
+    const preferredView = preferredViewId === 'forgeflow.projects' ? projectsView : projectsPanelView;
+    if (preferredView.selection.length > 0) {
+      return dedupeSelectionProjects(preferredView.selection, projectsStore);
+    }
+  }
+
+  const preferredSelection = projectsView.visible
+    ? projectsView.selection
+    : (projectsPanelView.visible ? projectsPanelView.selection : undefined);
+  if (preferredSelection && preferredSelection.length > 0) {
+    return dedupeSelectionProjects(preferredSelection, projectsStore);
+  }
+
+  if (projectsView.selection.length > 0) {
+    return dedupeSelectionProjects(projectsView.selection, projectsStore);
+  }
+  if (projectsPanelView.selection.length > 0) {
+    return dedupeSelectionProjects(projectsPanelView.selection, projectsStore);
+  }
+
+  return [];
+}
+
 function dedupeSelectionPaths(selection: readonly unknown[]): string[] {
   const selectedPaths = selection
     .map((item) => extractPath(item))
@@ -115,9 +188,57 @@ function dedupeSelectionPaths(selection: readonly unknown[]): string[] {
   return result;
 }
 
+function selectMatchingSelection(
+  target: unknown,
+  selection: readonly unknown[],
+  matchesTarget: (selection: readonly unknown[]) => boolean
+): readonly unknown[] | undefined {
+  if (selection.length === 0) {
+    return undefined;
+  }
+  if (!target) {
+    return selection;
+  }
+  return matchesTarget(selection) ? selection : undefined;
+}
+
+function dedupeSelectionProjects(selection: readonly unknown[], projectsStore: ProjectsStore): Project[] {
+  const selected = selection
+    .map((item) => {
+      const direct = extractProject(item);
+      if (direct) {
+        return direct;
+      }
+      const candidatePath = extractPath(item);
+      return candidatePath ? resolveProjectFromPath(projectsStore, candidatePath) : undefined;
+    })
+    .filter((value): value is Project => Boolean(value));
+  const seen = new Set<string>();
+  const result: Project[] = [];
+  for (const project of selected) {
+    if (seen.has(project.id)) {
+      continue;
+    }
+    seen.add(project.id);
+    result.push(project);
+  }
+  return result;
+}
+
+function projectIdsFromSelection(selection: readonly unknown[], projectsStore: ProjectsStore): string[] {
+  return dedupeSelectionProjects(selection, projectsStore).map((project) => project.id);
+}
+
 function normalizePathForCompare(value: string): string {
-  const resolved = normalizeFsPath(path.resolve(value));
-  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+  return normalizePathKey(value);
+}
+
+function resolveProjectFromPath(projectsStore: ProjectsStore, candidatePath: string): Project | undefined {
+  const resolvedPath = normalizePathForCompare(candidatePath);
+  return projectsStore.list().find((project) => {
+    const projectPath = normalizePathForCompare(project.path);
+    return isWithin(projectPath, resolvedPath);
+  });
 }
 
 export async function resolveBaseDirectory(target: unknown): Promise<string | undefined> {
@@ -129,18 +250,13 @@ export async function resolveBaseDirectory(target: unknown): Promise<string | un
     }
     return path.dirname(targetPath);
   }
-  const folders = vscode.workspace.workspaceFolders ?? [];
-  if (folders.length === 1) {
-    return folders[0]?.uri.fsPath;
+  const workspaceFolderPath = await pickWorkspaceFolderPath('Select target folder');
+  if (workspaceFolderPath) {
+    return workspaceFolderPath;
   }
-  if (folders.length > 1) {
-    const pick = await vscode.window.showQuickPick(
-      folders.map((folder) => ({ label: folder.name, description: folder.uri.fsPath, folder })),
-      { placeHolder: 'Select target folder' }
-    );
-    return pick?.folder.uri.fsPath;
+  if (!hasWorkspaceFolders()) {
+    vscode.window.showWarningMessage('ForgeFlow: No workspace folder available.');
   }
-  vscode.window.showWarningMessage('ForgeFlow: No workspace folder available.');
   return undefined;
 }
 
@@ -200,6 +316,28 @@ export function isProjectHistory(value: unknown): value is ProjectNodeWithHistor
 
 function hasKey(value: unknown, key: string): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && key in value;
+}
+
+function extractFilesViewId(target: unknown): FilesViewId | undefined {
+  if (!hasKey(target, 'viewId')) {
+    return undefined;
+  }
+  const viewId = target['viewId'];
+  if (viewId === 'forgeflow.files' || viewId === 'forgeflow.files.panel') {
+    return viewId;
+  }
+  return undefined;
+}
+
+function extractProjectViewId(target: unknown): ProjectViewId | undefined {
+  if (!hasKey(target, 'viewId')) {
+    return undefined;
+  }
+  const viewId = target['viewId'];
+  if (viewId === 'forgeflow.projects' || viewId === 'forgeflow.projects.panel') {
+    return viewId;
+  }
+  return undefined;
 }
 
 function isPathNode(value: unknown): value is PathNode | ProjectNodeWithPath {

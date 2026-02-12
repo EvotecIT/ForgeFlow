@@ -1,8 +1,10 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type { ProjectIdentity, RepositoryProvider } from '../models/project';
-import { readDirectory, readFileText, statPath } from '../util/fs';
+import { readFileText, statPath } from '../util/fs';
 import { getForgeFlowSettings } from '../util/config';
+import { deriveRepoGitDirFromGitDir } from '../git/worktreeMetadata';
+import { walkDirectoriesBreadthFirst } from './walk';
 
 export interface DetectedIdentity {
   identity?: ProjectIdentity;
@@ -162,13 +164,10 @@ async function resolveCommonGitConfig(gitDir: string): Promise<string | undefine
 }
 
 async function resolveRepoConfigFromWorktree(gitDir: string): Promise<string | undefined> {
-  const normalized = gitDir.replace(/\\/g, '/').toLowerCase();
-  const marker = '/worktrees/';
-  const index = normalized.indexOf(marker);
-  if (index < 0) {
+  const repoGitDir = deriveRepoGitDirFromGitDir(gitDir);
+  if (!repoGitDir) {
     return undefined;
   }
-  const repoGitDir = gitDir.slice(0, index);
   const repoConfigPath = path.join(repoGitDir, 'config');
   const configStat = await statPath(repoConfigPath);
   return configStat ? repoConfigPath : undefined;
@@ -524,22 +523,19 @@ function readMsbuildValue(text: string, property: string): string | undefined {
 }
 
 async function findBestFile(root: string, extension: string, options: IdentityScanOptions): Promise<string | undefined> {
-  const candidates = await findFiles(root, extension, options.maxDepth);
-  if (candidates.length === 0) {
-    return undefined;
-  }
-  const rootName = path.basename(root).toLowerCase();
-  const preferredFolders = normalizePreferredFolders(options.preferredFolders);
-  const scored = candidates.map((candidate) => ({
-    path: candidate.path,
-    score: scoreCandidate(candidate, rootName, preferredFolders)
-  }));
-  scored.sort((a, b) => a.score - b.score);
-  return scored[0]?.path;
+  return await findBestCandidate(root, options, (scanRoot, maxDepth) => findFiles(scanRoot, extension, maxDepth));
 }
 
 async function findBestNamedFile(root: string, fileName: string, options: IdentityScanOptions): Promise<string | undefined> {
-  const candidates = await findNamedFiles(root, fileName, options.maxDepth);
+  return await findBestCandidate(root, options, (scanRoot, maxDepth) => findNamedFiles(scanRoot, fileName, maxDepth));
+}
+
+async function findBestCandidate(
+  root: string,
+  options: IdentityScanOptions,
+  loadCandidates: (scanRoot: string, maxDepth: number) => Promise<FileCandidate[]>
+): Promise<string | undefined> {
+  const candidates = await loadCandidates(root, options.maxDepth);
   if (candidates.length === 0) {
     return undefined;
   }
@@ -569,61 +565,34 @@ function scoreCandidate(candidate: FileCandidate, rootName: string, preferredFol
 }
 
 async function findFiles(root: string, extension: string, maxDepth: number): Promise<FileCandidate[]> {
-  const results: FileCandidate[] = [];
-  const queue: Array<{ dir: string; depth: number }> = [{ dir: root, depth: 0 }];
-
-  while (queue.length > 0) {
-    const next = queue.shift();
-    if (!next) {
-      continue;
-    }
-    const { dir, depth } = next;
-    const entries = await readDirectory(dir);
-    for (const [name, type] of entries) {
-      if (type === vscode.FileType.Directory) {
-        if (ignoredFolders.has(name)) {
-          continue;
-        }
-        if (depth < maxDepth) {
-          queue.push({ dir: path.join(dir, name), depth: depth + 1 });
-        }
-        continue;
-      }
-      if (type === vscode.FileType.File && name.toLowerCase().endsWith(extension)) {
-        results.push({ path: path.join(dir, name), depth });
-      }
-    }
-  }
-
-  return results;
+  return await findMatchingFiles(root, maxDepth, (name) => name.toLowerCase().endsWith(extension));
 }
 
 async function findNamedFiles(root: string, fileName: string, maxDepth: number): Promise<FileCandidate[]> {
-  const results: FileCandidate[] = [];
-  const queue: Array<{ dir: string; depth: number }> = [{ dir: root, depth: 0 }];
+  const targetName = fileName.toLowerCase();
+  return await findMatchingFiles(root, maxDepth, (name) => name.toLowerCase() === targetName);
+}
 
-  while (queue.length > 0) {
-    const next = queue.shift();
-    if (!next) {
-      continue;
-    }
-    const { dir, depth } = next;
-    const entries = await readDirectory(dir);
+async function findMatchingFiles(
+  root: string,
+  maxDepth: number,
+  matchesFile: (name: string) => boolean
+): Promise<FileCandidate[]> {
+  const results: FileCandidate[] = [];
+  await walkDirectoriesBreadthFirst(root, maxDepth, async ({ dir, depth, entries, enqueue }) => {
     for (const [name, type] of entries) {
       if (type === vscode.FileType.Directory) {
         if (ignoredFolders.has(name)) {
           continue;
         }
-        if (depth < maxDepth) {
-          queue.push({ dir: path.join(dir, name), depth: depth + 1 });
-        }
+        enqueue(name);
         continue;
       }
-      if (type === vscode.FileType.File && name.toLowerCase() === fileName.toLowerCase()) {
+      if (type === vscode.FileType.File && matchesFile(name)) {
         results.push({ path: path.join(dir, name), depth });
       }
     }
-  }
+  });
   return results;
 }
 

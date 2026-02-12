@@ -2,7 +2,11 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import type { FavoritesStore } from '../store/favoritesStore';
 import { pathExists, statPath } from '../util/fs';
-import { isWithin, normalizeFsPath } from './pathUtils';
+import { isPathInWorkspaceFolders, isWithin, normalizeFsPath } from './pathUtils';
+
+function isWorkspaceRootPath(targetPath: string): boolean {
+  return isPathInWorkspaceFolders(targetPath, vscode.workspace.workspaceFolders);
+}
 
 export async function openPath(targetPath: string): Promise<void> {
   const stat = await statPath(targetPath);
@@ -64,6 +68,10 @@ export async function copyRelativePathToClipboard(targetPath: string): Promise<v
 }
 
 export async function deletePath(targetPath: string): Promise<void> {
+  if (isWorkspaceRootPath(targetPath)) {
+    vscode.window.showWarningMessage('ForgeFlow: Cannot delete an open workspace root folder.');
+    return;
+  }
   const stat = await statPath(targetPath);
   const label = stat?.type === vscode.FileType.Directory ? 'folder' : 'file';
   const confirmation = await vscode.window.showWarningMessage(
@@ -78,8 +86,14 @@ export async function deletePath(targetPath: string): Promise<void> {
 }
 
 export async function deletePaths(targetPaths: string[]): Promise<void> {
+  const deletable = targetPaths.filter((targetPath) => !isWorkspaceRootPath(targetPath));
+  if (deletable.length === 0) {
+    vscode.window.showWarningMessage('ForgeFlow: Cannot delete open workspace root folders.');
+    return;
+  }
+  const skippedRoots = targetPaths.length - deletable.length;
   const confirmation = await vscode.window.showWarningMessage(
-    `ForgeFlow: Delete ${targetPaths.length} items?`,
+    `ForgeFlow: Delete ${deletable.length} item${deletable.length === 1 ? '' : 's'}?`,
     { modal: true },
     'Delete'
   );
@@ -87,7 +101,7 @@ export async function deletePaths(targetPaths: string[]): Promise<void> {
     return;
   }
   const failures: string[] = [];
-  for (const targetPath of targetPaths) {
+  for (const targetPath of deletable) {
     try {
       await vscode.workspace.fs.delete(vscode.Uri.file(targetPath), { recursive: true, useTrash: true });
     } catch (error) {
@@ -98,6 +112,11 @@ export async function deletePaths(targetPaths: string[]): Promise<void> {
   if (failures.length > 0) {
     const count = failures.length;
     vscode.window.showWarningMessage(`ForgeFlow: Failed to delete ${count} item${count === 1 ? '' : 's'}.`);
+  }
+  if (skippedRoots > 0) {
+    vscode.window.showWarningMessage(
+      `ForgeFlow: Skipped ${skippedRoots} open workspace root${skippedRoots === 1 ? '' : 's'}.`
+    );
   }
 }
 

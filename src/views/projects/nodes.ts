@@ -8,7 +8,6 @@ import { detectEntryPointGroups, type EntryPointGroups } from '../../scan/entryP
 import { getForgeFlowSettings } from '../../util/config';
 import { resolveProfileLabel } from '../../run/powershellProfiles';
 import { treeId } from '../../util/ids';
-import { baseName } from '../../util/path';
 import { statPath } from '../../util/fs';
 import { readBrowseChildren } from './browse';
 import type { DuplicateInfo, ProjectNode, ProjectNodeWithEntry, ProjectNodeWithHistory, ProjectNodeWithPath, ProjectNodeWithPreset, ProjectNodeWithProject } from './types';
@@ -24,6 +23,13 @@ import {
   sortProjects
 } from './helpers';
 import { groupProjectsWithWorktrees } from './duplicateGrouping';
+import { createHintTreeItem, createPathTreeItem } from '../treeItems';
+
+interface ProjectNodeResolvers {
+  readonly entryPointResolver?: (project: Project) => Promise<EntryPointGroups>;
+  readonly tagsResolver?: (projectId: string) => string[];
+  readonly historyResolver?: (project: Project) => RunHistoryEntry[];
+}
 
 export class ProjectHintNode implements ProjectNode {
   public readonly id: string;
@@ -37,11 +43,7 @@ export class ProjectHintNode implements ProjectNode {
   }
 
   public getTreeItem(): vscode.TreeItem {
-    const item = new vscode.TreeItem(this.message, vscode.TreeItemCollapsibleState.None);
-    item.iconPath = new vscode.ThemeIcon('info');
-    item.contextValue = 'forgeflowHint';
-    item.command = { command: this.commandId, title: this.message };
-    return item;
+    return createHintTreeItem(this.message, 'forgeflowHint', this.commandId);
   }
 }
 
@@ -143,9 +145,7 @@ export class ProjectGroupNode implements ProjectNode {
     private readonly summaries?: Record<string, GitProjectSummary>,
     private readonly showSummary?: boolean,
     private readonly tailNodes: ProjectNode[] = [],
-    private readonly entryPointResolver?: (project: Project) => Promise<EntryPointGroups>,
-    private readonly tagsResolver?: (projectId: string) => string[],
-    private readonly historyResolver?: (project: Project) => RunHistoryEntry[]
+    private readonly resolvers: ProjectNodeResolvers = {}
   ) {
     this.id = treeId('projects-group', label);
   }
@@ -171,9 +171,7 @@ export class ProjectGroupNode implements ProjectNode {
           this.duplicateInfo,
           this.summaries,
           this.showSummary ?? false,
-          this.entryPointResolver,
-          this.tagsResolver,
-          this.historyResolver
+          this.resolvers
         )
       );
     }
@@ -191,15 +189,13 @@ export class ProjectGroupNode implements ProjectNode {
   }
 
   private createProjectNode(project: Project): ProjectItemNode {
-    return new ProjectItemNode(
+    return createProjectItemNode(
       project,
       this.isFavoriteGroup,
       this.duplicateInfo?.get(project.id),
       this.summaries?.[project.id],
       this.showSummary ?? false,
-      this.entryPointResolver,
-      this.tagsResolver?.(project.id) ?? [],
-      this.historyResolver?.(project) ?? []
+      this.resolvers
     );
   }
 }
@@ -230,8 +226,9 @@ export class ProjectLoadMoreNode implements ProjectNode {
   }
 }
 
-export class ProjectDuplicateGroupNode implements ProjectNode {
+export class ProjectDuplicateGroupNode implements ProjectNode, ProjectNodeWithProject {
   public readonly id: string;
+  public readonly project: Project;
 
   public constructor(
     private readonly mainProject: Project,
@@ -241,11 +238,10 @@ export class ProjectDuplicateGroupNode implements ProjectNode {
     private readonly duplicateInfo?: Map<string, DuplicateInfo>,
     private readonly summaries?: Record<string, GitProjectSummary>,
     private readonly showSummary = false,
-    private readonly entryPointResolver?: (project: Project) => Promise<EntryPointGroups>,
-    private readonly tagsResolver?: (projectId: string) => string[],
-    private readonly historyResolver?: (project: Project) => RunHistoryEntry[]
+    private readonly resolvers: ProjectNodeResolvers = {}
   ) {
     this.id = treeId('project-duplicate-group', mainProject.id);
+    this.project = mainProject;
   }
 
   public async getChildren(): Promise<ProjectNode[]> {
@@ -265,19 +261,14 @@ export class ProjectDuplicateGroupNode implements ProjectNode {
         }
       }
     }
-    return ordered.map((project) => {
-      const node = new ProjectItemNode(
+    return ordered.map((project) => createProjectItemNode(
         project,
         this.isFavoriteGroup,
         this.duplicateInfo?.get(project.id),
         this.summaries?.[project.id],
         this.showSummary,
-        this.entryPointResolver,
-        this.tagsResolver?.(project.id) ?? [],
-        this.historyResolver?.(project) ?? []
-      );
-      return node;
-    });
+        this.resolvers
+      ));
   }
 
   public getTreeItem(): vscode.TreeItem {
@@ -424,32 +415,16 @@ class ProjectPinnedItemNode implements ProjectNode, ProjectNodeWithPath {
   }
 
   public async getChildren(): Promise<ProjectNode[]> {
-    if (this.entryType !== vscode.FileType.Directory) {
-      return [];
-    }
-    return await readBrowseChildren(this.path, this.project);
+    return await readBrowseChildrenForEntry(this.entryType, this.path, this.project);
   }
 
   public getTreeItem(): vscode.TreeItem {
-    const label = baseName(this.path);
-    const collapsible = this.entryType === vscode.FileType.Directory
-      ? vscode.TreeItemCollapsibleState.Collapsed
-      : vscode.TreeItemCollapsibleState.None;
-    const item = new vscode.TreeItem(label, collapsible);
-    item.resourceUri = vscode.Uri.file(this.path);
-    item.contextValue = 'forgeflowProjectPinned';
     const profileLabel = resolveProjectProfileLabel(this.project);
-    if (profileLabel && isPowerShellPath(this.path)) {
-      item.description = profileLabel;
-    }
-    if (this.entryType !== vscode.FileType.Directory) {
-      item.command = {
-        command: 'forgeflow.files.open',
-        title: 'Open',
-        arguments: [this.path]
-      };
-    }
-    return item;
+    return createPathTreeItem(this.path, this.entryType, {
+      contextValue: 'forgeflowProjectPinned',
+      description: profileLabel && isPowerShellPath(this.path) ? profileLabel : undefined,
+      openCommandId: 'forgeflow.files.open'
+    });
   }
 }
 
@@ -461,14 +436,11 @@ class ProjectBuildGroupNode implements ProjectNode {
   }
 
   public async getChildren(): Promise<ProjectNode[]> {
-    return this.entries.map((entry) => new ProjectEntryNode(this.project, entry));
+    return createProjectEntryNodes(this.project, this.entries);
   }
 
   public getTreeItem(): vscode.TreeItem {
-    const item = new vscode.TreeItem('Build Scripts', vscode.TreeItemCollapsibleState.Expanded);
-    item.contextValue = 'forgeflowProjectBuildGroup';
-    item.iconPath = new vscode.ThemeIcon('tools');
-    return item;
+    return createProjectEntryGroupTreeItem('Build Scripts', 'forgeflowProjectBuildGroup', 'tools');
   }
 }
 
@@ -492,19 +464,26 @@ export class ProjectRecentRunsGroupNode implements ProjectNode, ProjectNodeWithP
   }
 }
 
-export class ProjectRecentRunNode implements ProjectNode, ProjectNodeWithHistory {
+abstract class ProjectLeafNode implements ProjectNode {
+  public abstract readonly id: string;
+
+  public async getChildren(): Promise<ProjectNode[]> {
+    return noProjectChildren();
+  }
+
+  public abstract getTreeItem(): vscode.TreeItem;
+}
+
+export class ProjectRecentRunNode extends ProjectLeafNode implements ProjectNodeWithHistory {
   public readonly id: string;
   public readonly entry: RunHistoryEntry;
   public readonly project: Project;
 
   public constructor(project: Project, entry: RunHistoryEntry) {
+    super();
     this.project = project;
     this.entry = entry;
     this.id = treeId('project-run-history-entry', `${project.id}:${entry.id}`);
-  }
-
-  public async getChildren(): Promise<ProjectNode[]> {
-    return [];
   }
 
   public getTreeItem(): vscode.TreeItem {
@@ -562,19 +541,16 @@ export class ProjectRunPresetGroupNode implements ProjectNode {
   }
 }
 
-export class ProjectRunPresetNode implements ProjectNode, ProjectNodeWithPreset {
+export class ProjectRunPresetNode extends ProjectLeafNode implements ProjectNodeWithPreset {
   public readonly id: string;
   public readonly preset: RunPreset;
   public readonly project: Project;
 
   public constructor(project: Project, preset: RunPreset) {
+    super();
     this.project = project;
     this.preset = preset;
     this.id = treeId('project-run-preset', `${project.id}:${preset.id}`);
-  }
-
-  public async getChildren(): Promise<ProjectNode[]> {
-    return [];
   }
 
   public getTreeItem(): vscode.TreeItem {
@@ -602,26 +578,20 @@ class ProjectEntryGroupNode implements ProjectNode {
   }
 
   public async getChildren(): Promise<ProjectNode[]> {
-    return this.entries.map((entry) => new ProjectEntryNode(this.project, entry));
+    return createProjectEntryNodes(this.project, this.entries);
   }
 
   public getTreeItem(): vscode.TreeItem {
-    const item = new vscode.TreeItem('Entry Points', vscode.TreeItemCollapsibleState.Expanded);
-    item.contextValue = 'forgeflowProjectEntryGroup';
-    item.iconPath = new vscode.ThemeIcon('symbol-event');
-    return item;
+    return createProjectEntryGroupTreeItem('Entry Points', 'forgeflowProjectEntryGroup', 'symbol-event');
   }
 }
 
-class ProjectEntryNode implements ProjectNode, ProjectNodeWithEntry {
+class ProjectEntryNode extends ProjectLeafNode implements ProjectNodeWithEntry {
   public readonly id: string;
 
   public constructor(private readonly project: Project, public readonly entry: ProjectEntryPoint) {
+    super();
     this.id = treeId('project-entry', `${project.id}:${entry.kind}:${entry.path}:${entry.label}`);
-  }
-
-  public async getChildren(): Promise<ProjectNode[]> {
-    return [];
   }
 
   public getTreeItem(): vscode.TreeItem {
@@ -684,27 +654,59 @@ export class ProjectBrowseNode implements ProjectNode, ProjectNodeWithPath {
   }
 
   public async getChildren(): Promise<ProjectNode[]> {
-    if (this.entryType !== vscode.FileType.Directory) {
-      return [];
-    }
-    return await readBrowseChildren(this.path, this.project);
+    return await readBrowseChildrenForEntry(this.entryType, this.path, this.project);
   }
 
   public getTreeItem(): vscode.TreeItem {
-    const label = baseName(this.path);
-    const collapsible = this.entryType === vscode.FileType.Directory
-      ? vscode.TreeItemCollapsibleState.Collapsed
-      : vscode.TreeItemCollapsibleState.None;
-    const item = new vscode.TreeItem(label, collapsible);
-    item.resourceUri = vscode.Uri.file(this.path);
-    item.contextValue = 'forgeflowProjectBrowseItem';
-    if (this.entryType !== vscode.FileType.Directory) {
-      item.command = {
-        command: 'forgeflow.files.open',
-        title: 'Open',
-        arguments: [this.path]
-      };
-    }
-    return item;
+    return createPathTreeItem(this.path, this.entryType, {
+      contextValue: 'forgeflowProjectBrowseItem',
+      openCommandId: 'forgeflow.files.open'
+    });
   }
+}
+
+function createProjectItemNode(
+  project: Project,
+  isFavorite: boolean,
+  duplicateInfo: DuplicateInfo | undefined,
+  summary: GitProjectSummary | undefined,
+  showSummary: boolean,
+  resolvers: ProjectNodeResolvers
+): ProjectItemNode {
+  return new ProjectItemNode(
+    project,
+    isFavorite,
+    duplicateInfo,
+    summary,
+    showSummary,
+    resolvers.entryPointResolver,
+    resolvers.tagsResolver?.(project.id) ?? [],
+    resolvers.historyResolver?.(project) ?? []
+  );
+}
+
+async function readBrowseChildrenForEntry(
+  entryType: vscode.FileType,
+  entryPath: string,
+  project: Project
+): Promise<ProjectNode[]> {
+  if (entryType !== vscode.FileType.Directory) {
+    return [];
+  }
+  return await readBrowseChildren(entryPath, project);
+}
+
+function createProjectEntryNodes(project: Project, entries: ProjectEntryPoint[]): ProjectNode[] {
+  return entries.map((entry) => new ProjectEntryNode(project, entry));
+}
+
+function createProjectEntryGroupTreeItem(label: string, contextValue: string, iconId: string): vscode.TreeItem {
+  const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.Expanded);
+  item.contextValue = contextValue;
+  item.iconPath = new vscode.ThemeIcon(iconId);
+  return item;
+}
+
+function noProjectChildren(): ProjectNode[] {
+  return [];
 }

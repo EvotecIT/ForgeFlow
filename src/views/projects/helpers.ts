@@ -11,6 +11,9 @@ import type { ProjectScanRootMeta } from '../../store/projectsStore';
 import type { TagsStore } from '../../store/tagsStore';
 import { matchesFilterQuery } from '../../util/filter';
 import { resolveProfileLabel } from '../../run/powershellProfiles';
+import { normalizeTagList } from '../../util/tags';
+import { buildProjectDuplicateKey as resolveProjectDuplicateKey } from '../../util/projectIdentity';
+import { formatAgeFromTimestamp } from '../../util/age';
 import { statPath } from '../../util/fs';
 import type { GitCommitCacheEntry } from '../../store/gitCommitCacheStore';
 import type { DuplicateInfo, ProjectsWebviewEntry } from './types';
@@ -180,17 +183,7 @@ export function shouldShowLoadMore(total: number, visible: number): boolean {
 }
 
 export function buildProjectDuplicateKey(project: Project): string | undefined {
-  const identity = project.identity;
-  if (identity?.repositoryUrl) {
-    return `url:${identity.repositoryUrl.toLowerCase()}`;
-  }
-  if (identity?.githubRepo) {
-    return `gh:${identity.githubRepo.toLowerCase()}`;
-  }
-  if (identity?.repositoryProvider && identity?.repositoryPath) {
-    return `${identity.repositoryProvider}:${identity.repositoryPath.toLowerCase()}`;
-  }
-  return undefined;
+  return resolveProjectDuplicateKey(project);
 }
 
 export function formatProjectDescription(
@@ -272,26 +265,12 @@ export function isPowerShellPath(filePath: string): boolean {
 }
 
 export function formatSummaryAge(timestamp: number): string {
-  if (!Number.isFinite(timestamp) || timestamp <= 0) {
-    return 'n/a';
-  }
-  const diffMs = Date.now() - timestamp;
-  if (diffMs < 0) {
-    return 'just now';
-  }
-  const minutes = Math.floor(diffMs / 60000);
-  if (minutes < 1) {
-    return 'just now';
-  }
-  if (minutes < 60) {
-    return `${minutes}m ago`;
-  }
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) {
-    return `${hours}h ago`;
-  }
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  return formatAgeFromTimestamp(timestamp, {
+    invalid: 'n/a',
+    future: 'just now',
+    includeSeconds: false,
+    justNow: 'just now'
+  });
 }
 
 export function matchesProjectFilter(project: Project, filter: string, tags: string[] = []): boolean {
@@ -380,17 +359,7 @@ export function collectTagCounts(
 }
 
 export function normalizeTagFilter(tags: string[]): string[] {
-  const deduped = new Map<string, string>();
-  tags
-    .map((tag) => tag.trim())
-    .filter(Boolean)
-    .forEach((tag) => {
-      const key = tag.toLowerCase();
-      if (!deduped.has(key)) {
-        deduped.set(key, tag);
-      }
-    });
-  return Array.from(deduped.values());
+  return normalizeTagList(tags);
 }
 
 export function toWebviewEntry(entry: ProjectEntryPoint): ProjectsWebviewEntry {

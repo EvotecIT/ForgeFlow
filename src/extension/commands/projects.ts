@@ -1,4 +1,6 @@
+import * as path from 'path';
 import * as vscode from 'vscode';
+import type { FilesViewProvider } from '../../views/filesView';
 import type { ProjectsViewProvider } from '../../views/projectsView';
 import type { ProjectsWebviewProvider } from '../../views/projectsWebview';
 import type { DashboardViewProvider } from '../../views/dashboardView';
@@ -6,13 +8,18 @@ import type { ProjectsStore } from '../../store/projectsStore';
 import type { TagsStore } from '../../store/tagsStore';
 import type { TagFilterStore } from '../../store/tagFilterStore';
 import type { FilterPresetStore } from '../../store/filterPresetStore';
+import type { Project } from '../../models/project';
+import { readProjectGitWorktreeMetadata } from '../../git/worktreeMetadata';
+import { buildProjectDuplicateKey } from '../../util/projectIdentity';
 import { deleteFilterPreset, pickFilterPreset, saveFilterPreset } from '../filters';
-import { extractEntry, extractPath, extractProject } from '../selection';
+import { collectSelectedProjects, extractEntry, extractPath } from '../selection';
 import { findProjectByPath, resolveProjectFromTarget } from '../projectUtils';
 import { openInTerminal, openPath } from '../fsActions';
 import { statPath } from '../../util/fs';
+import { normalizePathKey } from '../pathUtils';
 import {
   addProjectToWorkspace,
+  addProjectsToWorkspace,
   openProject,
   openProjectInNewWindow,
   searchProjectsQuickPick,
@@ -36,11 +43,16 @@ import {
   toggleSortDirection
 } from '../projects/settings';
 import { manageEntryPoints, movePinnedItem, openProjectInVisualStudio } from '../projects/entryPoints';
-import { cleanupStaleWorktrees } from '../projects/worktrees';
+import { cleanupStaleWorktrees, cleanupStaleWorktreesInPaths } from '../projects/worktrees';
+import { removeWorktreeSafely, resolveWorktreeRepoRoot } from '../projects/worktreeGit';
+import { pickPrimaryByPath } from '../../util/worktreePrimary';
 
 export interface ProjectCommandDeps {
   context: vscode.ExtensionContext;
+  filesProvider: FilesViewProvider;
   projectsProvider: ProjectsViewProvider;
+  projectsView: vscode.TreeView<unknown>;
+  projectsPanelView: vscode.TreeView<unknown>;
   projectsWebviewProvider: ProjectsWebviewProvider;
   projectsWebviewPanelProvider: ProjectsWebviewProvider;
   projectsStore: ProjectsStore;
@@ -53,7 +65,10 @@ export interface ProjectCommandDeps {
 export function registerProjectCommands(deps: ProjectCommandDeps): void {
   const {
     context,
+    filesProvider,
     projectsProvider,
+    projectsView,
+    projectsPanelView,
     projectsWebviewProvider,
     projectsWebviewPanelProvider,
     projectsStore,
@@ -63,48 +78,109 @@ export function registerProjectCommands(deps: ProjectCommandDeps): void {
     dashboardProvider
   } = deps;
 
+  const resolveSelectedProject = (target?: unknown): Project | undefined => {
+    const selected = collectSelectedProjects(target, projectsStore, projectsView, projectsPanelView);
+    if (selected.length === 0) {
+      return undefined;
+    }
+    if (selected.length > 1) {
+      vscode.window.showWarningMessage('ForgeFlow: Select a single project for this action.');
+      return undefined;
+    }
+    return selected[0];
+  };
+
+  const refreshProjectViews = async (): Promise<void> => {
+    await projectsProvider.refresh(true);
+    filesProvider.refreshWorktrees();
+    await projectsWebviewProvider.refresh();
+    await projectsWebviewPanelProvider.refresh();
+    await dashboardProvider.refresh();
+  };
+
+  const updateSelectedFavorite = async (
+    target: unknown,
+    mutate: (project: Project) => Promise<void>
+  ): Promise<void> => {
+    const project = resolveSelectedProject(target);
+    if (!project) {
+      return;
+    }
+    await mutate(project);
+    await projectsProvider.refresh();
+  };
+
+  const resolveProjectItem = (
+    target: unknown,
+    resolvePath: (target: unknown) => string | undefined
+  ): { project: Project; itemPath: string } | undefined => {
+    const itemPath = resolvePath(target);
+    if (!itemPath) {
+      return undefined;
+    }
+    const project = findProjectByPath(projectsStore.list(), itemPath);
+    if (!project) {
+      return undefined;
+    }
+    return { project, itemPath };
+  };
+
+  const refreshEntryPointViews = async (projectId: string): Promise<void> => {
+    projectsProvider.invalidateEntryPointCache(projectId);
+    await projectsProvider.refresh();
+  };
+
   context.subscriptions.push(
     vscode.commands.registerCommand('forgeflow.projects.open', async (target?: unknown) => {
-      const project = extractProject(target);
+      const project = resolveSelectedProject(target);
       if (project) {
         await openProject(project, projectsStore);
       }
     }),
     vscode.commands.registerCommand('forgeflow.projects.openInNewWindow', async (target?: unknown) => {
-      const project = resolveProjectFromTarget(target, projectsStore);
+      const project = resolveSelectedProject(target);
       if (!project) {
         return;
       }
       await openProjectInNewWindow(project, projectsStore);
     }),
     vscode.commands.registerCommand('forgeflow.projects.addToWorkspace', async (target?: unknown) => {
-      const project = resolveProjectFromTarget(target, projectsStore);
+      const project = resolveSelectedProject(target);
       if (!project) {
         return;
       }
       await addProjectToWorkspace(project, projectsStore);
     }),
+    vscode.commands.registerCommand('forgeflow.projects.addManyToWorkspace', async () => {
+      await addProjectsToWorkspace(projectsStore);
+    }),
     vscode.commands.registerCommand('forgeflow.projects.openInTerminal', async (target?: unknown) => {
-      const project = resolveProjectFromTarget(target, projectsStore);
+      const project = resolveSelectedProject(target);
       if (!project) {
         return;
       }
       await openInTerminal(project.path);
     }),
     vscode.commands.registerCommand('forgeflow.projects.openInVisualStudio', async (target?: unknown) => {
-      const project = resolveProjectFromTarget(target, projectsStore);
+      const project = resolveSelectedProject(target);
       if (!project) {
         return;
       }
       await openProjectInVisualStudio(project, projectsProvider);
     }),
     vscode.commands.registerCommand('forgeflow.projects.delete', async (target?: unknown) => {
-      const project = resolveProjectFromTarget(target, projectsStore);
+      const project = resolveSelectedProject(target);
       if (!project) {
         return;
       }
       const existing = await statPath(project.path);
-      if (!existing) {
+      if (existing && await isWorktreeProject(project)) {
+        const removed = await removeProjectWorktree(project);
+        if (!removed) {
+          return;
+        }
+        await projectsStore.removeProject(project.id);
+      } else if (!existing) {
         const removeChoice = await vscode.window.showWarningMessage(
           `ForgeFlow: Project folder not found for "${project.name}". Remove from list?`,
           'Remove',
@@ -133,10 +209,7 @@ export function registerProjectCommands(deps: ProjectCommandDeps): void {
         await projectsStore.removeProject(project.id);
       }
 
-      await projectsProvider.refresh(true);
-      await projectsWebviewProvider.refresh();
-      await projectsWebviewPanelProvider.refresh();
-      await dashboardProvider.refresh();
+      await refreshProjectViews();
     }),
     vscode.commands.registerCommand('forgeflow.projects.switch', async () => {
       await switchProject(projectsStore, tagsStore);
@@ -144,8 +217,20 @@ export function registerProjectCommands(deps: ProjectCommandDeps): void {
     vscode.commands.registerCommand('forgeflow.projects.refresh', async () => {
       await projectsProvider.refresh(true);
     }),
-    vscode.commands.registerCommand('forgeflow.projects.cleanupWorktrees', async () => {
-      await cleanupStaleWorktrees(projectsProvider);
+    vscode.commands.registerCommand('forgeflow.projects.cleanupWorktrees', async (target?: unknown) => {
+      const scopedPaths = await resolveCleanupWorktreePaths(target, projectsStore, resolveSelectedProject);
+      if (target !== undefined) {
+        if (!scopedPaths || scopedPaths.length === 0) {
+          vscode.window.showInformationMessage('ForgeFlow: No linked git worktrees found for the selected project.');
+          return;
+        }
+        await cleanupStaleWorktreesInPaths(scopedPaths, projectsProvider, filesProvider);
+        return;
+      }
+      await cleanupStaleWorktrees(projectsProvider, filesProvider);
+    }),
+    vscode.commands.registerCommand('forgeflow.projects.debugWorktreeGrouping', async (target?: unknown) => {
+      await debugWorktreeGrouping(target, projectsStore);
     }),
     vscode.commands.registerCommand('forgeflow.projects.configureOrRefresh', async () => {
       await configureOrRefreshScanRoots(projectsProvider);
@@ -198,18 +283,14 @@ export function registerProjectCommands(deps: ProjectCommandDeps): void {
       projectsProvider.loadMore();
     }),
     vscode.commands.registerCommand('forgeflow.projects.pinFavorite', async (target?: unknown) => {
-      const project = extractProject(target);
-      if (project) {
+      await updateSelectedFavorite(target, async (project) => {
         await projectsStore.addFavorite(project.id);
-        await projectsProvider.refresh();
-      }
+      });
     }),
     vscode.commands.registerCommand('forgeflow.projects.unpinFavorite', async (target?: unknown) => {
-      const project = extractProject(target);
-      if (project) {
+      await updateSelectedFavorite(target, async (project) => {
         await projectsStore.removeFavorite(project.id);
-        await projectsProvider.refresh();
-      }
+      });
     }),
     vscode.commands.registerCommand('forgeflow.projects.setTags', async (target?: unknown) => {
       await setProjectTags(target, projectsStore, tagsStore, projectsProvider, dashboardProvider);
@@ -246,88 +327,65 @@ export function registerProjectCommands(deps: ProjectCommandDeps): void {
       await deleteTagPreset(tagFilterStore);
     }),
     vscode.commands.registerCommand('forgeflow.projects.moveFavoriteUp', async (target?: unknown) => {
-      const project = extractProject(target);
-      if (project) {
+      await updateSelectedFavorite(target, async (project) => {
         await projectsStore.moveFavorite(project.id, 'up');
-        await projectsProvider.refresh();
-      }
+      });
     }),
     vscode.commands.registerCommand('forgeflow.projects.moveFavoriteDown', async (target?: unknown) => {
-      const project = extractProject(target);
-      if (project) {
+      await updateSelectedFavorite(target, async (project) => {
         await projectsStore.moveFavorite(project.id, 'down');
-        await projectsProvider.refresh();
-      }
+      });
     }),
     vscode.commands.registerCommand('forgeflow.projects.openEntryPoint', async (target?: unknown) => {
       const entry = extractEntry(target);
       if (entry) {
-        if (entry.kind === 'task') {
-          await openPath(entry.path);
-          return;
-        }
         await openPath(entry.path);
       }
     }),
     vscode.commands.registerCommand('forgeflow.projects.addEntryPoint', async (target?: unknown) => {
-      const itemPath = extractPath(target);
-      if (!itemPath) {
+      const selected = resolveProjectItem(target, (value) => extractPath(value));
+      if (!selected) {
         return;
       }
-      const project = findProjectByPath(projectsStore.list(), itemPath);
-      if (!project) {
-        return;
-      }
+      const { project, itemPath } = selected;
       const overrides = project.entryPointOverrides ?? [];
       if (!overrides.includes(itemPath)) {
         await projectsStore.updateEntryPointOverrides(project.id, [...overrides, itemPath]);
-        projectsProvider.invalidateEntryPointCache(project.id);
-        await projectsProvider.refresh();
+        await refreshEntryPointViews(project.id);
       }
     }),
     vscode.commands.registerCommand('forgeflow.projects.removeEntryPoint', async (target?: unknown) => {
-      const entry = extractEntry(target);
-      const itemPath = entry?.path ?? extractPath(target);
-      if (!itemPath) {
+      const selected = resolveProjectItem(target, (value) => extractEntry(value)?.path ?? extractPath(value));
+      if (!selected) {
         return;
       }
-      const project = findProjectByPath(projectsStore.list(), itemPath);
-      if (!project) {
-        return;
-      }
+      const { project, itemPath } = selected;
       const overrides = project.entryPointOverrides ?? [];
       if (!overrides.includes(itemPath)) {
         vscode.window.showInformationMessage('ForgeFlow: Entry point is auto-detected.');
         return;
       }
       await projectsStore.updateEntryPointOverrides(project.id, overrides.filter((item) => item !== itemPath));
-      projectsProvider.invalidateEntryPointCache(project.id);
-      await projectsProvider.refresh();
+      await refreshEntryPointViews(project.id);
     }),
     vscode.commands.registerCommand('forgeflow.projects.pinItem', async (target?: unknown) => {
-      const entry = extractEntry(target);
-      if (!entry) {
+      const selected = resolveProjectItem(target, (value) => extractEntry(value)?.path);
+      if (!selected) {
         return;
       }
-      const project = findProjectByPath(projectsStore.list(), entry.path);
-      if (!project) {
-        return;
-      }
-      const pinned = project.pinnedItems.includes(entry.path)
+      const { project, itemPath } = selected;
+      const pinned = project.pinnedItems.includes(itemPath)
         ? project.pinnedItems
-        : [...project.pinnedItems, entry.path];
+        : [...project.pinnedItems, itemPath];
       await projectsStore.updatePinnedItems(project.id, pinned);
       await projectsProvider.refresh();
     }),
     vscode.commands.registerCommand('forgeflow.projects.unpinItem', async (target?: unknown) => {
-      const itemPath = extractPath(target);
-      if (!itemPath) {
+      const selected = resolveProjectItem(target, (value) => extractPath(value));
+      if (!selected) {
         return;
       }
-      const project = findProjectByPath(projectsStore.list(), itemPath);
-      if (!project) {
-        return;
-      }
+      const { project, itemPath } = selected;
       const pinned = project.pinnedItems.filter((item) => item !== itemPath);
       await projectsStore.updatePinnedItems(project.id, pinned);
       await projectsProvider.refresh();
@@ -350,4 +408,192 @@ export function registerProjectCommands(deps: ProjectCommandDeps): void {
       await manageEntryPoints(target, projectsStore, projectsProvider);
     })
   );
+}
+
+async function isWorktreeProject(project: Project): Promise<boolean> {
+  if (project.type !== 'git') {
+    return false;
+  }
+  const metadata = await readProjectGitWorktreeMetadata(project.path);
+  return metadata.isWorktree;
+}
+
+async function removeProjectWorktree(project: Project): Promise<boolean> {
+  const metadata = await readProjectGitWorktreeMetadata(project.path);
+  if (!metadata.isWorktree) {
+    return false;
+  }
+  const confirm = await vscode.window.showWarningMessage(
+    `ForgeFlow: Remove worktree "${project.name}"? This deletes the worktree folder.`,
+    { modal: true },
+    'Remove'
+  );
+  if (confirm !== 'Remove') {
+    return false;
+  }
+  const repoRoot = metadata.commonDir
+    ? path.dirname(metadata.commonDir)
+    : await resolveWorktreeRepoRoot(project.path);
+  const result = await removeWorktreeSafely(project.path, repoRoot);
+  if (result.removed) {
+    return true;
+  }
+  if (result.failure === 'openInWorkspace') {
+    vscode.window.showWarningMessage('ForgeFlow: Cannot remove a worktree that is open in the current workspace.');
+    return false;
+  }
+  if (result.failure === 'repoRootNotFound') {
+    vscode.window.showWarningMessage('ForgeFlow: Unable to resolve repository for this worktree.');
+    return false;
+  }
+  const message = result.message ?? 'Unknown error';
+  vscode.window.showWarningMessage(`ForgeFlow: Failed to remove worktree "${project.name}": ${message}`);
+  return false;
+}
+
+async function resolveCleanupWorktreePaths(
+  target: unknown,
+  projectsStore: ProjectsStore,
+  resolveSelectedProject: (target?: unknown) => Project | undefined
+): Promise<string[] | undefined> {
+  const project = resolveSelectedProject(target);
+  if (!project || project.type !== 'git') {
+    return undefined;
+  }
+  const metadata = await readProjectGitWorktreeMetadata(project.path);
+  if (!metadata.commonDir) {
+    return undefined;
+  }
+  const selectedCommonDir = normalizePathKey(metadata.commonDir);
+  const candidates = projectsStore.list().filter((entry) => entry.type === 'git');
+  if (candidates.length === 0) {
+    return undefined;
+  }
+  const worktreePaths: string[] = [];
+  const seen = new Set<string>();
+  for (const candidate of candidates) {
+    const candidateMeta = await readProjectGitWorktreeMetadata(candidate.path);
+    if (!candidateMeta.isWorktree || !candidateMeta.commonDir) {
+      continue;
+    }
+    if (normalizePathKey(candidateMeta.commonDir) !== selectedCommonDir) {
+      continue;
+    }
+    const key = normalizePathKey(candidate.path);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    worktreePaths.push(candidate.path);
+  }
+  return worktreePaths.length > 0 ? worktreePaths : undefined;
+}
+
+interface ProjectGitMetadata {
+  dotGitKind: 'none' | 'directory' | 'file' | 'other';
+  isWorktree: boolean;
+  commonDir?: string;
+  gitDirRaw?: string;
+  gitDirResolved?: string;
+}
+
+async function debugWorktreeGrouping(target: unknown, projectsStore: ProjectsStore): Promise<void> {
+  const selected = await resolveDebugProject(target, projectsStore);
+  if (!selected) {
+    return;
+  }
+  const projects = projectsStore.list();
+  const metadataEntries = await Promise.all(projects.map(async (project) => {
+    if (project.type !== 'git') {
+      return [project.id, undefined] as const;
+    }
+    return [project.id, await readProjectGitMetadata(project.path)] as const;
+  }));
+  const metadataById = new Map<string, ProjectGitMetadata | undefined>(metadataEntries);
+  const selectedMeta = metadataById.get(selected.id);
+  const duplicateKey = buildProjectDuplicateKey(selected);
+  const duplicateSiblings = duplicateKey
+    ? projects.filter((project) => buildProjectDuplicateKey(project) === duplicateKey)
+    : [];
+  const duplicatePrimary = choosePrimaryProject(duplicateSiblings, metadataById);
+  const commonDir = selectedMeta?.commonDir;
+  const commonDirSiblings = commonDir
+    ? projects.filter((project) => metadataById.get(project.id)?.commonDir === commonDir)
+    : [];
+  const commonDirPrimary = choosePrimaryProject(commonDirSiblings, metadataById);
+
+  const payload = {
+    generatedAt: new Date().toISOString(),
+    selected: summarizeProject(selected, metadataById.get(selected.id)),
+    duplicateGrouping: {
+      key: duplicateKey,
+      siblingCount: duplicateSiblings.length,
+      primaryProjectId: duplicatePrimary?.id,
+      siblings: duplicateSiblings.map((project) => summarizeProject(project, metadataById.get(project.id)))
+    },
+    commonDirGrouping: {
+      commonDir,
+      siblingCount: commonDirSiblings.length,
+      primaryProjectId: commonDirPrimary?.id,
+      siblings: commonDirSiblings.map((project) => summarizeProject(project, metadataById.get(project.id)))
+    },
+    notes: [
+      'Primary selection prefers non-worktrees; if tied, shortest path wins.',
+      'Common-dir grouping is derived from .git metadata (directory .git, or gitdir: value in file .git).'
+    ]
+  };
+
+  const document = await vscode.workspace.openTextDocument({
+    language: 'json',
+    content: JSON.stringify(payload, null, 2)
+  });
+  await vscode.window.showTextDocument(document, { preview: false });
+}
+
+async function resolveDebugProject(target: unknown, projectsStore: ProjectsStore): Promise<Project | undefined> {
+  const direct = resolveProjectFromTarget(target, projectsStore);
+  if (direct) {
+    return direct;
+  }
+  const projects = projectsStore.list();
+  if (projects.length === 0) {
+    vscode.window.showWarningMessage('ForgeFlow: No projects available for worktree diagnostics.');
+    return undefined;
+  }
+  const picked = await vscode.window.showQuickPick(
+    projects
+      .map((project) => ({ label: project.name, description: project.path, project }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+    { placeHolder: 'Select project to inspect worktree grouping' }
+  );
+  return picked?.project;
+}
+
+function choosePrimaryProject(
+  projects: Project[],
+  metadataById: Map<string, ProjectGitMetadata | undefined>
+): Project | undefined {
+  return pickPrimaryByPath(projects, (project) => Boolean(metadataById.get(project.id)?.isWorktree));
+}
+
+function summarizeProject(project: Project, metadata: ProjectGitMetadata | undefined): Record<string, unknown> {
+  return {
+    id: project.id,
+    name: project.name,
+    path: project.path,
+    type: project.type,
+    duplicateKey: buildProjectDuplicateKey(project),
+    git: metadata ?? null
+  };
+}
+
+async function readProjectGitMetadata(projectPath: string): Promise<ProjectGitMetadata> {
+  const metadata = await readProjectGitWorktreeMetadata(projectPath);
+  return {
+    dotGitKind: metadata.dotGitKind,
+    isWorktree: metadata.isWorktree,
+    commonDir: metadata.commonDir,
+    gitDirRaw: metadata.gitDirRaw,
+    gitDirResolved: metadata.gitDirResolved
+  };
 }

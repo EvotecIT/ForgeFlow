@@ -1,4 +1,3 @@
-import * as path from 'path';
 import * as vscode from 'vscode';
 import type { Project } from '../../models/project';
 import type { RunHistoryEntry } from '../../models/run';
@@ -12,8 +11,8 @@ import type { RunHistoryStore } from '../../store/runHistoryStore';
 import { getForgeFlowSettings } from '../../util/config';
 import type { ProjectSortMode } from '../../util/config';
 import type { GitStore } from '../../git/gitStore';
+import { readProjectGitWorktreeMetadata } from '../../git/worktreeMetadata';
 import type { GitCommitCacheStore } from '../../store/gitCommitCacheStore';
-import { readFileText, statPath } from '../../util/fs';
 import type {
   DuplicateInfo,
   EntryPointCacheEntry,
@@ -69,6 +68,7 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
   private favoriteIds: string[] = [];
   private duplicateInfo = new Map<string, DuplicateInfo>();
   private worktreeInfo = new Map<string, boolean>();
+  private worktreeCommonDirInfo = new Map<string, string>();
   private worktreeInfoRun = 0;
   private filterText = '';
   private tagFilter: string[] = [];
@@ -107,26 +107,7 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
     const settings = getForgeFlowSettings();
     const roots = getScanRoots();
     this.syncScanMeta();
-    this.filterText = this.projectsStore.getFilter();
-    this.tagFilter = this.tagFilterStore.getFilter();
-    const nextFavoritesOnly = this.projectsStore.getFavoritesOnly();
-    if (nextFavoritesOnly !== this.favoritesOnly) {
-      this.favoritesOnly = nextFavoritesOnly;
-      void vscode.commands.executeCommand('setContext', 'forgeflow.projects.favoritesOnly', this.favoritesOnly);
-    }
-    const existing = this.projectsStore.list();
-    this.projects = applyStoredOrder(existing, this.projectsStore.getSortOrder(), settings);
-    this.favoriteIds = this.projectsStore.getFavoriteIds();
-    this.resetPaging();
-    this.updateDuplicateInfo(this.projects);
-    this.invalidateEntryPointCache();
-    this.onDidUpdateProjectsEmitter.fire(this.projects);
-    this.onDidChangeTreeDataEmitter.fire(undefined);
-    if (settings.projectShowWorktreesGroup) {
-      void this.updateWorktreeInfo(this.projects);
-    } else if (this.worktreeInfo.size > 0) {
-      this.worktreeInfo = new Map<string, boolean>();
-    }
+    this.syncProjectsFromStore(settings);
 
     if (this.isScanning) {
       this.pendingRefresh = true;
@@ -190,27 +171,8 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
       return;
     }
     this.syncScanMeta();
-    this.filterText = this.projectsStore.getFilter();
-    this.tagFilter = this.tagFilterStore.getFilter();
-    const nextFavoritesOnly = this.projectsStore.getFavoritesOnly();
-    if (nextFavoritesOnly !== this.favoritesOnly) {
-      this.favoritesOnly = nextFavoritesOnly;
-      void vscode.commands.executeCommand('setContext', 'forgeflow.projects.favoritesOnly', this.favoritesOnly);
-    }
     const settings = getForgeFlowSettings();
-    const existing = this.projectsStore.list();
-    this.projects = applyStoredOrder(existing, this.projectsStore.getSortOrder(), settings);
-    this.favoriteIds = this.projectsStore.getFavoriteIds();
-    this.resetPaging();
-    this.updateDuplicateInfo(this.projects);
-    this.invalidateEntryPointCache();
-    this.onDidUpdateProjectsEmitter.fire(this.projects);
-    this.onDidChangeTreeDataEmitter.fire(undefined);
-    if (settings.projectShowWorktreesGroup) {
-      void this.updateWorktreeInfo(this.projects);
-    } else if (this.worktreeInfo.size > 0) {
-      this.worktreeInfo = new Map<string, boolean>();
-    }
+    this.syncProjectsFromStore(settings);
   }
 
   public refreshRunHistory(): void {
@@ -324,6 +286,7 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
         favoriteIds: this.favoriteIds,
         duplicateInfo: this.duplicateInfo,
         worktreeInfo: this.worktreeInfo,
+        worktreeCommonDirs: this.worktreeCommonDirInfo,
         filterText: this.filterText,
         tagFilter: this.tagFilter,
         favoritesOnly: this.favoritesOnly,
@@ -356,8 +319,16 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
       if (runId !== this.scanVersion) {
         return results;
       }
-      const isWorktree = project.type === 'git' ? await this.isGitWorktree(project.path) : false;
+      const metadata = project.type === 'git'
+        ? await this.readGitMetadata(project.path)
+        : { isWorktree: false, commonDir: undefined };
+      const isWorktree = metadata.isWorktree;
       this.worktreeInfo.set(project.id, isWorktree);
+      if (metadata.commonDir) {
+        this.worktreeCommonDirInfo.set(project.id, metadata.commonDir);
+      } else {
+        this.worktreeCommonDirInfo.delete(project.id);
+      }
       const needsRepo = needsRepositoryIdentity(project.identity) || isWorktree;
       if (project.identity && !needsRepo) {
         results.push(project);
@@ -387,23 +358,9 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
     return results;
   }
 
-  private async isGitWorktree(projectPath: string): Promise<boolean> {
-    const dotGitPath = path.join(projectPath, '.git');
-    const dotGitStat = await statPath(dotGitPath);
-    if (!dotGitStat || dotGitStat.type !== vscode.FileType.File) {
-      return false;
-    }
-    const content = await readFileText(dotGitPath);
-    if (!content) {
-      return false;
-    }
-    const match = /gitdir:\s*(.+)/i.exec(content);
-    const gitDirValue = match?.[1]?.trim();
-    if (!gitDirValue) {
-      return false;
-    }
-    const normalized = gitDirValue.replace(/\\/g, '/').toLowerCase();
-    return normalized.includes('/worktrees/');
+  private async readGitMetadata(projectPath: string): Promise<{ isWorktree: boolean; commonDir?: string }> {
+    const metadata = await readProjectGitWorktreeMetadata(projectPath);
+    return { isWorktree: metadata.isWorktree, commonDir: metadata.commonDir };
   }
 
   private async hydrateGitCommits(projects: Project[], runId: number): Promise<Project[]> {
@@ -530,8 +487,8 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
       this.onDidChangeTreeDataEmitter.fire(undefined);
       if (getForgeFlowSettings().projectShowWorktreesGroup) {
         void this.updateWorktreeInfo(this.projects);
-      } else if (this.worktreeInfo.size > 0) {
-        this.worktreeInfo = new Map<string, boolean>();
+      } else if (this.hasWorktreeInfo()) {
+        this.clearWorktreeInfo();
       }
 
       void this.hydrateIdentities(projects, runId).then(async (updated) => {
@@ -548,22 +505,12 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
 
       if (sortMode === 'gitCommit') {
         void this.hydrateGitCommits(projects, runId).then(async (updated) => {
-          if (runId !== this.scanVersion) {
-            return;
-          }
-          this.projects = updated;
-          this.maybePersistSortOrder();
-          this.onDidChangeTreeDataEmitter.fire(undefined);
+          this.applyHydrationResult(updated, runId);
         });
       }
       if (sortMode === 'recentModified') {
         void this.hydrateModifiedTimes(projects, runId).then(async (updated) => {
-          if (runId !== this.scanVersion) {
-            return;
-          }
-          this.projects = updated;
-          this.maybePersistSortOrder();
-          this.onDidChangeTreeDataEmitter.fire(undefined);
+          this.applyHydrationResult(updated, runId);
         });
       }
     } finally {
@@ -626,41 +573,55 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
     this.scanDeferredMessage = undefined;
   }
 
+  private syncProjectsFromStore(settings: ReturnType<typeof getForgeFlowSettings>): void {
+    this.filterText = this.projectsStore.getFilter();
+    this.tagFilter = this.tagFilterStore.getFilter();
+    const nextFavoritesOnly = this.projectsStore.getFavoritesOnly();
+    if (nextFavoritesOnly !== this.favoritesOnly) {
+      this.favoritesOnly = nextFavoritesOnly;
+      void vscode.commands.executeCommand('setContext', 'forgeflow.projects.favoritesOnly', this.favoritesOnly);
+    }
+    const existing = this.projectsStore.list();
+    this.projects = applyStoredOrder(existing, this.projectsStore.getSortOrder(), settings);
+    this.favoriteIds = this.projectsStore.getFavoriteIds();
+    this.resetPaging();
+    this.updateDuplicateInfo(this.projects);
+    this.invalidateEntryPointCache();
+    this.onDidUpdateProjectsEmitter.fire(this.projects);
+    this.onDidChangeTreeDataEmitter.fire(undefined);
+    if (settings.projectShowWorktreesGroup) {
+      void this.updateWorktreeInfo(this.projects);
+    } else if (this.hasWorktreeInfo()) {
+      this.clearWorktreeInfo();
+    }
+  }
+
   private async updateWorktreeInfo(projects: Project[]): Promise<void> {
     const runId = ++this.worktreeInfoRun;
     const next = new Map<string, boolean>();
-    const pending: Project[] = [];
-    for (const project of projects) {
-      const cached = this.worktreeInfo.get(project.id);
-      if (cached !== undefined) {
-        next.set(project.id, cached);
-        continue;
-      }
+    const nextCommonDirs = new Map<string, string>();
+    const results = await Promise.all(projects.map(async (project) => {
       if (project.type !== 'git') {
-        next.set(project.id, false);
-        continue;
+        return { id: project.id, isWorktree: false, commonDir: undefined };
       }
-      pending.push(project);
-    }
-    if (pending.length > 0) {
-      const results = await Promise.all(
-        pending.map(async (project) => ({ id: project.id, isWorktree: await this.isGitWorktree(project.path) }))
-      );
-      if (runId !== this.worktreeInfoRun) {
-        return;
-      }
-      for (const result of results) {
-        next.set(result.id, result.isWorktree);
-      }
-    }
+      const metadata = await this.readGitMetadata(project.path);
+      return { id: project.id, isWorktree: metadata.isWorktree, commonDir: metadata.commonDir };
+    }));
     if (runId !== this.worktreeInfoRun) {
       return;
     }
-    if (!mapEquals(this.worktreeInfo, next)) {
-      this.worktreeInfo = next;
+    for (const result of results) {
+      next.set(result.id, result.isWorktree);
+      if (result.commonDir) {
+        nextCommonDirs.set(result.id, result.commonDir);
+      }
+    }
+    const worktreeChanged = !mapEquals(this.worktreeInfo, next);
+    const commonDirChanged = !mapEquals(this.worktreeCommonDirInfo, nextCommonDirs);
+    this.worktreeInfo = next;
+    this.worktreeCommonDirInfo = nextCommonDirs;
+    if (worktreeChanged || commonDirChanged) {
       this.onDidChangeTreeDataEmitter.fire(undefined);
-    } else {
-      this.worktreeInfo = next;
     }
   }
 
@@ -716,9 +677,27 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
       savedAt: Date.now()
     });
   }
+
+  private applyHydrationResult(updated: Project[], runId: number): void {
+    if (runId !== this.scanVersion) {
+      return;
+    }
+    this.projects = updated;
+    this.maybePersistSortOrder();
+    this.onDidChangeTreeDataEmitter.fire(undefined);
+  }
+
+  private clearWorktreeInfo(): void {
+    this.worktreeInfo = new Map<string, boolean>();
+    this.worktreeCommonDirInfo = new Map<string, string>();
+  }
+
+  private hasWorktreeInfo(): boolean {
+    return this.worktreeInfo.size > 0 || this.worktreeCommonDirInfo.size > 0;
+  }
 }
 
-function mapEquals(left: Map<string, boolean>, right: Map<string, boolean>): boolean {
+function mapEquals<T>(left: Map<string, T>, right: Map<string, T>): boolean {
   if (left.size !== right.size) {
     return false;
   }

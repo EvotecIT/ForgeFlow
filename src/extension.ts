@@ -1,4 +1,3 @@
-import * as path from 'path';
 import * as vscode from 'vscode';
 import { DashboardService } from './dashboard/dashboardService';
 import { DashboardCache } from './dashboard/cache';
@@ -125,12 +124,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       filesProvider.refresh();
     }, delay);
   };
+  const normalizeWatchPath = (value: string): string => {
+    return value.replace(/\\/g, '/').toLowerCase();
+  };
+  const isWorktreeMetadataEvent = (uri: vscode.Uri): boolean => {
+    const fsPath = normalizeWatchPath(uri.fsPath);
+    return fsPath.includes('/.git/worktrees/') || fsPath.endsWith('/.git/worktrees');
+  };
   const shouldIgnoreFileEvent = (uri: vscode.Uri): boolean => {
-    const fsPath = uri.fsPath;
-    const gitSegment = `${path.sep}.git${path.sep}`;
-    return fsPath === `${path.sep}.git`
-      || fsPath.endsWith(`${path.sep}.git`)
-      || fsPath.includes(gitSegment);
+    if (isWorktreeMetadataEvent(uri)) {
+      return false;
+    }
+    const fsPath = normalizeWatchPath(uri.fsPath);
+    return fsPath.endsWith('/.git') || fsPath.includes('/.git/');
   };
   const fileWatchers = new Map<string, vscode.FileSystemWatcher>();
   let fileWatchMode: 'off' | 'roots' | 'all' | undefined;
@@ -161,16 +167,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(folder, pattern));
       watcher.onDidCreate((uri) => {
+        if (isWorktreeMetadataEvent(uri)) {
+          scheduleWorktreeRefresh();
+          return;
+        }
         if (!shouldIgnoreFileEvent(uri)) {
           scheduleFilesRefresh();
         }
       });
       watcher.onDidChange((uri) => {
+        if (isWorktreeMetadataEvent(uri)) {
+          scheduleWorktreeRefresh();
+          return;
+        }
         if (!shouldIgnoreFileEvent(uri)) {
           scheduleFilesRefresh();
         }
       });
       watcher.onDidDelete((uri) => {
+        if (isWorktreeMetadataEvent(uri)) {
+          scheduleWorktreeRefresh();
+          return;
+        }
         if (!shouldIgnoreFileEvent(uri)) {
           scheduleFilesRefresh();
         }
@@ -213,6 +231,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const projectsWebviewPanelProvider = new ProjectsWebviewProvider(projectsProvider, projectsStore, dashboardProvider);
   const powerForgeViewProvider = new PowerForgeViewProvider(context, projectsStore);
   const powerForgePanelProvider = new PowerForgeViewProvider(context, projectsStore);
+  let worktreeRefreshTimer: NodeJS.Timeout | undefined;
+  const scheduleWorktreeRefresh = (): void => {
+    if (worktreeRefreshTimer) {
+      clearTimeout(worktreeRefreshTimer);
+    }
+    worktreeRefreshTimer = setTimeout(() => {
+      worktreeRefreshTimer = undefined;
+      filesProvider.refreshWorktrees();
+      void projectsProvider.refresh(true);
+      void gitProvider.refresh();
+    }, 400);
+  };
 
   const filesView = vscode.window.createTreeView('forgeflow.files', {
     treeDataProvider: filesProvider,
@@ -416,6 +446,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (projectsChanged) {
       projectsProvider.syncFromStore();
       filesProvider.syncFilterFromStore();
+      filesProvider.refreshWorktrees();
       gitProvider.syncFilterFromStore();
       projectsWebviewProvider.clearDetailsCache();
       projectsWebviewPanelProvider.clearDetailsCache();
@@ -460,17 +491,77 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   };
 
   const syncIntervalMs = 30_000;
+  const resolvePeriodicRefreshMs = (configuredMinutes: number, fallbackMinutes: number): number => {
+    const rawMinutes = Number.isFinite(configuredMinutes) ? configuredMinutes : fallbackMinutes;
+    if (!Number.isFinite(rawMinutes)) {
+      return 5 * 60_000;
+    }
+    const boundedMinutes = Math.max(0, Math.min(120, rawMinutes));
+    if (boundedMinutes === 0) {
+      return 0;
+    }
+    return Math.round(boundedMinutes * 60_000);
+  };
+  let lastPeriodicProjectRefreshAt = Date.now();
+  let lastPeriodicWorktreeRefreshAt = Date.now();
   const syncTimer = setInterval(() => {
     void syncProjectsAcrossWindows();
+    if (!vscode.window.state.focused) {
+      return;
+    }
+    const settings = getForgeFlowSettings();
+    const projectRefreshMs = resolvePeriodicRefreshMs(
+      settings.projectPeriodicProjectRefreshMinutes,
+      settings.projectPeriodicForceRefreshMinutes
+    );
+    const worktreeRefreshMs = resolvePeriodicRefreshMs(
+      settings.projectPeriodicWorktreeRefreshMinutes,
+      settings.projectPeriodicForceRefreshMinutes
+    );
+    const now = Date.now();
+    if (worktreeRefreshMs > 0 && now - lastPeriodicWorktreeRefreshAt >= worktreeRefreshMs) {
+      lastPeriodicWorktreeRefreshAt = now;
+      filesProvider.refreshWorktrees();
+    }
+    if (projectRefreshMs > 0 && now - lastPeriodicProjectRefreshAt >= projectRefreshMs) {
+      lastPeriodicProjectRefreshAt = now;
+      void projectsProvider.refresh(true);
+      void gitProvider.refresh();
+    }
   }, syncIntervalMs);
+  let focusRefreshTimer: NodeJS.Timeout | undefined;
+  let lastBlurAt: number | undefined;
   context.subscriptions.push({ dispose: () => clearInterval(syncTimer) });
   context.subscriptions.push(
     vscode.window.onDidChangeWindowState((state) => {
-      if (state.focused) {
-        void syncProjectsAcrossWindows();
+      if (!state.focused) {
+        lastBlurAt = Date.now();
+        return;
       }
+      const wasBackgroundedLongEnough = lastBlurAt !== undefined && Date.now() - lastBlurAt > 60_000;
+      lastBlurAt = undefined;
+      if (focusRefreshTimer) {
+        clearTimeout(focusRefreshTimer);
+      }
+      focusRefreshTimer = setTimeout(() => {
+        focusRefreshTimer = undefined;
+        lastPeriodicProjectRefreshAt = Date.now();
+        lastPeriodicWorktreeRefreshAt = lastPeriodicProjectRefreshAt;
+        filesProvider.refreshWorktrees();
+        void projectsProvider.refresh(wasBackgroundedLongEnough);
+        void gitProvider.refresh();
+      }, 300);
+      void syncProjectsAcrossWindows();
     })
   );
+  context.subscriptions.push({
+    dispose: () => {
+      if (focusRefreshTimer) {
+        clearTimeout(focusRefreshTimer);
+        focusRefreshTimer = undefined;
+      }
+    }
+  });
 
   syncFileWatchers();
 
@@ -566,9 +657,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.workspace.onDidRenameFiles(() => scheduleFilesRefresh()),
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       syncFileWatchers();
+      filesProvider.refreshWorktrees();
       scheduleFilesRefresh();
+      void projectsProvider.refresh();
+      void powerForgeViewProvider.refresh();
+      void powerForgePanelProvider.refresh();
     })
   );
+  context.subscriptions.push({
+    dispose: () => {
+      if (filesRefreshTimer) {
+        clearTimeout(filesRefreshTimer);
+        filesRefreshTimer = undefined;
+      }
+      if (worktreeRefreshTimer) {
+        clearTimeout(worktreeRefreshTimer);
+        worktreeRefreshTimer = undefined;
+      }
+    }
+  });
 
   registerFileCommands({
     context,
@@ -588,7 +695,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   registerProjectCommands({
     context,
+    filesProvider,
     projectsProvider,
+    projectsView,
+    projectsPanelView,
     projectsWebviewProvider,
     projectsWebviewPanelProvider,
     projectsStore,
@@ -643,11 +753,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
 
   context.subscriptions.push(
-    vscode.workspace.onDidChangeWorkspaceFolders(async () => {
-      await projectsProvider.refresh();
-      await powerForgeViewProvider.refresh();
-      await powerForgePanelProvider.refresh();
-    }),
     vscode.workspace.onDidChangeConfiguration(async (event) => {
       if (event.affectsConfiguration('forgeflow.projects')) {
         await projectsProvider.refresh();

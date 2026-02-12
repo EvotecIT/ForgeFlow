@@ -14,6 +14,7 @@ import {
   shouldShowLoadMore,
   sortProjects
 } from './helpers';
+import { pickPrimaryByPath } from '../../util/worktreePrimary';
 import { ProjectGroupNode, ProjectHintNode, ProjectLoadMoreNode, ProjectTagFilterNode } from './nodes';
 
 export interface ProjectChildrenContext {
@@ -21,6 +22,7 @@ export interface ProjectChildrenContext {
   favoriteIds: string[];
   duplicateInfo: Map<string, DuplicateInfo>;
   worktreeInfo: Map<string, boolean>;
+  worktreeCommonDirs: Map<string, string>;
   filterText: string;
   tagFilter: string[];
   favoritesOnly: boolean;
@@ -121,6 +123,7 @@ function getRootGroups(context: ProjectChildrenContext, settings: ReturnType<typ
   const favorites = getFavoriteProjects(context);
   const othersResult = getOtherProjects(context, settings);
   const others = othersResult.items;
+  const resolvers = createGroupResolvers(context);
   const summaries = context.gitStore.getSummaries();
   const showSummary = settings.gitShowProjectSummary;
   const sortDescription = buildSortDescription(others, {
@@ -140,9 +143,7 @@ function getRootGroups(context: ProjectChildrenContext, settings: ReturnType<typ
       summaries,
       showSummary,
       undefined,
-      (project) => context.getEntryPointGroups(project),
-      (projectId) => context.tagsStore.getTags(projectId),
-      (project) => context.getRecentRuns(project)
+      resolvers
     ));
   } else {
     const label = favorites.length === 0 ? 'Favorite Projects (none)' : 'Favorite Projects';
@@ -157,28 +158,7 @@ function getRootGroups(context: ProjectChildrenContext, settings: ReturnType<typ
       summaries,
       showSummary,
       undefined,
-      (project) => context.getEntryPointGroups(project),
-      (projectId) => context.tagsStore.getTags(projectId),
-      (project) => context.getRecentRuns(project)
-    ));
-  }
-  const worktrees = settings.projectShowWorktreesGroup ? getWorktreeProjects(context, settings) : [];
-  if (worktrees.length > 1) {
-    const groupWorktrees = settings.projectWorktreesGroupMode !== 'flat';
-    groups.push(new ProjectGroupNode(
-      'Worktrees',
-      'forgeflowGroup',
-      worktrees,
-      false,
-      undefined,
-      context.duplicateInfo,
-      groupWorktrees,
-      summaries,
-      showSummary,
-      undefined,
-      (project) => context.getEntryPointGroups(project),
-      (projectId) => context.tagsStore.getTags(projectId),
-      (project) => context.getRecentRuns(project)
+      resolvers
     ));
   }
   if (!context.favoritesOnly) {
@@ -197,12 +177,42 @@ function getRootGroups(context: ProjectChildrenContext, settings: ReturnType<typ
       summaries,
       showSummary,
       tailNodes,
-      (project) => context.getEntryPointGroups(project),
-      (projectId) => context.tagsStore.getTags(projectId),
-      (project) => context.getRecentRuns(project)
+      resolvers
+    ));
+  }
+  const worktreeGroupMode = settings.projectWorktreesGroupMode;
+  const worktrees = settings.projectShowWorktreesGroup
+    ? getWorktreeProjects(context, settings, worktreeGroupMode === 'grouped')
+    : [];
+  if (worktrees.length > 0) {
+    const worktreeCount = worktrees.filter((project) => context.worktreeInfo.get(project.id)).length;
+    groups.push(new ProjectGroupNode(
+      'Worktrees',
+      'forgeflowGroup',
+      worktrees,
+      false,
+      `Scan Roots • ${worktreeCount}`,
+      context.duplicateInfo,
+      worktreeGroupMode === 'grouped',
+      summaries,
+      showSummary,
+      undefined,
+      resolvers
     ));
   }
   return groups;
+}
+
+function createGroupResolvers(context: ProjectChildrenContext): {
+  entryPointResolver: (project: Project) => Promise<EntryPointGroups>;
+  tagsResolver: (projectId: string) => string[];
+  historyResolver: (project: Project) => RunHistoryEntry[];
+} {
+  return {
+    entryPointResolver: (project) => context.getEntryPointGroups(project),
+    tagsResolver: (projectId) => context.tagsStore.getTags(projectId),
+    historyResolver: (project) => context.getRecentRuns(project)
+  };
 }
 
 function getFilteredProjects(projects: Project[], context: ProjectChildrenContext): Project[] {
@@ -237,7 +247,16 @@ function getOtherProjects(
   settings: ReturnType<typeof getForgeFlowSettings>
 ): { items: Project[]; total: number } {
   const favorites = new Set(context.favoriteIds);
-  const others = context.projects.filter((project) => !favorites.has(project.id));
+  const hideWorktreesInProjects = settings.projectShowWorktreesGroup;
+  const others = context.projects.filter((project) => {
+    if (favorites.has(project.id)) {
+      return false;
+    }
+    if (hideWorktreesInProjects && context.worktreeInfo.get(project.id)) {
+      return false;
+    }
+    return true;
+  });
   const filtered = getFilteredProjects(others, context);
   const fallbackToName = !(
     (settings.projectSortMode === 'gitCommit' && context.gitCommitLoading)
@@ -256,10 +275,11 @@ function getOtherProjects(
 
 function getWorktreeProjects(
   context: ProjectChildrenContext,
-  settings: ReturnType<typeof getForgeFlowSettings>
+  settings: ReturnType<typeof getForgeFlowSettings>,
+  includePrimaryProjects: boolean
 ): Project[] {
   const favorites = new Set(context.favoriteIds);
-  const worktrees = context.projects.filter((project) => {
+  const visible = context.projects.filter((project) => {
     if (!context.worktreeInfo.get(project.id)) {
       return false;
     }
@@ -268,10 +288,59 @@ function getWorktreeProjects(
     }
     return true;
   });
-  const filtered = getFilteredProjects(worktrees, context);
+  if (includePrimaryProjects && visible.length > 0) {
+    const existing = new Set(visible.map((project) => project.id));
+    const duplicateKeys = new Set(
+      visible
+        .map((project) => context.duplicateInfo.get(project.id)?.key)
+        .filter((key): key is string => Boolean(key))
+    );
+    for (const key of duplicateKeys) {
+      const siblings = context.projects.filter((project) => context.duplicateInfo.get(project.id)?.key === key);
+      maybeAddPrimaryWorktreeSibling(siblings, context, favorites, existing, visible);
+    }
+    const commonDirs = new Set(
+      visible
+        .map((project) => context.worktreeCommonDirs.get(project.id))
+        .filter((value): value is string => Boolean(value))
+    );
+    for (const commonDir of commonDirs) {
+      const siblings = context.projects.filter((project) => context.worktreeCommonDirs.get(project.id) === commonDir);
+      if (siblings.length < 2) {
+        continue;
+      }
+      maybeAddPrimaryWorktreeSibling(siblings, context, favorites, existing, visible);
+    }
+  }
+  const filtered = getFilteredProjects(visible, context);
   const fallbackToName = !(
     (settings.projectSortMode === 'gitCommit' && context.gitCommitLoading)
     || (settings.projectSortMode === 'recentModified' && context.modifiedLoading)
   );
   return sortProjects(filtered, settings.projectSortMode, settings.projectSortDirection, fallbackToName);
+}
+
+function maybeAddPrimaryWorktreeSibling(
+  siblings: Project[],
+  context: Pick<ProjectChildrenContext, 'worktreeInfo' | 'favoritesOnly'>,
+  favorites: Set<string>,
+  existing: Set<string>,
+  target: Project[]
+): void {
+  if (siblings.length === 0) {
+    return;
+  }
+  const primary = pickPrimaryWorktreeSibling(siblings, context.worktreeInfo);
+  if (!primary || existing.has(primary.id)) {
+    return;
+  }
+  if (context.favoritesOnly && !favorites.has(primary.id)) {
+    return;
+  }
+  target.push(primary);
+  existing.add(primary.id);
+}
+
+function pickPrimaryWorktreeSibling(siblings: Project[], worktreeInfo: Map<string, boolean>): Project | undefined {
+  return pickPrimaryByPath(siblings, (project) => Boolean(worktreeInfo.get(project.id)));
 }

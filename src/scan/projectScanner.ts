@@ -2,7 +2,8 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import type { Project, ProjectType } from '../models/project';
 import { stableIdFromPath } from '../util/ids';
-import { readDirectory, statPath } from '../util/fs';
+import { statPath } from '../util/fs';
+import { walkDirectoriesBreadthFirst } from './walk';
 
 interface MarkerMatch {
   type: ProjectType;
@@ -54,24 +55,12 @@ export class ProjectScanner {
     existingByPath: Map<string, Project>
   ): Promise<Project[]> {
     const projects: Project[] = [];
-    const queue: Array<{ dir: string; depth: number }> = [{ dir: root, depth: 0 }];
-
-    while (queue.length > 0) {
-      const next = queue.shift();
-      if (!next) {
-        continue;
-      }
-      const { dir, depth } = next;
-      const entries = await readDirectory(dir);
+    await walkDirectoriesBreadthFirst(root, maxDepth, async ({ dir, entries, enqueue }) => {
       const marker = await this.detectMarker(dir, entries);
       if (marker) {
         const project = await this.createProject(dir, marker, existingByPath);
         projects.push(project);
-        continue;
-      }
-
-      if (depth >= maxDepth) {
-        continue;
+        return;
       }
 
       for (const [name, type] of entries) {
@@ -81,9 +70,9 @@ export class ProjectScanner {
         if (name === 'node_modules' || name.startsWith('.')) {
           continue;
         }
-        queue.push({ dir: path.join(dir, name), depth: depth + 1 });
+        enqueue(name);
       }
-    }
+    });
 
     return projects;
   }

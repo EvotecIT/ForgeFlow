@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import type { Project } from '../../models/project';
 import type { ProjectsStore } from '../../store/projectsStore';
 import type { TagsStore } from '../../store/tagsStore';
-import { normalizeFsPath } from '../pathUtils';
+import { normalizeFsPath, normalizePathKey } from '../pathUtils';
 
 export async function openProject(project: Project, store: ProjectsStore): Promise<void> {
   await store.updateLastOpened(project.id, Date.now());
@@ -19,8 +19,8 @@ export async function openProjectInNewWindow(project: Project, store: ProjectsSt
 
 export async function addProjectToWorkspace(project: Project, store: ProjectsStore): Promise<void> {
   const folders = vscode.workspace.workspaceFolders ?? [];
-  const resolved = path.resolve(project.path);
-  if (folders.some((folder) => path.resolve(folder.uri.fsPath) === resolved)) {
+  const resolved = normalizePathKey(project.path);
+  if (folders.some((folder) => normalizePathKey(folder.uri.fsPath) === resolved)) {
     vscode.window.showWarningMessage('ForgeFlow: Project is already in the workspace.');
     return;
   }
@@ -36,21 +36,67 @@ export async function addProjectToWorkspace(project: Project, store: ProjectsSto
   await store.updateLastActivity(project.id, Date.now());
 }
 
+export async function addProjectsToWorkspace(store: ProjectsStore): Promise<void> {
+  const projects = store.list();
+  if (projects.length === 0) {
+    vscode.window.showInformationMessage('ForgeFlow: No projects available. Configure scan roots first.');
+    return;
+  }
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  const normalizeWorkspacePath = (value: string): string => {
+    const normalized = normalizeFsPath(path.resolve(value));
+    return process.platform === 'win32' ? normalized.toLowerCase() : normalized;
+  };
+  const existing = new Set(
+    folders.map((folder) => normalizeWorkspacePath(folder.uri.fsPath))
+  );
+  const candidates = projects
+    .filter((project) => !existing.has(normalizeWorkspacePath(project.path)))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  if (candidates.length === 0) {
+    vscode.window.showInformationMessage('ForgeFlow: All detected projects are already in the workspace.');
+    return;
+  }
+
+  const picks = await vscode.window.showQuickPick(
+    candidates.map((project) => ({
+      label: project.name,
+      description: project.path,
+      project
+    })),
+    {
+      canPickMany: true,
+      matchOnDescription: true,
+      placeHolder: 'Select projects to add to workspace'
+    }
+  );
+  if (!picks || picks.length === 0) {
+    return;
+  }
+
+  const additions: Array<{ uri: vscode.Uri; name: string }> = [];
+  const now = Date.now();
+  for (const pick of picks) {
+    const project = pick.project;
+    additions.push({ uri: vscode.Uri.file(project.path), name: project.name });
+    await store.updateLastOpened(project.id, now);
+    await store.updateLastActivity(project.id, now);
+  }
+  const success = vscode.workspace.updateWorkspaceFolders(folders.length, 0, ...additions);
+  if (!success) {
+    vscode.window.showWarningMessage('ForgeFlow: Unable to add selected projects to workspace.');
+    return;
+  }
+  vscode.window.setStatusBarMessage(`ForgeFlow: Added ${additions.length} project(s) to workspace.`, 3000);
+}
+
 export async function switchProject(store: ProjectsStore, tagsStore: TagsStore): Promise<void> {
   const projects = store.list();
   if (projects.length === 0) {
     vscode.window.showWarningMessage('ForgeFlow: No projects available. Configure scan roots first.');
     return;
   }
-  const items = projects.map((project) => {
-    const tags = tagsStore.getTags(project.id);
-    return {
-      label: project.name,
-      description: project.path,
-      detail: tags.length > 0 ? `Tags: ${tags.join(', ')}` : undefined,
-      project
-    };
-  });
+  const items = projects.map((project) => buildProjectQuickPickItem(project, tagsStore));
   const pick = await vscode.window.showQuickPick(items, {
     placeHolder: 'Select a project to open',
     matchOnDescription: true,
@@ -86,16 +132,10 @@ export async function searchProjectsQuickPick(store: ProjectsStore, tagsStore: T
     iconPath: new vscode.ThemeIcon('add'),
     tooltip: 'Add to workspace'
   };
-  const items = projects.map((project) => {
-    const tags = tagsStore.getTags(project.id);
-    return {
-      label: project.name,
-      description: project.path,
-      detail: tags.length > 0 ? `Tags: ${tags.join(', ')}` : undefined,
-      buttons: [openNewButton, addWorkspaceButton],
-      project
-    };
-  });
+  const items = projects.map((project) => ({
+    ...buildProjectQuickPickItem(project, tagsStore),
+    buttons: [openNewButton, addWorkspaceButton]
+  }));
 
   await new Promise<void>((resolve) => {
     const quickPick = vscode.window.createQuickPick<(vscode.QuickPickItem & { project: Project })>();
@@ -134,7 +174,7 @@ async function openProjectWithAction(
 
   if (action === 'add') {
     const existing = vscode.workspace.workspaceFolders ?? [];
-    const alreadyOpen = existing.some((folder) => normalizeFsPath(folder.uri.fsPath) === normalizeFsPath(project.path));
+    const alreadyOpen = existing.some((folder) => normalizePathKey(folder.uri.fsPath) === normalizePathKey(project.path));
     if (alreadyOpen) {
       vscode.window.showInformationMessage('ForgeFlow: Project is already in the workspace.');
       return;
@@ -152,4 +192,14 @@ async function openProjectWithAction(
 
   const forceNewWindow = action === 'new';
   await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(project.path), forceNewWindow);
+}
+
+function buildProjectQuickPickItem(project: Project, tagsStore: TagsStore): vscode.QuickPickItem & { project: Project } {
+  const tags = tagsStore.getTags(project.id);
+  return {
+    label: project.name,
+    description: project.path,
+    detail: tags.length > 0 ? `Tags: ${tags.join(', ')}` : undefined,
+    project
+  };
 }

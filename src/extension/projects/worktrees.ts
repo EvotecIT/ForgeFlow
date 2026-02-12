@@ -1,14 +1,14 @@
-import { execFile } from 'child_process';
 import * as path from 'path';
-import { promisify } from 'util';
 import * as vscode from 'vscode';
 import type { ProjectsViewProvider } from '../../views/projectsView';
+import type { FilesViewProvider } from '../../views/filesView';
+import { readProjectGitWorktreeMetadata } from '../../git/worktreeMetadata';
+import { tryExecGitTrimmed } from '../../git/exec';
 import { getForgeFlowSettings } from '../../util/config';
-import { readDirectory, readFileText, statPath } from '../../util/fs';
-import { normalizeFsPath } from '../pathUtils';
+import { readDirectory } from '../../util/fs';
+import { normalizePathKey } from '../pathUtils';
 import { getScanRoots } from '../../views/projects/helpers';
-
-const execFileAsync = promisify(execFile);
+import { removeWorktreeSafely } from './worktreeGit';
 
 interface WorktreeCandidate {
   readonly repoRoot: string;
@@ -20,19 +20,51 @@ interface WorktreeCandidate {
   readonly merged: boolean;
 }
 
-export async function cleanupStaleWorktrees(projectsProvider: ProjectsViewProvider): Promise<void> {
+interface WorktreeDiscovery {
+  readonly repoGitDir: string;
+  readonly worktreePath: string;
+}
+
+export async function cleanupStaleWorktrees(
+  projectsProvider: ProjectsViewProvider,
+  filesProvider?: FilesViewProvider
+): Promise<number> {
   const roots = getScanRoots();
   if (roots.length === 0) {
     vscode.window.showInformationMessage('ForgeFlow: No scan roots configured for worktree cleanup.');
-    return;
+    return 0;
   }
 
   const worktrees = await findWorktreesInRoots(roots);
   if (worktrees.length === 0) {
     vscode.window.showInformationMessage('ForgeFlow: No git worktrees found in current scan roots.');
-    return;
+    return 0;
   }
+  return await runWorktreeCleanup(worktrees, projectsProvider, filesProvider);
+}
 
+export async function cleanupStaleWorktreesInPaths(
+  worktreePaths: string[],
+  projectsProvider: ProjectsViewProvider,
+  filesProvider?: FilesViewProvider
+): Promise<number> {
+  if (worktreePaths.length === 0) {
+    vscode.window.showInformationMessage('ForgeFlow: No discovered worktrees in this scope.');
+    return 0;
+  }
+  const worktrees = await findWorktreesInPaths(worktreePaths);
+  if (worktrees.length === 0) {
+    vscode.window.showInformationMessage('ForgeFlow: No linked git worktrees found in this scope.');
+    return 0;
+  }
+  return await runWorktreeCleanup(worktrees, projectsProvider, filesProvider);
+}
+
+async function runWorktreeCleanup(
+  worktrees: WorktreeDiscovery[],
+  projectsProvider: ProjectsViewProvider,
+  filesProvider?: FilesViewProvider
+): Promise<number> {
   const evaluated = await evaluateWorktrees(worktrees);
   const mergedClean = evaluated.filter((item) => item.clean && item.merged && item.branch !== item.defaultBranch);
   const cleanUnmerged = evaluated.filter((item) => item.clean && !item.merged && item.branch !== item.defaultBranch);
@@ -51,12 +83,12 @@ export async function cleanupStaleWorktrees(projectsProvider: ProjectsViewProvid
 
   if (candidates.length === 0) {
     vscode.window.showInformationMessage('ForgeFlow: No stale worktrees matched cleanup criteria.');
-    return;
+    return 0;
   }
 
   const picks = await pickWorktrees(candidates, mergedClean.length > 0 && cleanUnmerged.length > 0 ? cleanUnmerged : []);
   if (!picks || picks.length === 0) {
-    return;
+    return 0;
   }
 
   const confirm = await vscode.window.showWarningMessage(
@@ -65,7 +97,7 @@ export async function cleanupStaleWorktrees(projectsProvider: ProjectsViewProvid
     'Remove'
   );
   if (confirm !== 'Remove') {
-    return;
+    return 0;
   }
 
   let removed = 0;
@@ -78,12 +110,15 @@ export async function cleanupStaleWorktrees(projectsProvider: ProjectsViewProvid
 
   if (removed > 0) {
     await projectsProvider.refresh(true);
+    filesProvider?.refreshWorktrees();
   }
   vscode.window.setStatusBarMessage(`ForgeFlow: Removed ${removed}/${picks.length} worktrees.`, 4000);
+  return removed;
 }
 
-async function findWorktreesInRoots(roots: string[]): Promise<Array<{ repoGitDir: string; worktreePath: string }>> {
-  const results: Array<{ repoGitDir: string; worktreePath: string }> = [];
+async function findWorktreesInRoots(roots: string[]): Promise<WorktreeDiscovery[]> {
+  const results: WorktreeDiscovery[] = [];
+  const seen = new Set<string>();
   for (const root of roots) {
     const entries = await readDirectory(root);
     for (const [name, type] of entries) {
@@ -91,29 +126,50 @@ async function findWorktreesInRoots(roots: string[]): Promise<Array<{ repoGitDir
         continue;
       }
       const candidatePath = path.join(root, name);
-      const gitFile = path.join(candidatePath, '.git');
-      const gitStat = await statPath(gitFile);
-      if (!gitStat || gitStat.type !== vscode.FileType.File) {
-        continue;
-      }
-      const gitdir = await readGitdir(gitFile);
-      if (!gitdir) {
-        continue;
-      }
-      const repoGitDir = deriveRepoGitDir(gitdir);
-      if (!repoGitDir) {
-        continue;
-      }
-      results.push({ repoGitDir, worktreePath: candidatePath });
+      await maybeAddDiscoveredWorktree(candidatePath, seen, results);
     }
   }
   return results;
 }
 
-async function evaluateWorktrees(items: Array<{ repoGitDir: string; worktreePath: string }>): Promise<WorktreeCandidate[]> {
-  const byRepo = new Map<string, Array<{ repoGitDir: string; worktreePath: string }>>();
+async function findWorktreesInPaths(worktreePaths: string[]): Promise<WorktreeDiscovery[]> {
+  const results: WorktreeDiscovery[] = [];
+  const seen = new Set<string>();
+  for (const candidatePath of worktreePaths) {
+    await maybeAddDiscoveredWorktree(candidatePath, seen, results);
+  }
+  return results;
+}
+
+async function maybeAddDiscoveredWorktree(
+  candidatePath: string,
+  seen: Set<string>,
+  results: WorktreeDiscovery[]
+): Promise<void> {
+  const candidateKey = normalizePathKey(candidatePath);
+  if (seen.has(candidateKey)) {
+    return;
+  }
+  seen.add(candidateKey);
+  const discovered = await discoverLinkedWorktree(candidatePath);
+  if (!discovered) {
+    return;
+  }
+  results.push(discovered);
+}
+
+async function discoverLinkedWorktree(candidatePath: string): Promise<WorktreeDiscovery | undefined> {
+  const metadata = await readProjectGitWorktreeMetadata(candidatePath);
+  if (!metadata.isWorktree || !metadata.commonDir) {
+    return undefined;
+  }
+  return { repoGitDir: metadata.commonDir, worktreePath: path.resolve(candidatePath) };
+}
+
+async function evaluateWorktrees(items: WorktreeDiscovery[]): Promise<WorktreeCandidate[]> {
+  const byRepo = new Map<string, WorktreeDiscovery[]>();
   for (const item of items) {
-    const key = normalizeFsPath(item.repoGitDir);
+    const key = normalizePathKey(item.repoGitDir);
     const list = byRepo.get(key) ?? [];
     list.push(item);
     byRepo.set(key, list);
@@ -183,39 +239,25 @@ function toQuickPickItem(candidate: WorktreeCandidate, merged: boolean): vscode.
 }
 
 async function removeWorktree(candidate: WorktreeCandidate): Promise<boolean> {
-  const args = ['worktree', 'remove', candidate.worktreePath];
-  try {
-    await execFileAsync('git', ['-C', candidate.repoRoot, ...args]);
+  const result = await removeWorktreeSafely(candidate.worktreePath, candidate.repoRoot);
+  if (result.removed) {
     return true;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    vscode.window.showWarningMessage(`ForgeFlow: Failed to remove worktree "${path.basename(candidate.worktreePath)}": ${message}`);
+  }
+  if (result.failure === 'openInWorkspace') {
+    vscode.window.showWarningMessage(
+      `ForgeFlow: Skipping "${path.basename(candidate.worktreePath)}" because it is open in the current workspace.`
+    );
     return false;
   }
-}
-
-async function readGitdir(gitFile: string): Promise<string | undefined> {
-  const text = await readFileText(gitFile);
-  if (!text) {
-    return undefined;
+  if (result.failure === 'repoRootNotFound') {
+    vscode.window.showWarningMessage(
+      `ForgeFlow: Skipping "${path.basename(candidate.worktreePath)}" because repository root could not be resolved.`
+    );
+    return false;
   }
-  const match = /^\s*gitdir:\s*(.+)\s*$/im.exec(text);
-  const value = match?.[1]?.trim();
-  if (!value) {
-    return undefined;
-  }
-  return value;
-}
-
-function deriveRepoGitDir(gitdir: string): string | undefined {
-  const normalized = gitdir.replace(/\\/g, '/');
-  const marker = '/worktrees/';
-  const index = normalized.toLowerCase().indexOf(marker);
-  if (index < 0) {
-    return undefined;
-  }
-  const repoGitDir = normalized.slice(0, index);
-  return path.normalize(repoGitDir);
+  const message = result.message ?? 'Unknown error';
+  vscode.window.showWarningMessage(`ForgeFlow: Failed to remove worktree "${path.basename(candidate.worktreePath)}": ${message}`);
+  return false;
 }
 
 async function detectDefaultBranch(repoRoot: string): Promise<string> {
@@ -243,10 +285,5 @@ async function isBranchMerged(repoRoot: string, branch: string, defaultBranch: s
 }
 
 async function git(cwd: string, args: string[]): Promise<string | undefined> {
-  try {
-    const result = await execFileAsync('git', ['-C', cwd, ...args]);
-    return result.stdout?.trim();
-  } catch {
-    return undefined;
-  }
+  return await tryExecGitTrimmed(cwd, args);
 }

@@ -11,6 +11,7 @@ import { buildProjectSummary } from '../../git/gitSummary';
 import { getForgeFlowSettings, type SortDirection } from '../../util/config';
 import { extractProject } from '../selection';
 import { isGitBranchNode, isGitProjectNode } from '../../views/gitView';
+import { buildBranchDeletionPlan, type BranchDeletionPlan, type DeletionPlanMode } from './safety';
 
 export async function configureGitBranchSortMode(): Promise<void> {
   const settings = getForgeFlowSettings();
@@ -75,34 +76,17 @@ export async function refreshGitSummaries(
   gitService: GitService,
   gitStore: GitStore
 ): Promise<void> {
-  const projects = projectsStore.list().filter((project) => project.type === 'git');
-  if (projects.length === 0) {
-    vscode.window.showInformationMessage('ForgeFlow: No git projects available.');
+  const projects = listGitProjects(projectsStore);
+  if (!projects) {
     return;
   }
   const summaries: Record<string, GitProjectSummary> = {};
-  await vscode.window.withProgress(
-    {
-      location: vscode.ProgressLocation.Notification,
-      title: 'ForgeFlow: Refreshing git summaries',
-      cancellable: true
-    },
-    async (progress, token) => {
-      const total = projects.length;
-      let index = 0;
-      for (const project of projects) {
-        if (token.isCancellationRequested) {
-          break;
-        }
-        index += 1;
-        progress.report({ message: `${project.name} (${index}/${total})`, increment: (100 / total) });
-        const summary = await summarizeProjectWithOverrides(project, gitService, gitStore);
-        if (summary) {
-          summaries[project.id] = summary;
-        }
-      }
+  await forEachWithProgress(projects, 'ForgeFlow: Refreshing git summaries', (project) => project.name, async (project) => {
+    const summary = await summarizeProjectWithOverrides(project, gitService, gitStore);
+    if (summary) {
+      summaries[project.id] = summary;
     }
-  );
+  });
   await gitStore.setSummaries(summaries);
 }
 
@@ -119,15 +103,29 @@ export async function summarizeProjectWithOverrides(
   return buildProjectSummary(status);
 }
 
+export async function refreshGitProjectSummaryAndViews(
+  project: Project,
+  gitService: GitService,
+  gitStore: GitStore,
+  gitProvider: GitViewProvider,
+  projectsProvider: ProjectsViewProvider
+): Promise<void> {
+  const summary = await summarizeProjectWithOverrides(project, gitService, gitStore);
+  if (summary) {
+    await gitStore.setSummary(project.id, summary);
+  }
+  await gitProvider.refresh();
+  await projectsProvider.refresh();
+}
+
 export async function configureGitProjectSettings(
   projectsStore: ProjectsStore,
   gitStore: GitStore,
   provider: GitViewProvider,
   target?: unknown
 ): Promise<void> {
-  const projects = projectsStore.list().filter((project) => project.type === 'git');
-  if (projects.length === 0) {
-    vscode.window.showInformationMessage('ForgeFlow: No git projects available.');
+  const projects = listGitProjects(projectsStore);
+  if (!projects) {
     return;
   }
   const selected = extractGitProject(projectsStore, provider, target);
@@ -177,40 +175,53 @@ export async function cleanSelectedProject(
   logger: ForgeFlowLogger,
   target?: unknown
 ): Promise<void> {
-  const project = extractGitProject(projectsStore, gitProvider, target);
-  if (!project) {
-    return;
-  }
-  const plan = await buildCleanPlan(project, gitService, gitStore);
-  if (!plan) {
-    vscode.window.showWarningMessage('ForgeFlow: Git status unavailable. See Output > ForgeFlow for details.');
-    return;
-  }
-  const { gone, merged } = plan;
-  const confirm = await vscode.window.showWarningMessage(
-    `Clean ${project.name}: prune remotes, delete ${gone.length} gone branches, delete ${merged.length} merged branches?`,
-    { modal: true },
-    'Clean'
-  );
-  if (confirm !== 'Clean') {
-    return;
-  }
-  await gitService.pruneRemotes(project.path);
-  for (const branch of gone) {
-    await gitService.deleteBranch(project.path, branch, true);
-  }
-  for (const branch of merged) {
-    await gitService.deleteBranch(project.path, branch, false);
-  }
-  if (gone.length > 0 || merged.length > 0) {
-    logCleanPlan(logger, project.name, gone, merged);
-  }
-  const summary = await summarizeProjectWithOverrides(project, gitService, gitStore);
-  if (summary) {
-    await gitStore.setSummary(project.id, summary);
-  }
-  await gitProvider.refresh();
-  await projectsProvider.refresh();
+  await withResolvedTargetCleanPlan(projectsStore, gitService, gitStore, gitProvider, target, async ({ project, plan }) => {
+    const { gone, merged, skipped } = plan;
+    if (gone.length === 0 && merged.length === 0) {
+      if (skipped.length > 0) {
+        vscode.window.showInformationMessage(
+          `ForgeFlow: No deletable branches in ${project.name}. ${skipped.length} protected branch${skipped.length === 1 ? '' : 'es'} were skipped.`
+        );
+        return;
+      }
+      vscode.window.showInformationMessage(`ForgeFlow: No branches to clean in ${project.name}.`);
+      return;
+    }
+    const protectedSuffix = skipped.length > 0 ? ` (skipping ${skipped.length} protected)` : '';
+    const confirm = await vscode.window.showWarningMessage(
+      `Clean ${project.name}: prune remotes, delete ${gone.length} gone branches, delete ${merged.length} merged branches${protectedSuffix}?`,
+      { modal: true },
+      'Clean'
+    );
+    if (confirm !== 'Clean') {
+      return;
+    }
+    await gitService.pruneRemotes(project.path);
+    let failures = 0;
+    for (const branch of gone) {
+      try {
+        await gitService.deleteBranch(project.path, branch, true);
+      } catch {
+        failures += 1;
+      }
+    }
+    for (const branch of merged) {
+      try {
+        await gitService.deleteBranch(project.path, branch, false);
+      } catch {
+        failures += 1;
+      }
+    }
+    if (gone.length > 0 || merged.length > 0) {
+      logCleanPlan(logger, project.name, gone, merged);
+    }
+    if (failures > 0) {
+      vscode.window.showWarningMessage(
+        `ForgeFlow: Failed to delete ${failures} branch${failures === 1 ? '' : 'es'} in ${project.name}.`
+      );
+    }
+    await refreshGitProjectSummaryAndViews(project, gitService, gitStore, gitProvider, projectsProvider);
+  });
 }
 
 export async function previewCleanProject(
@@ -221,22 +232,16 @@ export async function previewCleanProject(
   logger: ForgeFlowLogger,
   target?: unknown
 ): Promise<void> {
-  const project = extractGitProject(projectsStore, gitProvider, target);
-  if (!project) {
-    return;
-  }
-  const plan = await buildCleanPlan(project, gitService, gitStore);
-  if (!plan) {
-    vscode.window.showWarningMessage('ForgeFlow: Git status unavailable. See Output > ForgeFlow for details.');
-    return;
-  }
-  const { gone, merged } = plan;
-  const message = `Plan for ${project.name}: ${gone.length} gone, ${merged.length} merged.`;
-  const action = await vscode.window.showInformationMessage(message, 'Show Details');
-  if (action === 'Show Details') {
-    logCleanPlan(logger, project.name, gone, merged);
-    logger.show();
-  }
+  await withResolvedTargetCleanPlan(projectsStore, gitService, gitStore, gitProvider, target, async ({ project, plan }) => {
+    const { gone, merged, skipped } = plan;
+    const protectedSuffix = skipped.length > 0 ? `, ${skipped.length} protected` : '';
+    const message = `Plan for ${project.name}: ${gone.length} gone, ${merged.length} merged${protectedSuffix}.`;
+    const action = await vscode.window.showInformationMessage(message, 'Show Details');
+    if (action === 'Show Details') {
+      logCleanPlan(logger, project.name, gone, merged);
+      logger.show();
+    }
+  });
 }
 
 export async function bulkPruneRemotes(
@@ -244,9 +249,8 @@ export async function bulkPruneRemotes(
   gitService: GitService,
   gitStore: GitStore
 ): Promise<void> {
-  const projects = projectsStore.list().filter((project) => project.type === 'git');
-  if (projects.length === 0) {
-    vscode.window.showInformationMessage('ForgeFlow: No git projects available.');
+  const projects = listGitProjects(projectsStore);
+  if (!projects) {
     return;
   }
   const confirm = await vscode.window.showWarningMessage(
@@ -257,21 +261,9 @@ export async function bulkPruneRemotes(
   if (confirm !== 'Prune') {
     return;
   }
-  await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: 'ForgeFlow: Pruning remotes', cancellable: true },
-    async (progress, token) => {
-      const total = projects.length;
-      let index = 0;
-      for (const project of projects) {
-        if (token.isCancellationRequested) {
-          break;
-        }
-        index += 1;
-        progress.report({ message: `${project.name} (${index}/${total})`, increment: (100 / total) });
-        await gitService.pruneRemotes(project.path);
-      }
-    }
-  );
+  await forEachWithProgress(projects, 'ForgeFlow: Pruning remotes', (project) => project.name, async (project) => {
+    await gitService.pruneRemotes(project.path);
+  });
   await refreshGitSummaries(projectsStore, gitService, gitStore);
 }
 
@@ -280,25 +272,7 @@ export async function bulkDeleteGoneBranches(
   gitService: GitService,
   gitStore: GitStore
 ): Promise<void> {
-  const targets = await collectBranchDeletions(projectsStore, gitService, 'gone', gitStore);
-  if (!targets) {
-    return;
-  }
-  const { deletions, totalBranches } = targets;
-  if (totalBranches === 0) {
-    vscode.window.showInformationMessage('ForgeFlow: No gone branches found.');
-    return;
-  }
-  const confirm = await vscode.window.showWarningMessage(
-    `Delete ${totalBranches} gone branches across ${deletions.length} projects?`,
-    { modal: true },
-    'Delete'
-  );
-  if (confirm !== 'Delete') {
-    return;
-  }
-  await runBulkDeletion(deletions, gitService, true);
-  await refreshGitSummaries(projectsStore, gitService, gitStore);
+  await bulkDeleteBranchesByMode(projectsStore, gitService, gitStore, 'gone');
 }
 
 export async function bulkDeleteMergedBranches(
@@ -306,24 +280,36 @@ export async function bulkDeleteMergedBranches(
   gitService: GitService,
   gitStore: GitStore
 ): Promise<void> {
-  const targets = await collectBranchDeletions(projectsStore, gitService, 'merged', gitStore);
+  await bulkDeleteBranchesByMode(projectsStore, gitService, gitStore, 'merged');
+}
+
+async function bulkDeleteBranchesByMode(
+  projectsStore: ProjectsStore,
+  gitService: GitService,
+  gitStore: GitStore,
+  mode: 'gone' | 'merged'
+): Promise<void> {
+  const targets = await collectBranchDeletions(projectsStore, gitService, mode, gitStore);
   if (!targets) {
     return;
   }
   const { deletions, totalBranches } = targets;
   if (totalBranches === 0) {
-    vscode.window.showInformationMessage('ForgeFlow: No merged branches found.');
+    vscode.window.showInformationMessage(`ForgeFlow: No ${mode} branches found.`);
     return;
   }
   const confirm = await vscode.window.showWarningMessage(
-    `Delete ${totalBranches} merged branches across ${deletions.length} projects?`,
+    `Delete ${totalBranches} ${mode} branches across ${deletions.length} projects?`,
     { modal: true },
     'Delete'
   );
   if (confirm !== 'Delete') {
     return;
   }
-  await runBulkDeletion(deletions, gitService, false);
+  const failures = await runBulkDeletion(deletions, gitService, mode === 'gone');
+  if (failures > 0) {
+    vscode.window.showWarningMessage(`ForgeFlow: Failed to delete ${failures} ${mode} branch${failures === 1 ? '' : 'es'}.`);
+  }
   await refreshGitSummaries(projectsStore, gitService, gitStore);
 }
 
@@ -333,27 +319,20 @@ export async function previewCleanAllProjects(
   gitStore: GitStore,
   logger: ForgeFlowLogger
 ): Promise<void> {
-  const plan = await collectCleanPlans(projectsStore, gitService, gitStore);
-  if (!plan) {
-    return;
-  }
-  const { plans, totalGone, totalMerged } = plan;
-  if (plans.length === 0) {
-    vscode.window.showInformationMessage('ForgeFlow: No git projects available.');
-    return;
-  }
-  if (totalGone === 0 && totalMerged === 0) {
-    vscode.window.showInformationMessage('ForgeFlow: No branches to clean.');
-    return;
-  }
-  const action = await vscode.window.showInformationMessage(
-    `Plan: ${totalGone} gone, ${totalMerged} merged across ${plans.length} projects.`,
-    'Show Details'
-  );
-  if (action === 'Show Details') {
-    logBulkCleanPlan(logger, plans);
-    logger.show();
-  }
+  await withCollectedCleanPlans(projectsStore, gitService, gitStore, async (plan) => {
+    if (shouldAbortCleanAll(plan)) {
+      return;
+    }
+    const { plans, totalGone, totalMerged, totalSkipped } = plan;
+    const action = await vscode.window.showInformationMessage(
+      `Plan: ${totalGone} gone, ${totalMerged} merged, ${totalSkipped} protected across ${plans.length} projects.`,
+      'Show Details'
+    );
+    if (action === 'Show Details') {
+      logBulkCleanPlan(logger, plans);
+      logger.show();
+    }
+  });
 }
 
 export async function cleanAllProjects(
@@ -362,56 +341,48 @@ export async function cleanAllProjects(
   gitStore: GitStore,
   logger: ForgeFlowLogger
 ): Promise<void> {
-  const plan = await collectCleanPlans(projectsStore, gitService, gitStore);
-  if (!plan) {
-    return;
-  }
-  const { plans, totalGone, totalMerged } = plan;
-  if (plans.length === 0) {
-    vscode.window.showInformationMessage('ForgeFlow: No git projects available.');
-    return;
-  }
-  if (totalGone === 0 && totalMerged === 0) {
-    vscode.window.showInformationMessage('ForgeFlow: No branches to clean.');
-    return;
-  }
-  const confirm = await vscode.window.showWarningMessage(
-    `Clean ${plans.length} projects: prune remotes, delete ${totalGone} gone, delete ${totalMerged} merged branches?`,
-    { modal: true },
-    'Clean'
-  );
-  if (confirm !== 'Clean') {
-    return;
-  }
-  await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: 'ForgeFlow: Cleaning git projects', cancellable: true },
-    async (progress, token) => {
-      const total = plans.length;
-      let index = 0;
-      for (const item of plans) {
-        if (token.isCancellationRequested) {
-          break;
-        }
-        index += 1;
-        progress.report({ message: `${item.project.name} (${index}/${total})`, increment: (100 / total) });
-        await gitService.pruneRemotes(item.project.path);
-        for (const branch of item.gone) {
+  await withCollectedCleanPlans(projectsStore, gitService, gitStore, async (plan) => {
+    if (shouldAbortCleanAll(plan)) {
+      return;
+    }
+    const { plans, totalGone, totalMerged, totalSkipped } = plan;
+    const confirm = await vscode.window.showWarningMessage(
+      `Clean ${plans.length} projects: prune remotes, delete ${totalGone} gone, delete ${totalMerged} merged branches (skipping ${totalSkipped} protected)?`,
+      { modal: true },
+      'Clean'
+    );
+    if (confirm !== 'Clean') {
+      return;
+    }
+    let failures = 0;
+    await forEachWithProgress(plans, 'ForgeFlow: Cleaning git projects', (item) => item.project.name, async (item) => {
+      await gitService.pruneRemotes(item.project.path);
+      for (const branch of item.gone) {
+        try {
           await gitService.deleteBranch(item.project.path, branch, true);
-        }
-        for (const branch of item.merged) {
-          await gitService.deleteBranch(item.project.path, branch, false);
+        } catch {
+          failures += 1;
         }
       }
+      for (const branch of item.merged) {
+        try {
+          await gitService.deleteBranch(item.project.path, branch, false);
+        } catch {
+          failures += 1;
+        }
+      }
+    });
+    if (failures > 0) {
+      vscode.window.showWarningMessage(`ForgeFlow: Failed to delete ${failures} branch${failures === 1 ? '' : 'es'} during clean-all.`);
     }
-  );
-  logBulkCleanPlan(logger, plans);
-  await refreshGitSummaries(projectsStore, gitService, gitStore);
+    logBulkCleanPlan(logger, plans);
+    await refreshGitSummaries(projectsStore, gitService, gitStore);
+  });
 }
 
 export async function selectGitProject(projectsStore: ProjectsStore, provider: GitViewProvider): Promise<void> {
-  const projects = projectsStore.list().filter((project) => project.type === 'git');
-  if (projects.length === 0) {
-    vscode.window.showInformationMessage('ForgeFlow: No git projects available.');
+  const projects = listGitProjects(projectsStore);
+  if (!projects) {
     return;
   }
   const selectedId = provider.getSelectedProjectId();
@@ -431,8 +402,8 @@ export async function selectGitProject(projectsStore: ProjectsStore, provider: G
 }
 
 export function getSelectedGitProject(projectsStore: ProjectsStore, provider: GitViewProvider): Project | undefined {
-  const projects = projectsStore.list().filter((project) => project.type === 'git');
-  if (projects.length === 0) {
+  const projects = listGitProjects(projectsStore, false);
+  if (!projects) {
     return undefined;
   }
   const selectedId = provider.getSelectedProjectId();
@@ -464,6 +435,64 @@ export function extractGitBranch(target: unknown): string | undefined {
   return undefined;
 }
 
+function listGitProjects(projectsStore: ProjectsStore, notifyIfEmpty = true): Project[] | undefined {
+  const projects = projectsStore.list().filter((project) => project.type === 'git');
+  if (projects.length === 0) {
+    if (notifyIfEmpty) {
+      vscode.window.showInformationMessage('ForgeFlow: No git projects available.');
+    }
+    return undefined;
+  }
+  return projects;
+}
+
+async function forEachWithProgress<T>(
+  items: T[],
+  title: string,
+  label: (item: T) => string,
+  work: (item: T) => Promise<void>
+): Promise<void> {
+  await vscode.window.withProgress(
+    { location: vscode.ProgressLocation.Notification, title, cancellable: true },
+    async (progress, token) => {
+      const total = items.length;
+      let index = 0;
+      for (const item of items) {
+        if (token.isCancellationRequested) {
+          break;
+        }
+        index += 1;
+        progress.report({ message: `${label(item)} (${index}/${total})`, increment: (100 / total) });
+        await work(item);
+      }
+    }
+  );
+}
+
+function shouldSkipCleanAll(totalGone: number, totalMerged: number, totalSkipped: number): boolean {
+  if (totalGone > 0 || totalMerged > 0) {
+    return false;
+  }
+  if (totalSkipped > 0) {
+    vscode.window.showInformationMessage('ForgeFlow: Only protected branches were found; nothing to clean.');
+    return true;
+  }
+  vscode.window.showInformationMessage('ForgeFlow: No branches to clean.');
+  return true;
+}
+
+function shouldAbortCleanAll(plan: {
+  plans: Array<{ project: Project; gone: string[]; merged: string[] }>;
+  totalGone: number;
+  totalMerged: number;
+  totalSkipped: number;
+}): boolean {
+  if (plan.plans.length === 0) {
+    return shouldSkipCleanAll(0, 0, plan.totalSkipped);
+  }
+  return shouldSkipCleanAll(plan.totalGone, plan.totalMerged, plan.totalSkipped);
+}
+
 function logCleanPlan(logger: ForgeFlowLogger, projectName: string, gone: string[], merged: string[]): void {
   logger.info(`Clean plan for ${projectName}`);
   logger.info(`Gone branches (${gone.length}): ${gone.join(', ') || 'none'}`);
@@ -487,15 +516,47 @@ async function buildCleanPlan(
   project: Project,
   gitService: GitService,
   gitStore: GitStore
-): Promise<{ gone: string[]; merged: string[] } | undefined> {
+): Promise<{ gone: string[]; merged: string[]; skipped: Array<{ branch: string; reason: string }> } | undefined> {
   const overrides = gitStore.getProjectSettings(project.id);
   const status = await gitService.getRepoStatus(project.path, project.name, overrides);
   if (!status) {
     return undefined;
   }
-  const gone = status.branches.filter((branch) => branch.isGone && !branch.isCurrent).map((branch) => branch.name);
-  const merged = status.branches.filter((branch) => branch.isMerged && !branch.isCurrent).map((branch) => branch.name);
-  return { gone, merged };
+  return await planBranchDeletionForStatus(project, status, gitService, 'clean');
+}
+
+async function resolveTargetCleanPlan(
+  projectsStore: ProjectsStore,
+  gitService: GitService,
+  gitStore: GitStore,
+  gitProvider: GitViewProvider,
+  target?: unknown
+): Promise<{ project: Project; plan: BranchDeletionPlan } | undefined> {
+  const project = extractGitProject(projectsStore, gitProvider, target);
+  if (!project) {
+    return undefined;
+  }
+  const plan = await buildCleanPlan(project, gitService, gitStore);
+  if (!plan) {
+    vscode.window.showWarningMessage('ForgeFlow: Git status unavailable. See Output > ForgeFlow for details.');
+    return undefined;
+  }
+  return { project, plan };
+}
+
+async function withResolvedTargetCleanPlan(
+  projectsStore: ProjectsStore,
+  gitService: GitService,
+  gitStore: GitStore,
+  gitProvider: GitViewProvider,
+  target: unknown,
+  run: (resolved: { project: Project; plan: BranchDeletionPlan }) => Promise<void>
+): Promise<void> {
+  const resolved = await resolveTargetCleanPlan(projectsStore, gitService, gitStore, gitProvider, target);
+  if (!resolved) {
+    return;
+  }
+  await run(resolved);
 }
 
 async function collectBranchDeletions(
@@ -504,40 +565,25 @@ async function collectBranchDeletions(
   mode: 'gone' | 'merged',
   gitStore?: GitStore
 ): Promise<{ deletions: Array<{ project: Project; branches: string[] }>; totalBranches: number } | undefined> {
-  const projects = projectsStore.list().filter((project) => project.type === 'git');
-  if (projects.length === 0) {
-    vscode.window.showInformationMessage('ForgeFlow: No git projects available.');
+  const projects = listGitProjects(projectsStore);
+  if (!projects) {
     return undefined;
   }
   const deletions: Array<{ project: Project; branches: string[] }> = [];
   let totalBranches = 0;
-  await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: 'ForgeFlow: Scanning branches', cancellable: true },
-    async (progress, token) => {
-      const total = projects.length;
-      let index = 0;
-      for (const project of projects) {
-        if (token.isCancellationRequested) {
-          break;
-        }
-        index += 1;
-        progress.report({ message: `${project.name} (${index}/${total})`, increment: (100 / total) });
-        const overrides = gitStore?.getProjectSettings(project.id);
-        const status = await gitService.getRepoStatus(project.path, project.name, overrides);
-        if (!status) {
-          continue;
-        }
-        const branches = status.branches
-          .filter((branch) => !branch.isCurrent && branch.name !== status.defaultBranch)
-          .filter((branch) => mode === 'gone' ? branch.isGone : branch.isMerged)
-          .map((branch) => branch.name);
-        if (branches.length > 0) {
-          deletions.push({ project, branches });
-          totalBranches += branches.length;
-        }
-      }
+  await forEachWithProgress(projects, 'ForgeFlow: Scanning branches', (project) => project.name, async (project) => {
+    const overrides = gitStore?.getProjectSettings(project.id);
+    const status = await gitService.getRepoStatus(project.path, project.name, overrides);
+    if (!status) {
+      return;
     }
-  );
+    const plan = await planBranchDeletionForStatus(project, status, gitService, mode);
+    const branches = mode === 'gone' ? plan.gone : plan.merged;
+    if (branches.length > 0) {
+      deletions.push({ project, branches });
+      totalBranches += branches.length;
+    }
+  });
   return { deletions, totalBranches };
 }
 
@@ -545,68 +591,94 @@ async function runBulkDeletion(
   deletions: Array<{ project: Project; branches: string[] }>,
   gitService: GitService,
   force: boolean
-): Promise<void> {
-  await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: 'ForgeFlow: Deleting branches', cancellable: true },
-    async (progress, token) => {
-      const totalProjects = deletions.length;
-      let index = 0;
-      for (const item of deletions) {
-        if (token.isCancellationRequested) {
-          break;
-        }
-        index += 1;
-        progress.report({ message: `${item.project.name} (${index}/${totalProjects})`, increment: (100 / totalProjects) });
-        for (const branch of item.branches) {
-          await gitService.deleteBranch(item.project.path, branch, force);
-        }
+): Promise<number> {
+  let failures = 0;
+  await forEachWithProgress(deletions, 'ForgeFlow: Deleting branches', (item) => item.project.name, async (item) => {
+    for (const branch of item.branches) {
+      try {
+        await gitService.deleteBranch(item.project.path, branch, force);
+      } catch {
+        failures += 1;
       }
     }
-  );
+  });
+  return failures;
 }
 
 async function collectCleanPlans(
   projectsStore: ProjectsStore,
   gitService: GitService,
   gitStore: GitStore
-): Promise<{ plans: Array<{ project: Project; gone: string[]; merged: string[] }>; totalGone: number; totalMerged: number } | undefined> {
-  const projects = projectsStore.list().filter((project) => project.type === 'git');
-  if (projects.length === 0) {
+): Promise<{
+  plans: Array<{ project: Project; gone: string[]; merged: string[] }>;
+  totalGone: number;
+  totalMerged: number;
+  totalSkipped: number;
+} | undefined> {
+  const projects = listGitProjects(projectsStore, false);
+  if (!projects) {
     return undefined;
   }
   const plans: Array<{ project: Project; gone: string[]; merged: string[] }> = [];
   let totalGone = 0;
   let totalMerged = 0;
-  await vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: 'ForgeFlow: Scanning branches', cancellable: true },
-    async (progress, token) => {
-      const total = projects.length;
-      let index = 0;
-      for (const project of projects) {
-        if (token.isCancellationRequested) {
-          break;
-        }
-        index += 1;
-        progress.report({ message: `${project.name} (${index}/${total})`, increment: (100 / total) });
-        const overrides = gitStore.getProjectSettings(project.id);
-        const status = await gitService.getRepoStatus(project.path, project.name, overrides);
-        if (!status) {
-          continue;
-        }
-        const gone = status.branches
-          .filter((branch) => branch.isGone && !branch.isCurrent)
-          .map((branch) => branch.name);
-        const merged = status.branches
-          .filter((branch) => branch.isMerged && !branch.isCurrent)
-          .map((branch) => branch.name);
-        if (gone.length === 0 && merged.length === 0) {
-          continue;
-        }
-        totalGone += gone.length;
-        totalMerged += merged.length;
-        plans.push({ project, gone, merged });
-      }
+  let totalSkipped = 0;
+  await forEachWithProgress(projects, 'ForgeFlow: Scanning branches', (project) => project.name, async (project) => {
+    const overrides = gitStore.getProjectSettings(project.id);
+    const status = await gitService.getRepoStatus(project.path, project.name, overrides);
+    if (!status) {
+      return;
     }
-  );
-  return { plans, totalGone, totalMerged };
+    const plan = await planBranchDeletionForStatus(project, status, gitService, 'clean');
+    const { gone, merged, skipped } = plan;
+    totalSkipped += skipped.length;
+    if (gone.length === 0 && merged.length === 0) {
+      return;
+    }
+    totalGone += gone.length;
+    totalMerged += merged.length;
+    plans.push({ project, gone, merged });
+  });
+  return { plans, totalGone, totalMerged, totalSkipped };
+}
+
+async function withCollectedCleanPlans(
+  projectsStore: ProjectsStore,
+  gitService: GitService,
+  gitStore: GitStore,
+  run: (plan: {
+    plans: Array<{ project: Project; gone: string[]; merged: string[] }>;
+    totalGone: number;
+    totalMerged: number;
+    totalSkipped: number;
+  }) => Promise<void>
+): Promise<void> {
+  const plan = await collectCleanPlans(projectsStore, gitService, gitStore);
+  if (!plan) {
+    return;
+  }
+  await run(plan);
+}
+
+async function planBranchDeletionForStatus(
+  project: Project,
+  status: NonNullable<Awaited<ReturnType<GitService['getRepoStatus']>>>,
+  gitService: GitService,
+  mode: DeletionPlanMode
+): Promise<BranchDeletionPlan> {
+  const checkedOutInWorktrees = await gitService.getCheckedOutWorktreeBranches(project.path);
+  const goneCandidates = status.branches
+    .filter((branch) => branch.isGone)
+    .map((branch) => branch.name);
+  const mergedCandidates = status.branches
+    .filter((branch) => branch.isMerged)
+    .map((branch) => branch.name);
+  return buildBranchDeletionPlan({
+    goneCandidates,
+    mergedCandidates,
+    currentBranch: status.currentBranch,
+    defaultBranch: status.defaultBranch,
+    checkedOutInWorktrees,
+    mode
+  });
 }

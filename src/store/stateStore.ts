@@ -1,4 +1,5 @@
 import type * as vscode from 'vscode';
+import { createRevisionStamp } from '../util/revision';
 
 export class StateStore {
   public constructor(private readonly context: vscode.ExtensionContext) {}
@@ -85,10 +86,4 @@ function cloneValue<T>(value: T): T {
     return clone as T;
   }
   return value;
-}
-
-function createRevisionStamp(): string {
-  const base = Date.now().toString(36);
-  const rand = Math.random().toString(36).slice(2, 8);
-  return `${base}-${rand}`;
 }

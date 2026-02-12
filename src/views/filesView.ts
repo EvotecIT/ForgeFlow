@@ -1,6 +1,4 @@
-import { execFile } from 'child_process';
 import * as path from 'path';
-import { promisify } from 'util';
 import * as vscode from 'vscode';
 import type { FavoritesStore, FavoriteItem } from '../store/favoritesStore';
 import type { FilesFilterStore } from '../store/filesFilterStore';
@@ -10,8 +8,11 @@ import { treeId } from '../util/ids';
 import { getForgeFlowSettings } from '../util/config';
 import { resolveProfileLabel } from '../run/powershellProfiles';
 import { matchesFilterQuery } from '../util/filter';
-
-const execFileAsync = promisify(execFile);
+import { normalizeFsPath, normalizePathKey, resolveGitPathOutput } from '../extension/pathUtils';
+import { parseWorktreeListPorcelain, type ParsedWorktreeEntry } from '../git/worktreeList';
+import { tryExecGitTrimmed } from '../git/exec';
+import { createStoredFilterController, type StoredFilterController } from './filterState';
+import { compareTreeNodeLabels, createHintTreeItem, createPathTreeItem, pushByFileType } from './treeItems';
 
 export interface FilesNode {
   readonly id: string;
@@ -26,38 +27,75 @@ export interface PathNode {
 export class FilesViewProvider implements vscode.TreeDataProvider<FilesNode> {
   private readonly onDidChangeTreeDataEmitter = new vscode.EventEmitter<FilesNode | undefined>();
   public readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
-  private filterText = '';
+  private readonly filterState: StoredFilterController;
   private worktreeCache = new Map<string, WorktreeGroupCacheEntry>();
   private readonly worktreeCacheTtlMs = 30_000;
 
   public constructor(
     private readonly favoritesStore: FavoritesStore,
-    private readonly filterStore: FilesFilterStore
+    filterStore: FilesFilterStore
   ) {
-    this.filterText = filterStore.getFilter();
+    this.filterState = createStoredFilterController(filterStore, () => this.refresh());
   }
 
   public getFilter(): string {
-    return this.filterText;
+    return this.filterState.getFilter();
   }
 
   public setFilter(value: string): void {
-    this.filterText = value;
-    void this.filterStore.setFilter(value);
-    this.refresh();
+    this.filterState.setFilter(value);
   }
 
   public syncFilterFromStore(): void {
-    const next = this.filterStore.getFilter();
-    if (next === this.filterText) {
-      return;
-    }
-    this.filterText = next;
-    this.refresh();
+    this.filterState.syncFilterFromStore();
   }
 
   public refresh(): void {
     this.onDidChangeTreeDataEmitter.fire(undefined);
+  }
+
+  public refreshWorktrees(): void {
+    this.worktreeCache.clear();
+    this.refresh();
+  }
+
+  public async listWorktreePaths(): Promise<string[]> {
+    const groups = await this.getWorktreeGroups();
+    const seen = new Set<string>();
+    const paths: string[] = [];
+    for (const group of groups) {
+      for (const worktree of group.worktrees) {
+        const key = normalizePathKey(worktree.path);
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        paths.push(worktree.path);
+      }
+    }
+    return paths;
+  }
+
+  public async listWorktreePathsForRepo(repoRoot: string): Promise<string[]> {
+    const groups = await this.getWorktreeGroups();
+    const targetKey = normalizePathKey(repoRoot);
+    const seen = new Set<string>();
+    const paths: string[] = [];
+    for (const group of groups) {
+      const repoKey = normalizePathKey(group.repoRoot);
+      if (repoKey !== targetKey) {
+        continue;
+      }
+      for (const worktree of group.worktrees) {
+        const worktreeKey = normalizePathKey(worktree.path);
+        if (seen.has(worktreeKey)) {
+          continue;
+        }
+        seen.add(worktreeKey);
+        paths.push(worktree.path);
+      }
+    }
+    return paths;
   }
 
   public getTreeItem(element: FilesNode): vscode.TreeItem {
@@ -66,12 +104,13 @@ export class FilesViewProvider implements vscode.TreeDataProvider<FilesNode> {
 
   public async getChildren(element?: FilesNode): Promise<FilesNode[]> {
     if (!element) {
+      const filterText = this.getFilter();
       const nodes: FilesNode[] = [
-        new FavoritesRootNode(this.favoritesStore, this.filterText),
-        new WorkspaceRootNode(this.filterText)
+        new FavoritesRootNode(this.favoritesStore, filterText),
+        new WorkspaceRootNode(filterText)
       ];
       if (await this.shouldShowWorktreesRoot()) {
-        nodes.push(new WorktreesRootNode(this.filterText, () => this.getWorktreeGroups()));
+        nodes.push(new WorktreesRootNode(filterText, () => this.getWorktreeGroups()));
       }
       return nodes;
     }
@@ -213,19 +252,23 @@ class WorktreesRootNode implements FilesNode {
 
   public getTreeItem(): vscode.TreeItem {
     const item = new vscode.TreeItem('Worktrees', vscode.TreeItemCollapsibleState.Expanded);
-    item.contextValue = 'forgeflowGroup';
+    item.contextValue = 'forgeflowWorktreesRoot';
     item.iconPath = new vscode.ThemeIcon('repo');
+    item.description = 'Workspace';
+    item.tooltip = 'Worktrees discovered from repositories in the current workspace.';
     return item;
   }
 }
 
-class WorktreeRepoNode implements FilesNode {
+class WorktreeRepoNode implements FilesNode, PathNode {
   public readonly id: string;
+  public readonly path: string;
 
   public constructor(
     private readonly group: WorktreeGroup,
     private readonly filterText: string
   ) {
+    this.path = group.repoRoot;
     this.id = treeId('files', `worktrees-${group.commonDir}`);
   }
 
@@ -235,9 +278,10 @@ class WorktreeRepoNode implements FilesNode {
 
   public getTreeItem(): vscode.TreeItem {
     const item = new vscode.TreeItem(this.group.repoName, vscode.TreeItemCollapsibleState.Collapsed);
-    item.contextValue = 'forgeflowGroup';
+    item.contextValue = 'forgeflowWorktreeRepo';
     item.iconPath = new vscode.ThemeIcon('repo');
     item.description = `${this.group.worktrees.length} worktree${this.group.worktrees.length === 1 ? '' : 's'}`;
+    item.tooltip = this.group.repoRoot;
     return item;
   }
 }
@@ -331,18 +375,10 @@ class WorkspaceEntryNode implements FilesNode, PathNode {
   }
 
   public getTreeItem(): vscode.TreeItem {
-    const label = baseName(this.path);
-    const collapsible = this.entryType === vscode.FileType.Directory
-      ? vscode.TreeItemCollapsibleState.Collapsed
-      : vscode.TreeItemCollapsibleState.None;
-    const item = new vscode.TreeItem(label, collapsible);
-    item.resourceUri = vscode.Uri.file(this.path);
-    item.tooltip = this.path;
-    item.contextValue = 'forgeflowFile';
-    if (this.entryType !== vscode.FileType.Directory) {
-      // Leave click to select (Explorer-like). Use Enter or context menu to open.
-    }
-    return item;
+    return createPathTreeItem(this.path, this.entryType, {
+      contextValue: 'forgeflowFile',
+      tooltipPath: true
+    });
   }
 }
 
@@ -377,7 +413,6 @@ class WorktreeItemNode implements FilesNode, PathNode {
     item.resourceUri = vscode.Uri.file(this.path);
     item.tooltip = this.path;
     item.contextValue = this.missing ? 'forgeflowWorktreeMissing' : 'forgeflowWorktree';
-    const clickAction = getForgeFlowSettings().worktreesOpenAction;
     const detailParts: string[] = [];
     if (this.entry.detached) {
       detailParts.push('detached');
@@ -392,9 +427,6 @@ class WorktreeItemNode implements FilesNode, PathNode {
     }
     if (detailParts.length > 0) {
       item.description = detailParts.join(' • ');
-    }
-    if (clickAction !== 'expand') {
-      item.command = { command: 'forgeflow.worktrees.openDefault', title: 'Open worktree', arguments: [this.path] };
     }
     item.iconPath = new vscode.ThemeIcon(this.missing ? 'warning' : 'repo');
     return item;
@@ -413,10 +445,7 @@ class HintNode implements FilesNode {
   }
 
   public getTreeItem(): vscode.TreeItem {
-    const item = new vscode.TreeItem(this.message, vscode.TreeItemCollapsibleState.None);
-    item.iconPath = new vscode.ThemeIcon('info');
-    item.contextValue = 'forgeflowHint';
-    return item;
+    return createHintTreeItem(this.message, 'forgeflowHint');
   }
 }
 
@@ -444,20 +473,10 @@ async function readChildren(folderPath: string, filterText: string): Promise<Fil
       continue;
     }
     const node = new WorkspaceEntryNode(entryPath, type, filterText);
-    if (type === vscode.FileType.Directory) {
-      directories.push(node);
-    } else {
-      files.push(node);
-    }
+    pushByFileType(type, node, directories, files);
   }
 
-  const byName = (a: FilesNode, b: FilesNode): number => {
-    const aLabel = a.getTreeItem().label?.toString() ?? '';
-    const bLabel = b.getTreeItem().label?.toString() ?? '';
-    return aLabel.localeCompare(bLabel);
-  };
-
-  return [...directories.sort(byName), ...files.sort(byName)];
+  return [...directories.sort(compareTreeNodeLabels), ...files.sort(compareTreeNodeLabels)];
 }
 
 function normalizeFilter(value: string, minChars: number): string | undefined {
@@ -469,23 +488,10 @@ function normalizeFilter(value: string, minChars: number): string | undefined {
 }
 
 function isWithin(parent: string, child: string): boolean {
-  const resolvedParent = normalizeFsPath(path.resolve(parent));
-  const resolvedChild = normalizeFsPath(path.resolve(child));
-  const compareParent = process.platform === 'win32' ? resolvedParent.toLowerCase() : resolvedParent;
-  const compareChild = process.platform === 'win32' ? resolvedChild.toLowerCase() : resolvedChild;
+  const compareParent = normalizePathKey(parent);
+  const compareChild = normalizePathKey(child);
   const relative = path.relative(compareParent, compareChild);
   return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
-}
-
-function normalizeFsPath(value: string): string {
-  if (process.platform === 'win32') {
-    const match = /^\/([a-zA-Z]:)(\/.*)/.exec(value);
-    if (match) {
-      return `${match[1]}${match[2]}`.replace(/\//g, '\\');
-    }
-    return value.replace(/\//g, '\\');
-  }
-  return value;
 }
 
 async function hasMatchingDescendant(
@@ -515,11 +521,7 @@ async function hasMatchingDescendant(
   return false;
 }
 
-interface WorktreeEntry {
-  path: string;
-  branch?: string;
-  detached: boolean;
-}
+type WorktreeEntry = ParsedWorktreeEntry;
 
 interface WorktreeGroup {
   commonDir: string;
@@ -587,7 +589,7 @@ async function resolveGitCommonDir(root: string): Promise<string | undefined> {
   if (!output) {
     return undefined;
   }
-  return path.resolve(root, output);
+  return resolveGitPathOutput(root, output);
 }
 
 async function resolveRepoRoot(root: string): Promise<string | undefined> {
@@ -595,7 +597,7 @@ async function resolveRepoRoot(root: string): Promise<string | undefined> {
   if (!output) {
     return undefined;
   }
-  return path.resolve(root, output);
+  return resolveGitPathOutput(root, output);
 }
 
 async function listWorktrees(root: string, repoRoot: string): Promise<WorktreeEntry[]> {
@@ -603,48 +605,14 @@ async function listWorktrees(root: string, repoRoot: string): Promise<WorktreeEn
   if (!output) {
     return [];
   }
-  const entries: WorktreeEntry[] = [];
-  let current: WorktreeEntry | undefined;
-  for (const line of output.split(/\r?\n/g)) {
-    if (!line.trim()) {
-      continue;
-    }
-    if (line.startsWith('worktree ')) {
-      if (current) {
-        entries.push(current);
-      }
-      const rawPath = line.slice('worktree '.length).trim();
-      if (!rawPath) {
-        current = undefined;
-        continue;
-      }
-      const resolved = path.isAbsolute(rawPath) ? rawPath : path.resolve(repoRoot, rawPath);
-      current = { path: resolved, detached: false };
-      continue;
-    }
-    if (!current) {
-      continue;
-    }
-    if (line.startsWith('branch ')) {
-      const ref = line.slice('branch '.length).trim();
-      current.branch = ref.replace(/^refs\/heads\//, '');
-      continue;
-    }
-    if (line.trim() === 'detached') {
-      current.detached = true;
-    }
-  }
-  if (current) {
-    entries.push(current);
-  }
-  return entries;
+  return parseWorktreeListPorcelain(output, repoRoot, (base, rawPath) => resolveGitPathOutput(base, rawPath));
 }
 
 async function buildWorktreeNodes(group: WorktreeGroup, filterText: string): Promise<FilesNode[]> {
   const minChars = getForgeFlowSettings().filtersFilesMinChars;
   const filter = normalizeFilter(filterText, minChars);
   const mode = getForgeFlowSettings().filtersMatchMode;
-  const currentRoots = new Set(group.workspaceRoots.map((root) => normalizeFsPath(path.resolve(root))));
+  const currentRoots = new Set(group.workspaceRoots.map((root) => normalizePathKey(root)));
   const filtered = group.worktrees.filter((entry) => {
     if (!filter) {
       return true;
@@ -663,7 +631,7 @@ async function buildWorktreeNodes(group: WorktreeGroup, filterText: string): Pro
   };
   const sorted = filtered.sort(byName);
   const nodes = await Promise.all(sorted.map(async (entry) => {
-    const normalized = normalizeFsPath(path.resolve(entry.path));
+    const normalized = normalizePathKey(entry.path);
     const missing = !(await statPath(entry.path));
     return new WorktreeItemNode(entry, currentRoots.has(normalized), filterText, missing);
   }));
@@ -671,10 +639,5 @@ async function buildWorktreeNodes(group: WorktreeGroup, filterText: string): Pro
 }
 
 async function execGit(cwd: string, args: string[]): Promise<string | undefined> {
-  try {
-    const result = await execFileAsync('git', ['-C', cwd, ...args]);
-    return result.stdout?.trim();
-  } catch {
-    return undefined;
-  }
+  return await tryExecGitTrimmed(cwd, args);
 }

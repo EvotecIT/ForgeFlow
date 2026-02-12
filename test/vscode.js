@@ -91,6 +91,10 @@ async function readDirectory(uri) {
   ]);
 }
 
+async function readFile(uri) {
+  return await fsp.readFile(uri.fsPath);
+}
+
 async function writeFile(uri, data) {
   await fsp.writeFile(uri.fsPath, data);
 }
@@ -146,6 +150,7 @@ async function copy(uri, target, options) {
 const workspace = {
   fs: {
     stat,
+    readFile,
     readDirectory,
     writeFile,
     createDirectory,
