@@ -8,7 +8,10 @@ import type { FavoritesStore } from '../../store/favoritesStore';
 import type { FilterPresetStore } from '../../store/filterPresetStore';
 import { getForgeFlowSettings } from '../../util/config';
 import { statPath } from '../../util/fs';
+import { normalizePathKey } from '../pathUtils';
 import { deleteFilterPreset, openLiveFilterInput, pickFilterPreset, saveFilterPreset } from '../filters';
+import { cleanupStaleWorktreesInPaths } from '../projects/worktrees';
+import { removeWorktreeSafely, resolveWorktreeRepoRoot } from '../projects/worktreeGit';
 import {
   collectSelectedPaths,
   extractPath,
@@ -57,15 +60,164 @@ export function registerFileCommands(deps: FileCommandDeps): void {
     filterPresetStore
   } = deps;
 
-  const addWorktreesToWorkspace = async (paths: string[]): Promise<void> => {
+  const refreshFilesAndProjects = async (forceProjectsRefresh = false): Promise<void> => {
+    filesProvider.refresh();
+    await projectsProvider.refresh(forceProjectsRefresh);
+  };
+
+  const openFilesFilterInput = async (): Promise<void> => {
+    await openLiveFilterInput({
+      title: 'Filter files',
+      value: filesProvider.getFilter(),
+      minChars: getForgeFlowSettings().filtersFilesMinChars,
+      onChange: (value) => filesProvider.setFilter(value)
+    });
+  };
+
+  const ensureClipboard = (): { mode: 'copy' | 'cut'; paths: string[] } | undefined => {
+    if (!fileClipboard || fileClipboard.paths.length === 0) {
+      vscode.window.showWarningMessage('ForgeFlow: Clipboard is empty.');
+      return undefined;
+    }
+    return fileClipboard;
+  };
+
+  const pasteIntoDirectory = async (baseDir: string): Promise<void> => {
+    const clipboard = ensureClipboard();
+    if (!clipboard) {
+      return;
+    }
+    await pastePaths(baseDir, clipboard);
+    if (clipboard.mode === 'cut') {
+      fileClipboard = undefined;
+    }
+    await refreshFilesAndProjects();
+  };
+
+  const createInBaseDirectory = async (
+    target: unknown,
+    creator: (baseDir: string) => Promise<void>
+  ): Promise<void> => {
+    const baseDir = await resolveBaseDirectory(target);
+    if (!baseDir) {
+      return;
+    }
+    await creator(baseDir);
+    await refreshFilesAndProjects();
+  };
+
+  const copySelectedPaths = async (
+    target: unknown,
+    copySingle: (filePath: string) => Promise<void>,
+    copyMany: (paths: string[]) => Promise<void>
+  ): Promise<void> => {
+    const targets = collectSelectedPaths(target, filesView, filesPanelView);
+    if (targets.length === 0) {
+      return;
+    }
+    if (targets.length === 1) {
+      const [first] = targets;
+      if (!first) {
+        return;
+      }
+      await copySingle(first);
+      return;
+    }
+    await copyMany(targets);
+  };
+
+  const getDiscoveredWorktreeMap = async (): Promise<Map<string, string>> => {
+    const discovered = await filesProvider.listWorktreePaths();
+    const result = new Map<string, string>();
+    for (const worktreePath of discovered) {
+      const key = normalizePathKey(worktreePath);
+      if (!result.has(key)) {
+        result.set(key, worktreePath);
+      }
+    }
+    return result;
+  };
+
+  const resolveSelectedWorktreePaths = async (target: unknown): Promise<string[]> => {
+    const selected = collectSelectedPaths(target, filesView, filesPanelView);
+    if (selected.length === 0) {
+      return [];
+    }
+    const known = await getDiscoveredWorktreeMap();
+    const resolved: string[] = [];
+    const seen = new Set<string>();
+    for (const candidate of selected) {
+      const match = known.get(normalizePathKey(candidate));
+      if (!match) {
+        continue;
+      }
+      const key = normalizePathKey(match);
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      resolved.push(match);
+    }
+    return resolved;
+  };
+
+  const resolveCleanupScopePaths = async (target: unknown): Promise<string[]> => {
+    const discovered = await filesProvider.listWorktreePaths();
+    if (discovered.length === 0) {
+      return [];
+    }
+    const known = new Map<string, string>();
+    for (const worktreePath of discovered) {
+      const key = normalizePathKey(worktreePath);
+      if (!known.has(key)) {
+        known.set(key, worktreePath);
+      }
+    }
+    const selected = collectSelectedPaths(target, filesView, filesPanelView);
+    if (selected.length === 0) {
+      return discovered;
+    }
+    const selectedWorktrees = selected
+      .map((candidate) => known.get(normalizePathKey(candidate)))
+      .filter((value): value is string => Boolean(value));
+    if (selectedWorktrees.length > 0) {
+      return selectedWorktrees;
+    }
+    if (selected.length === 1) {
+      const [single] = selected;
+      if (single) {
+        const repoScoped = await filesProvider.listWorktreePathsForRepo(single);
+        if (repoScoped.length > 0) {
+          return repoScoped;
+        }
+      }
+    }
+    return discovered;
+  };
+
+  const addPathsToWorkspace = async (
+    paths: string[],
+    options: {
+      itemLabel: string;
+      noneAddedMessage: string;
+      failedMessage: string;
+      skippedMessage: (added: number, skippedMissing: number) => string;
+    }
+  ): Promise<void> => {
     if (paths.length === 0) {
       return;
     }
     const folders = vscode.workspace.workspaceFolders ?? [];
-    const existing = new Set(folders.map((folder) => path.resolve(folder.uri.fsPath)));
+    const existing = new Set(folders.map((folder) => normalizePathKey(folder.uri.fsPath)));
     const additions: Array<{ uri: vscode.Uri; name?: string }> = [];
+    let skippedMissing = 0;
     for (const folderPath of paths) {
-      const resolved = path.resolve(folderPath);
+      const stat = await statPath(folderPath);
+      if (stat?.type !== vscode.FileType.Directory) {
+        skippedMissing += 1;
+        continue;
+      }
+      const resolved = normalizePathKey(folderPath);
       if (existing.has(resolved)) {
         continue;
       }
@@ -73,13 +225,48 @@ export function registerFileCommands(deps: FileCommandDeps): void {
       existing.add(resolved);
     }
     if (additions.length === 0) {
-      vscode.window.showWarningMessage('ForgeFlow: Worktree is already in the workspace.');
+      vscode.window.showWarningMessage(options.noneAddedMessage);
       return;
     }
     const success = vscode.workspace.updateWorkspaceFolders(folders.length, 0, ...additions);
     if (!success) {
-      vscode.window.showWarningMessage('ForgeFlow: Unable to add worktree to workspace.');
+      vscode.window.showWarningMessage(options.failedMessage);
+      return;
     }
+    if (skippedMissing > 0) {
+      vscode.window.showWarningMessage(options.skippedMessage(additions.length, skippedMissing));
+      return;
+    }
+    const suffix = additions.length === 1 ? options.itemLabel : `${options.itemLabel}s`;
+    vscode.window.setStatusBarMessage(`ForgeFlow: Added ${additions.length} ${suffix} to workspace.`, 3000);
+  };
+
+  const addWorktreesToWorkspace = async (paths: string[]): Promise<void> => {
+    await addPathsToWorkspace(paths, {
+      itemLabel: 'worktree',
+      noneAddedMessage: 'ForgeFlow: No worktrees were added (already in workspace or missing on disk).',
+      failedMessage: 'ForgeFlow: Unable to add worktree to workspace.',
+      skippedMessage: (added, skippedMissing) => `ForgeFlow: Added ${added} worktree(s); skipped ${skippedMissing} missing path(s).`
+    });
+  };
+
+  const addFoldersToWorkspace = async (): Promise<void> => {
+    const picks = await vscode.window.showOpenDialog({
+      canSelectFiles: false,
+      canSelectFolders: true,
+      canSelectMany: true,
+      openLabel: 'Add to Workspace'
+    });
+    if (!picks || picks.length === 0) {
+      return;
+    }
+    const paths = picks.map((pick) => pick.fsPath);
+    await addPathsToWorkspace(paths, {
+      itemLabel: 'folder',
+      noneAddedMessage: 'ForgeFlow: Selected folders are already in the workspace or missing on disk.',
+      failedMessage: 'ForgeFlow: Unable to add selected folders to workspace.',
+      skippedMessage: (added, skippedMissing) => `ForgeFlow: Added ${added} folder(s); skipped ${skippedMissing} missing path(s).`
+    });
   };
 
   const openWorktrees = async (target: unknown, openInNewWindow: boolean): Promise<void> => {
@@ -96,23 +283,7 @@ export function registerFileCommands(deps: FileCommandDeps): void {
     }
   };
 
-  const resolveWorktreeRepoRoot = async (worktreePath: string): Promise<string | undefined> => {
-    try {
-      const result = await execFileAsync('git', ['-C', worktreePath, 'rev-parse', '--show-toplevel']);
-      const output = result.stdout?.trim();
-      return output ? path.resolve(worktreePath, output) : undefined;
-    } catch {
-      return undefined;
-    }
-  };
-
   const removeWorktree = async (worktreePath: string): Promise<void> => {
-    const folders = vscode.workspace.workspaceFolders ?? [];
-    const normalized = path.resolve(worktreePath);
-    if (folders.some((folder) => path.resolve(folder.uri.fsPath) === normalized)) {
-      vscode.window.showWarningMessage('ForgeFlow: Cannot remove a worktree that is open in the workspace.');
-      return;
-    }
     const repoRoot = await resolveWorktreeRepoRoot(worktreePath);
     if (!repoRoot) {
       vscode.window.showWarningMessage('ForgeFlow: Unable to resolve repository for this worktree.');
@@ -127,14 +298,20 @@ export function registerFileCommands(deps: FileCommandDeps): void {
     if (confirm !== 'Remove') {
       return;
     }
-    try {
-      await execFileAsync('git', ['-C', repoRoot, 'worktree', 'remove', worktreePath]);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      vscode.window.showWarningMessage(`ForgeFlow: Failed to remove worktree "${name}": ${message}`);
+    const result = await removeWorktreeSafely(worktreePath, repoRoot);
+    if (!result.removed) {
+      if (result.failure === 'openInWorkspace') {
+        vscode.window.showWarningMessage('ForgeFlow: Cannot remove a worktree that is open in the workspace.');
+      } else if (result.failure === 'repoRootNotFound') {
+        vscode.window.showWarningMessage('ForgeFlow: Unable to resolve repository for this worktree.');
+      } else {
+        const message = result.message ?? 'Unknown error';
+        vscode.window.showWarningMessage(`ForgeFlow: Failed to remove worktree "${name}": ${message}`);
+      }
       return;
     }
-    filesProvider.refresh();
+    filesProvider.refreshWorktrees();
+    await projectsProvider.refresh(true);
   };
 
   const pruneWorktrees = async (worktreePath: string): Promise<void> => {
@@ -158,7 +335,8 @@ export function registerFileCommands(deps: FileCommandDeps): void {
       vscode.window.showWarningMessage(`ForgeFlow: Failed to prune worktrees: ${message}`);
       return;
     }
-    filesProvider.refresh();
+    filesProvider.refreshWorktrees();
+    await projectsProvider.refresh(true);
   };
 
   context.subscriptions.push(
@@ -194,6 +372,7 @@ export function registerFileCommands(deps: FileCommandDeps): void {
     vscode.commands.registerCommand('forgeflow.worktrees.openDefault', async (target?: unknown) => {
       const action = getForgeFlowSettings().worktreesOpenAction;
       if (action === 'expand') {
+        await vscode.commands.executeCommand('list.toggleExpand');
         return;
       }
       if (action === 'addToWorkspace') {
@@ -214,10 +393,27 @@ export function registerFileCommands(deps: FileCommandDeps): void {
       const targets = collectSelectedPaths(target, filesView, filesPanelView);
       await addWorktreesToWorkspace(targets);
     }),
+    vscode.commands.registerCommand('forgeflow.worktrees.addAllToWorkspace', async () => {
+      const paths = await filesProvider.listWorktreePaths();
+      if (paths.length === 0) {
+        vscode.window.showInformationMessage('ForgeFlow: No discovered worktrees to add.');
+        return;
+      }
+      await addWorktreesToWorkspace(paths);
+    }),
+    vscode.commands.registerCommand('forgeflow.worktrees.cleanup', async (target?: unknown) => {
+      const scopePaths = await resolveCleanupScopePaths(target);
+      if (scopePaths.length === 0) {
+        vscode.window.showInformationMessage('ForgeFlow: No discovered worktrees in this scope.');
+        return;
+      }
+      await cleanupStaleWorktreesInPaths(scopePaths, projectsProvider, filesProvider);
+    }),
     vscode.commands.registerCommand('forgeflow.worktrees.remove', async (target?: unknown) => {
-      const targets = collectSelectedPaths(target, filesView, filesPanelView);
-      const first = targets[0];
+      const selected = await resolveSelectedWorktreePaths(target);
+      const first = selected[0];
       if (!first) {
+        vscode.window.showWarningMessage('ForgeFlow: Select a linked worktree to remove.');
         return;
       }
       await removeWorktree(first);
@@ -231,23 +427,13 @@ export function registerFileCommands(deps: FileCommandDeps): void {
       await pruneWorktrees(first);
     }),
     vscode.commands.registerCommand('forgeflow.files.filter', async () => {
-      await openLiveFilterInput({
-        title: 'Filter files',
-        value: filesProvider.getFilter(),
-        minChars: getForgeFlowSettings().filtersFilesMinChars,
-        onChange: (value) => filesProvider.setFilter(value)
-      });
+      await openFilesFilterInput();
     }),
     vscode.commands.registerCommand('forgeflow.files.refresh', async () => {
       filesProvider.refresh();
     }),
     vscode.commands.registerCommand('forgeflow.files.focusFilter', async () => {
-      await openLiveFilterInput({
-        title: 'Filter files',
-        value: filesProvider.getFilter(),
-        minChars: getForgeFlowSettings().filtersFilesMinChars,
-        onChange: (value) => filesProvider.setFilter(value)
-      });
+      await openFilesFilterInput();
     }),
     vscode.commands.registerCommand('forgeflow.files.saveFilterPreset', async () => {
       await saveFilterPreset('files', filesProvider.getFilter(), filterPresetStore);
@@ -313,51 +499,39 @@ export function registerFileCommands(deps: FileCommandDeps): void {
       }
     }),
     vscode.commands.registerCommand('forgeflow.files.copyPath', async (target?: unknown) => {
-      const targets = collectSelectedPaths(target, filesView, filesPanelView);
-      if (targets.length === 0) {
-        return;
-      }
-      if (targets.length === 1) {
-        const [first] = targets;
-        if (!first) {
-          return;
+      await copySelectedPaths(
+        target,
+        async (filePath) => await copyPathToClipboard(filePath),
+        async (paths) => {
+          await vscode.env.clipboard.writeText(paths.join('\n'));
+          vscode.window.setStatusBarMessage('ForgeFlow: Paths copied.', 2000);
         }
-        await copyPathToClipboard(first);
-        return;
-      }
-      await vscode.env.clipboard.writeText(targets.join('\n'));
-      vscode.window.setStatusBarMessage('ForgeFlow: Paths copied.', 2000);
+      );
     }),
     vscode.commands.registerCommand('forgeflow.files.copyRelativePath', async (target?: unknown) => {
-      const targets = collectSelectedPaths(target, filesView, filesPanelView);
-      if (targets.length === 0) {
-        return;
-      }
-      if (targets.length === 1) {
-        const [first] = targets;
-        if (!first) {
-          return;
+      await copySelectedPaths(
+        target,
+        async (filePath) => await copyRelativePathToClipboard(filePath),
+        async (targets) => {
+          const relPaths: string[] = [];
+          let outside = 0;
+          for (const filePath of targets) {
+            const uri = vscode.Uri.file(filePath);
+            const folder = vscode.workspace.getWorkspaceFolder(uri);
+            if (!folder) {
+              relPaths.push(filePath);
+              outside += 1;
+              continue;
+            }
+            relPaths.push(path.relative(folder.uri.fsPath, filePath));
+          }
+          await vscode.env.clipboard.writeText(relPaths.join('\n'));
+          if (outside > 0) {
+            vscode.window.showWarningMessage('ForgeFlow: Some items are outside the workspace; absolute paths were used.');
+          }
+          vscode.window.setStatusBarMessage('ForgeFlow: Relative paths copied.', 2000);
         }
-        await copyRelativePathToClipboard(first);
-        return;
-      }
-      const relPaths: string[] = [];
-      let outside = 0;
-      for (const filePath of targets) {
-        const uri = vscode.Uri.file(filePath);
-        const folder = vscode.workspace.getWorkspaceFolder(uri);
-        if (!folder) {
-          relPaths.push(filePath);
-          outside += 1;
-          continue;
-        }
-        relPaths.push(path.relative(folder.uri.fsPath, filePath));
-      }
-      await vscode.env.clipboard.writeText(relPaths.join('\n'));
-      if (outside > 0) {
-        vscode.window.showWarningMessage('ForgeFlow: Some items are outside the workspace; absolute paths were used.');
-      }
-      vscode.window.setStatusBarMessage('ForgeFlow: Relative paths copied.', 2000);
+      );
     }),
     vscode.commands.registerCommand('forgeflow.files.copy', async (target?: unknown) => {
       const targets = collectSelectedPaths(target, filesView, filesPanelView);
@@ -376,20 +550,11 @@ export function registerFileCommands(deps: FileCommandDeps): void {
       vscode.window.setStatusBarMessage(`ForgeFlow: Cut ${targets.length} item(s).`, 2000);
     }),
     vscode.commands.registerCommand('forgeflow.files.paste', async (target?: unknown) => {
-      if (!fileClipboard || fileClipboard.paths.length === 0) {
-        vscode.window.showWarningMessage('ForgeFlow: Clipboard is empty.');
-        return;
-      }
       const baseDir = await resolveBaseDirectory(target);
       if (!baseDir) {
         return;
       }
-      await pastePaths(baseDir, fileClipboard);
-      if (fileClipboard.mode === 'cut') {
-        fileClipboard = undefined;
-      }
-      filesProvider.refresh();
-      await projectsProvider.refresh();
+      await pasteIntoDirectory(baseDir);
     }),
     vscode.commands.registerCommand('forgeflow.files.pinWorkspaceFavorite', async (target?: unknown) => {
       const targets = collectSelectedPaths(target, filesView, filesPanelView);
@@ -425,12 +590,32 @@ export function registerFileCommands(deps: FileCommandDeps): void {
         return;
       }
       await renamePath(first);
-      filesProvider.refresh();
-      await projectsProvider.refresh();
+      await refreshFilesAndProjects();
     }),
     vscode.commands.registerCommand('forgeflow.files.delete', async (target?: unknown) => {
       const targets = collectSelectedPaths(target, filesView, filesPanelView);
       if (targets.length === 0) {
+        return;
+      }
+      const selectedWorktrees = await resolveSelectedWorktreePaths(target);
+      if (selectedWorktrees.length > 0) {
+        if (selectedWorktrees.length !== targets.length) {
+          vscode.window.showWarningMessage(
+            'ForgeFlow: Cannot delete mixed worktree and non-worktree selections in one action.'
+          );
+          return;
+        }
+        if (selectedWorktrees.length > 1) {
+          vscode.window.showWarningMessage(
+            'ForgeFlow: Remove one worktree at a time with Delete, or use Worktrees Cleanup for bulk operations.'
+          );
+          return;
+        }
+        const [firstWorktree] = selectedWorktrees;
+        if (!firstWorktree) {
+          return;
+        }
+        await removeWorktree(firstWorktree);
         return;
       }
       if (targets.length === 1) {
@@ -442,30 +627,16 @@ export function registerFileCommands(deps: FileCommandDeps): void {
       } else {
         await deletePaths(targets);
       }
-      filesProvider.refresh();
-      await projectsProvider.refresh();
+      await refreshFilesAndProjects();
     }),
     vscode.commands.registerCommand('forgeflow.files.newFile', async (target?: unknown) => {
-      const baseDir = await resolveBaseDirectory(target);
-      if (!baseDir) {
-        return;
-      }
-      await createNewFile(baseDir);
-      filesProvider.refresh();
-      await projectsProvider.refresh();
+      await createInBaseDirectory(target, createNewFile);
     }),
     vscode.commands.registerCommand('forgeflow.files.newFolder', async (target?: unknown) => {
-      const baseDir = await resolveBaseDirectory(target);
-      if (!baseDir) {
-        return;
-      }
-      await createNewFolder(baseDir);
-      filesProvider.refresh();
-      await projectsProvider.refresh();
+      await createInBaseDirectory(target, createNewFolder);
     }),
     vscode.commands.registerCommand('forgeflow.files.pasteRoot', async () => {
-      if (!fileClipboard || fileClipboard.paths.length === 0) {
-        vscode.window.showWarningMessage('ForgeFlow: Clipboard is empty.');
+      if (!ensureClipboard()) {
         return;
       }
       const folders = vscode.workspace.workspaceFolders ?? [];
@@ -487,12 +658,12 @@ export function registerFileCommands(deps: FileCommandDeps): void {
       if (!baseDir) {
         return;
       }
-      await pastePaths(baseDir, fileClipboard);
-      if (fileClipboard.mode === 'cut') {
-        fileClipboard = undefined;
-      }
+      await pasteIntoDirectory(baseDir);
+    }),
+    vscode.commands.registerCommand('forgeflow.workspace.addFolder', async () => {
+      await addFoldersToWorkspace();
       filesProvider.refresh();
-      await projectsProvider.refresh();
+      await projectsProvider.refresh(true);
     }),
     vscode.commands.registerCommand('forgeflow.files.run', async (target?: unknown) => {
       const filePath = extractPath(target);

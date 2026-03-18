@@ -10,6 +10,8 @@ import type { DashboardViewState, DashboardViewStateStore } from '../dashboard/v
 import { getForgeFlowSettings } from '../util/config';
 import type { TagFilterStore } from '../store/tagFilterStore';
 import { statPath } from '../util/fs';
+import { normalizeTagList } from '../util/tags';
+import { normalizePathKey } from '../extension/pathUtils';
 
 export class DashboardViewProvider implements vscode.WebviewViewProvider {
   private view?: vscode.WebviewView;
@@ -46,54 +48,14 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
 
     void this.getAuthSummary().then((summary) => {
       this.authSummary = summary;
-      if (this.view) {
-        const filter = this.filterStore.getFilter();
-        const viewState = this.viewStateStore.getState();
-        const settings = getForgeFlowSettings();
-        this.tagFilter = this.tagFilterStore.getFilter();
-        this.view.webview.html = renderDashboardHtml(this.lastRows, this.view.webview, {
-          updatedAt: this.lastUpdated,
-          filter,
-          activeTags: this.tagFilter,
-          filterMinChars: settings.filtersDashboardMinChars,
-          filterMatchMode: settings.filtersMatchMode,
-          authSummary: this.authSummary,
-          sortKey: viewState.sortKey,
-          sortDir: viewState.sortDir,
-          colWidths: viewState.colWidths,
-          expandAllGroups: viewState.expandAllGroups,
-          showAllChildren: viewState.showAllChildren,
-          hideActionsColumn: settings.dashboardHideActionsColumn,
-          showGroupChildren: settings.dashboardGroupDuplicateChildren
-        });
-      }
+      this.renderView(this.lastRows);
     });
 
     const cached = this.cache.load();
     if (cached?.rows?.length) {
       this.lastRows = cached.rows;
       this.lastUpdated = cached.updatedAt;
-      const filter = this.filterStore.getFilter();
-      const viewState = this.viewStateStore.getState();
-      const settings = getForgeFlowSettings();
-      this.tagFilter = this.tagFilterStore.getFilter();
-      webviewView.webview.html = renderDashboardHtml(this.lastRows, webviewView.webview, {
-        updatedAt: this.lastUpdated,
-        filter,
-        activeTags: this.tagFilter,
-        filterMinChars: settings.filtersDashboardMinChars,
-        filterMatchMode: settings.filtersMatchMode,
-        authSummary: this.authSummary,
-        progressCurrent: this.progressCurrent,
-        progressTotal: this.progressTotal,
-        sortKey: viewState.sortKey,
-        sortDir: viewState.sortDir,
-        colWidths: viewState.colWidths,
-        expandAllGroups: viewState.expandAllGroups,
-        showAllChildren: viewState.showAllChildren,
-        hideActionsColumn: settings.dashboardHideActionsColumn,
-        showGroupChildren: settings.dashboardGroupDuplicateChildren
-      });
+      this.renderView(this.lastRows);
     }
 
     if (this.pendingFocusFilter) {
@@ -122,25 +84,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         if (this.refreshController) {
           this.refreshController.abort();
           vscode.window.setStatusBarMessage('ForgeFlow: Dashboard refresh cancelled.', 3000);
-          const filter = this.filterStore.getFilter();
-          const viewState = this.viewStateStore.getState();
-          const settings = getForgeFlowSettings();
-          this.tagFilter = this.tagFilterStore.getFilter();
-          if (this.view) {
-            this.view.webview.html = renderDashboardHtml(this.lastRows, this.view.webview, {
-              updatedAt: this.lastUpdated,
-              filter,
-              activeTags: this.tagFilter,
-              filterMinChars: settings.filtersDashboardMinChars,
-              filterMatchMode: settings.filtersMatchMode,
-              authSummary: this.authSummary,
-              progressCurrent: this.progressCurrent,
-              progressTotal: this.progressTotal,
-              expandAllGroups: viewState.expandAllGroups,
-              showAllChildren: viewState.showAllChildren,
-              hideActionsColumn: settings.dashboardHideActionsColumn
-            });
-          }
+          this.renderView(this.lastRows);
         }
       }
       if (message.type === 'setFilter') {
@@ -175,17 +119,17 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(message.path), false);
       }
       if (message.type === 'openProjects' && Array.isArray(message.paths)) {
-        const uniquePaths = Array.from(new Set(message.paths.filter((value) => typeof value === 'string' && value.trim())));
-        for (const path of uniquePaths) {
-          await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(path), true);
+        const uniquePaths = this.collectUniquePaths(message.paths);
+        for (const targetPath of uniquePaths) {
+          await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(targetPath), true);
         }
       }
       if (message.type === 'openProjectsInWorkspace' && Array.isArray(message.paths)) {
-        const uniquePaths = Array.from(new Set(message.paths.filter((value) => typeof value === 'string' && value.trim())));
+        const uniquePaths = this.collectUniquePaths(message.paths);
         if (uniquePaths.length > 0) {
           const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
-          const existing = new Set(workspaceFolders.map((folder) => folder.uri.fsPath));
-          const toAdd = uniquePaths.filter((path) => !existing.has(path));
+          const existing = new Set(workspaceFolders.map((folder) => normalizePathKey(folder.uri.fsPath)));
+          const toAdd = uniquePaths.filter((targetPath) => !existing.has(normalizePathKey(targetPath)));
           if (toAdd.length === 0) {
             vscode.window.setStatusBarMessage('ForgeFlow: All group paths already in workspace.', 2000);
           } else {
@@ -202,7 +146,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         }
       }
       if (message.type === 'openGroupTerminals' && Array.isArray(message.paths)) {
-        const uniquePaths = Array.from(new Set(message.paths.filter((value) => typeof value === 'string' && value.trim())));
+        const uniquePaths = this.collectUniquePaths(message.paths);
         for (const targetPath of uniquePaths) {
           const stat = await statPath(targetPath);
           const cwd = stat?.type === vscode.FileType.Directory ? targetPath : path.dirname(targetPath);
@@ -219,7 +163,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         vscode.window.setStatusBarMessage('ForgeFlow: Path copied.', 2000);
       }
       if (message.type === 'copyPaths' && Array.isArray(message.paths)) {
-        const uniquePaths = Array.from(new Set(message.paths.filter((value) => typeof value === 'string' && value.trim())));
+        const uniquePaths = this.collectUniquePaths(message.paths);
         if (uniquePaths.length > 0) {
           await vscode.env.clipboard.writeText(uniquePaths.join('\\n'));
           vscode.window.setStatusBarMessage('ForgeFlow: Paths copied.', 2000);
@@ -286,27 +230,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     this.authSummary = await this.getAuthSummary();
-    const filter = this.filterStore.getFilter();
-    const viewState = this.viewStateStore.getState();
-    const settings = getForgeFlowSettings();
-    this.tagFilter = this.tagFilterStore.getFilter();
-    this.view.webview.html = renderDashboardHtml(this.lastRows, this.view.webview, {
-      loading: true,
-      updatedAt: this.lastUpdated,
-      filter,
-      activeTags: this.tagFilter,
-      filterMinChars: settings.filtersDashboardMinChars,
-      filterMatchMode: settings.filtersMatchMode,
-      authSummary: this.authSummary,
-      progressCurrent: this.progressCurrent,
-      progressTotal: this.progressTotal,
-      sortKey: viewState.sortKey,
-      sortDir: viewState.sortDir,
-      colWidths: viewState.colWidths,
-      expandAllGroups: viewState.expandAllGroups,
-      showAllChildren: viewState.showAllChildren,
-      hideActionsColumn: settings.dashboardHideActionsColumn
-    });
+    this.renderView(this.lastRows, { loading: true });
     try {
       const rows = await this.dashboardService.buildRows(signal, (current, total, label) => {
         this.progressCurrent = current;
@@ -322,26 +246,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
       this.lastRows = rows;
       this.lastUpdated = Date.now();
       await this.cache.save(rows, this.lastUpdated);
-      const viewState = this.viewStateStore.getState();
-      const settings = getForgeFlowSettings();
-      this.tagFilter = this.tagFilterStore.getFilter();
-      const latestFilter = this.filterStore.getFilter();
-      this.view.webview.html = renderDashboardHtml(rows, this.view.webview, {
-        updatedAt: this.lastUpdated,
-        filter: latestFilter,
-        activeTags: this.tagFilter,
-        filterMinChars: settings.filtersDashboardMinChars,
-        filterMatchMode: settings.filtersMatchMode,
-        authSummary: this.authSummary,
-        progressCurrent: this.progressCurrent,
-        progressTotal: this.progressTotal,
-        sortKey: viewState.sortKey,
-        sortDir: viewState.sortDir,
-        colWidths: viewState.colWidths,
-        expandAllGroups: viewState.expandAllGroups,
-        showAllChildren: viewState.showAllChildren,
-        hideActionsColumn: settings.dashboardHideActionsColumn
-      });
+      this.renderView(rows);
     } catch (error) {
       if (signal.aborted) {
         return;
@@ -351,27 +256,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         return;
       }
       this.logger.error(`Dashboard refresh failed: ${message}`);
-      const viewState = this.viewStateStore.getState();
-      const settings = getForgeFlowSettings();
-      this.tagFilter = this.tagFilterStore.getFilter();
-      const latestFilter = this.filterStore.getFilter();
-      this.view.webview.html = renderDashboardHtml(this.lastRows, this.view.webview, {
-        message: 'Dashboard refresh failed.',
-        updatedAt: this.lastUpdated,
-        filter: latestFilter,
-        activeTags: this.tagFilter,
-        filterMinChars: settings.filtersDashboardMinChars,
-        filterMatchMode: settings.filtersMatchMode,
-        authSummary: this.authSummary,
-        progressCurrent: this.progressCurrent,
-        progressTotal: this.progressTotal,
-        sortKey: viewState.sortKey,
-        sortDir: viewState.sortDir,
-        colWidths: viewState.colWidths,
-        expandAllGroups: viewState.expandAllGroups,
-        showAllChildren: viewState.showAllChildren,
-        hideActionsColumn: settings.dashboardHideActionsColumn
-      });
+      this.renderView(this.lastRows, { message: 'Dashboard refresh failed.' });
     }
   }
 
@@ -393,7 +278,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
   }
 
   public async applyTagFilter(tags: string[], persist = true, notifyWebview = true): Promise<void> {
-    this.tagFilter = normalizeTagFilter(tags);
+    this.tagFilter = normalizeTagList(tags);
     if (persist) {
       await this.tagFilterStore.setFilter(this.tagFilter);
     }
@@ -435,27 +320,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     if (!this.view) {
       return;
     }
-    const filter = this.filterStore.getFilter();
-    const viewState = this.viewStateStore.getState();
-    const settings = getForgeFlowSettings();
-    this.tagFilter = this.tagFilterStore.getFilter();
-    this.view.webview.html = renderDashboardHtml(this.lastRows, this.view.webview, {
-      updatedAt: this.lastUpdated,
-      filter,
-      activeTags: this.tagFilter,
-      filterMinChars: settings.filtersDashboardMinChars,
-      filterMatchMode: settings.filtersMatchMode,
-      authSummary: this.authSummary,
-      progressCurrent: this.progressCurrent,
-      progressTotal: this.progressTotal,
-      sortKey: viewState.sortKey,
-      sortDir: viewState.sortDir,
-      colWidths: viewState.colWidths,
-      expandAllGroups: viewState.expandAllGroups,
-      showAllChildren: viewState.showAllChildren,
-      hideActionsColumn: settings.dashboardHideActionsColumn,
-      showGroupChildren: settings.dashboardGroupDuplicateChildren
-    });
+    this.renderView(this.lastRows);
   }
 
   public async setActionsColumnHidden(hidden: boolean): Promise<void> {
@@ -495,18 +360,51 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     }
     return 'GH: anon';
   }
-}
 
-function normalizeTagFilter(tags: string[]): string[] {
-  const deduped = new Map<string, string>();
-  tags
-    .map((tag) => tag.trim())
-    .filter(Boolean)
-    .forEach((tag) => {
-      const key = tag.toLowerCase();
-      if (!deduped.has(key)) {
-        deduped.set(key, tag);
-      }
+  private renderView(rows: DashboardRow[], state?: { loading?: boolean; message?: string }): void {
+    if (!this.view) {
+      return;
+    }
+    const filter = this.filterStore.getFilter();
+    const viewState = this.viewStateStore.getState();
+    const settings = getForgeFlowSettings();
+    this.tagFilter = this.tagFilterStore.getFilter();
+    this.view.webview.html = renderDashboardHtml(rows, this.view.webview, {
+      loading: state?.loading,
+      message: state?.message,
+      updatedAt: this.lastUpdated,
+      filter,
+      activeTags: this.tagFilter,
+      filterMinChars: settings.filtersDashboardMinChars,
+      filterMatchMode: settings.filtersMatchMode,
+      authSummary: this.authSummary,
+      progressCurrent: this.progressCurrent,
+      progressTotal: this.progressTotal,
+      progressLabel: this.progressLabel,
+      sortKey: viewState.sortKey,
+      sortDir: viewState.sortDir,
+      colWidths: viewState.colWidths,
+      expandAllGroups: viewState.expandAllGroups,
+      showAllChildren: viewState.showAllChildren,
+      hideActionsColumn: settings.dashboardHideActionsColumn,
+      showGroupChildren: settings.dashboardGroupDuplicateChildren
     });
-  return Array.from(deduped.values());
+  }
+
+  private collectUniquePaths(paths: unknown[]): string[] {
+    const values = paths
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .map((value) => value.trim());
+    const seen = new Set<string>();
+    const unique: string[] = [];
+    for (const value of values) {
+      const key = normalizePathKey(value);
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      unique.push(value);
+    }
+    return unique;
+  }
 }

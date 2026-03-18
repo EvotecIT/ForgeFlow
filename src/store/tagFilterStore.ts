@@ -1,5 +1,7 @@
 import type { StateStore } from './stateStore';
 import { getScopedValue, setScopedValue } from './filterScope';
+import { createRevisionStamp } from '../util/revision';
+import { normalizeTagList } from '../util/tags';
 
 export interface TagPreset {
   name: string;
@@ -22,7 +24,7 @@ export class TagFilterStore {
   }
 
   public async setFilter(tags: string[]): Promise<void> {
-    await setScopedValue(this.state, FILTER_KEY, normalizeTags(tags));
+    await setScopedValue(this.state, FILTER_KEY, normalizeTagList(tags));
   }
 
   public getPresets(): TagPreset[] {
@@ -31,7 +33,7 @@ export class TagFilterStore {
 
   public async savePreset(name: string, tags: string[]): Promise<void> {
     const presets = this.getPresets();
-    const normalizedTags = normalizeTags(tags);
+    const normalizedTags = normalizeTagList(tags);
     const existingIndex = presets.findIndex((preset) => preset.name.toLowerCase() === name.toLowerCase());
     if (existingIndex >= 0) {
       presets[existingIndex] = { name, tags: normalizedTags };
@@ -51,24 +53,4 @@ export class TagFilterStore {
   private async bumpPresetsRevision(): Promise<void> {
     await this.state.setGlobal(PRESETS_REVISION_KEY, createRevisionStamp());
   }
-}
-
-function normalizeTags(tags: string[]): string[] {
-  const deduped = new Map<string, string>();
-  tags
-    .map((tag) => tag.trim())
-    .filter(Boolean)
-    .forEach((tag) => {
-      const key = tag.toLowerCase();
-      if (!deduped.has(key)) {
-        deduped.set(key, tag);
-      }
-    });
-  return Array.from(deduped.values());
-}
-
-function createRevisionStamp(): string {
-  const base = Date.now().toString(36);
-  const rand = Math.random().toString(36).slice(2, 8);
-  return `${base}-${rand}`;
 }

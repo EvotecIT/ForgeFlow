@@ -35,22 +35,24 @@ export async function runProjectEntryPoint(
     vscode.window.showWarningMessage('ForgeFlow: No runnable entry points found (.ps1, .cs, or tasks).');
     return;
   }
-  const pick = await vscode.window.showQuickPick(
-    runnable.map((entry) => ({
-      label: entry.label,
-      description: entry.kind === 'task' ? entry.task?.type ?? 'task' : entry.path,
-      entry
-    })),
-    { placeHolder: `Run entry point for ${project.name}` }
-  );
-  if (!pick) {
+  const selectedEntry = runnable.length === 1
+    ? runnable[0]
+    : (await vscode.window.showQuickPick(
+      runnable.map((entry) => ({
+        label: entry.label,
+        description: entry.kind === 'task' ? entry.task?.type ?? 'task' : entry.path,
+        entry
+      })),
+      { placeHolder: `Run entry point for ${project.name}` }
+    ))?.entry;
+  if (!selectedEntry) {
     return;
   }
-  if (pick.entry.kind === 'task') {
-    await runTaskEntryPoint(pick.entry, project, runHistoryStore);
+  if (selectedEntry.kind === 'task') {
+    await runTaskEntryPoint(selectedEntry, project, runHistoryStore);
     return;
   }
-  await runPath(pick.entry.path, runService, projectsStore, favoritesStore, runHistoryStore, undefined);
+  await runPath(selectedEntry.path, runService, projectsStore, favoritesStore, runHistoryStore, undefined);
 }
 
 export async function runPath(

@@ -131,4 +131,5 @@ export interface DuplicateInfo {
   index: number;
   total: number;
   key: string;
+  peerPath?: string;
 }

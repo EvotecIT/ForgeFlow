@@ -1,6 +1,7 @@
 import type * as vscode from 'vscode';
 import type { ProjectsWebviewProject, ProjectsWebviewSnapshot } from './projectsView';
 import { projectsWebviewStyles } from './projectsWebviewStyles';
+import { escapeHtml, randomNonce, serializeJsonForHtml } from '../util/webview';
 
 export interface ProjectsWebviewUpdatePayload {
   favoritesHtml: string;
@@ -56,7 +57,7 @@ export function renderProjectsWebviewHtml(snapshot: ProjectsWebviewSnapshot, web
   const nonce = randomNonce();
   const update = buildProjectsWebviewUpdate(snapshot);
 
-  const stateJson = safeJson(snapshot);
+  const stateJson = serializeJsonForHtml(snapshot);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -318,8 +319,13 @@ ${projectsWebviewStyles}
       applyFilter();
     }
 
+    function closestFromEventTarget(event, selector) {
+      const origin = event.target;
+      return origin instanceof Element ? origin.closest(selector) : null;
+    }
+
     document.addEventListener('click', (event) => {
-      const target = event.target.closest('[data-action]');
+      const target = closestFromEventTarget(event, '[data-action]');
       if (!target) return;
       const action = target.dataset.action;
       if (action === 'browse-toggle') {
@@ -366,7 +372,7 @@ ${projectsWebviewStyles}
     }
     if (tagBar) {
       tagBar.addEventListener('click', (event) => {
-        const chip = event.target.closest('.tag-chip');
+        const chip = closestFromEventTarget(event, '.tag-chip');
         if (!chip) return;
         const tag = chip.dataset.tag;
         if (tag) toggleTag(tag);
@@ -686,36 +692,4 @@ function buildSearchText(project: ProjectsWebviewProject): string {
     identity?.vscodeExtensionId,
     project.tags?.join(' ')
   ].filter(Boolean).join(' ').toLowerCase();
-}
-
-function escapeHtml(value: string): string {
-  return String(value).replace(/[&<>"']/g, (char) => {
-    switch (char) {
-      case '&':
-        return '&amp;';
-      case '<':
-        return '&lt;';
-      case '>':
-        return '&gt;';
-      case '"':
-        return '&quot;';
-      case "'":
-        return '&#39;';
-      default:
-        return char;
-    }
-  });
-}
-
-function safeJson(value: unknown): string {
-  return JSON.stringify(value).replace(/</g, '\\u003c');
-}
-
-function randomNonce(): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let text = '';
-  for (let i = 0; i < 32; i += 1) {
-    text += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return text;
 }

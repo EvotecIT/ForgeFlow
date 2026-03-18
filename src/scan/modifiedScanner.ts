@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { readDirectory, statPath } from '../util/fs';
+import { statPath } from '../util/fs';
+import { walkDirectoriesBreadthFirst } from './walk';
 
 interface ModifiedScanOptions {
   ignoreFolders: string[];
@@ -13,25 +14,18 @@ export async function findRecentWriteTime(
   options: ModifiedScanOptions
 ): Promise<number | undefined> {
   let newest: number | undefined;
-  const queue: Array<{ dir: string; depth: number }> = [{ dir: root, depth: 0 }];
   const ignoredFolders = new Set(options.ignoreFolders.map((entry) => entry.toLowerCase()));
   const ignoredExts = new Set(options.ignoreExtensions.map((entry) => entry.toLowerCase().replace(/^\./, '')));
-
-  while (queue.length > 0) {
-    const next = queue.shift();
-    if (!next) {
-      continue;
-    }
-    const entries = await readDirectory(next.dir);
+  await walkDirectoriesBreadthFirst(root, depth, async ({ dir, depth: currentDepth, entries, enqueue }) => {
     for (const [name, type] of entries) {
       const loweredName = name.toLowerCase();
       if (ignoredFolders.has(loweredName) || loweredName.startsWith('.')) {
         continue;
       }
-      const entryPath = path.join(next.dir, name);
+      const entryPath = path.join(dir, name);
       if (type === vscode.FileType.Directory) {
-        if (next.depth < depth) {
-          queue.push({ dir: entryPath, depth: next.depth + 1 });
+        if (currentDepth < depth) {
+          enqueue(name);
         }
         continue;
       }
@@ -46,7 +40,7 @@ export async function findRecentWriteTime(
         }
       }
     }
-  }
+  });
 
   return newest;
 }

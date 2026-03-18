@@ -1,4 +1,3 @@
-import * as path from 'path';
 import * as vscode from 'vscode';
 import type { Project } from '../models/project';
 import type { ProjectsStore } from '../store/projectsStore';
@@ -10,6 +9,10 @@ import type { ForgeFlowLogger } from '../util/log';
 import type { GitStore } from '../git/gitStore';
 import { buildProjectSummary } from '../git/gitSummary';
 import { getForgeFlowSettings, type GitBranchFilterMode, type GitBranchSortMode } from '../util/config';
+import { normalizeFsPath } from '../extension/pathUtils';
+import { findProjectByPath } from '../extension/projectUtils';
+import { createStoredFilterController, type StoredFilterController } from './filterState';
+import { createHintTreeItem } from './treeItems';
 
 interface GitNode {
   readonly id: string;
@@ -34,26 +37,27 @@ export class GitViewProvider implements vscode.TreeDataProvider<GitNode> {
   private pendingRefresh = false;
   private errorMessage?: string;
   private lastErrorProjectId?: string;
-  private filterText = '';
+  private readonly filterState: StoredFilterController;
 
   public constructor(
     private readonly projectsStore: ProjectsStore,
     private readonly gitService: GitService,
     private readonly gitStore: GitStore,
-    private readonly filterStore: GitFilterStore,
+    filterStore: GitFilterStore,
     private readonly logger: ForgeFlowLogger
   ) {
-    this.filterText = filterStore.getFilter();
+    this.filterState = createStoredFilterController(
+      filterStore,
+      () => this.onDidChangeTreeDataEmitter.fire(undefined)
+    );
   }
 
   public getFilter(): string {
-    return this.filterText;
+    return this.filterState.getFilter();
   }
 
   public setFilter(value: string): void {
-    this.filterText = value;
-    void this.filterStore.setFilter(value);
-    this.onDidChangeTreeDataEmitter.fire(undefined);
+    this.filterState.setFilter(value);
   }
 
   public refreshView(): void {
@@ -61,12 +65,7 @@ export class GitViewProvider implements vscode.TreeDataProvider<GitNode> {
   }
 
   public syncFilterFromStore(): void {
-    const next = this.filterStore.getFilter();
-    if (next === this.filterText) {
-      return;
-    }
-    this.filterText = next;
-    this.onDidChangeTreeDataEmitter.fire(undefined);
+    this.filterState.syncFilterFromStore();
   }
 
   public async refresh(): Promise<void> {
@@ -92,22 +91,12 @@ export class GitViewProvider implements vscode.TreeDataProvider<GitNode> {
         this.lastErrorProjectId = undefined;
         await this.gitStore.setSummary(project.id, buildProjectSummary(status));
       } else {
-        this.status = undefined;
-        this.errorMessage = `ForgeFlow: Git status failed for ${project.name}. See Output > ForgeFlow for details.`;
-        if (this.lastErrorProjectId !== project.id) {
-          this.lastErrorProjectId = project.id;
-          vscode.window.showWarningMessage(this.errorMessage);
-        }
+        this.setStatusFailure(project.name, project.id);
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       this.logger.error(`Git status failed for ${project.name}: ${message}`);
-      this.status = undefined;
-      this.errorMessage = `ForgeFlow: Git status failed for ${project.name}. See Output > ForgeFlow for details.`;
-      if (this.lastErrorProjectId !== project.id) {
-        this.lastErrorProjectId = project.id;
-        vscode.window.showWarningMessage(this.errorMessage);
-      }
+      this.setStatusFailure(project.name, project.id);
     } finally {
       this.isLoading = false;
       this.onDidChangeTreeDataEmitter.fire(undefined);
@@ -127,6 +116,15 @@ export class GitViewProvider implements vscode.TreeDataProvider<GitNode> {
     return this.gitStore.getSelectedProjectId();
   }
 
+  private setStatusFailure(projectName: string, projectId: string): void {
+    this.status = undefined;
+    this.errorMessage = `ForgeFlow: Git status failed for ${projectName}. See Output > ForgeFlow for details.`;
+    if (this.lastErrorProjectId !== projectId) {
+      this.lastErrorProjectId = projectId;
+      vscode.window.showWarningMessage(this.errorMessage);
+    }
+  }
+
   public getTreeItem(element: GitNode): vscode.TreeItem {
     return element.getTreeItem();
   }
@@ -138,7 +136,8 @@ export class GitViewProvider implements vscode.TreeDataProvider<GitNode> {
 
     const gitProjects = this.getGitProjects();
     const minChars = getForgeFlowSettings().filtersGitMinChars;
-    const filter = normalizeFilter(this.filterText, minChars);
+    const filterText = this.getFilter();
+    const filter = normalizeFilter(filterText, minChars);
     const mode = getForgeFlowSettings().filtersMatchMode;
     const filteredProjects = filter
       ? gitProjects.filter((project) => matchesFilterQuery(`${project.name} ${project.path}`, filter, mode))
@@ -182,7 +181,7 @@ export class GitViewProvider implements vscode.TreeDataProvider<GitNode> {
     return [
       new GitProjectPickerNode(filteredProjects, selected.id),
       new GitProjectNode(selected, this.status),
-      ...buildBranchGroups(this.status, this.filterText)
+      ...buildBranchGroups(this.status, filterText)
     ];
   }
 
@@ -242,11 +241,7 @@ class GitHintNode implements GitNode {
   }
 
   public getTreeItem(): vscode.TreeItem {
-    const item = new vscode.TreeItem(this.message, vscode.TreeItemCollapsibleState.None);
-    item.iconPath = new vscode.ThemeIcon('info');
-    item.contextValue = 'forgeflowGitHint';
-    item.command = { command: this.commandId, title: this.message };
-    return item;
+    return createHintTreeItem(this.message, 'forgeflowGitHint', this.commandId);
   }
 }
 
@@ -342,29 +337,6 @@ function getWorkspacePath(): string | undefined {
     return undefined;
   }
   return normalizeFsPath(first.uri.fsPath);
-}
-
-function findProjectByPath(projects: Project[], filePath: string): Project | undefined {
-  const resolved = normalizeFsPath(path.resolve(filePath));
-  return projects.find((project) => isWithin(normalizeFsPath(project.path), resolved));
-}
-
-function isWithin(parent: string, child: string): boolean {
-  const compareParent = process.platform === 'win32' ? parent.toLowerCase() : parent;
-  const compareChild = process.platform === 'win32' ? child.toLowerCase() : child;
-  const relative = path.relative(compareParent, compareChild);
-  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
-}
-
-function normalizeFsPath(value: string): string {
-  if (process.platform === 'win32') {
-    const match = /^\/([a-zA-Z]:)(\/.*)/.exec(value);
-    if (match) {
-      return `${match[1]}${match[2]}`.replace(/\//g, '\\');
-    }
-    return value.replace(/\//g, '\\');
-  }
-  return value;
 }
 
 class GitDetailNode implements GitNode {

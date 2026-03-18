@@ -7,6 +7,7 @@ import type { PowerShellProfile, RunRequest } from '../models/run';
 import type { ForgeFlowLogger } from '../util/log';
 import { buildAdminCommand, buildInlinePowerShellArgs, buildProcessCommand, buildTerminalCommand } from './commandBuilder';
 import { getAllProfiles, resolveExecutable, resolveExecutablePath } from './powershellProfiles';
+import { buildReusableTerminalKey } from './terminalKeys';
 import type { TerminalManager } from './terminalManager';
 
 export class RunService implements vscode.Disposable {
@@ -256,7 +257,8 @@ export class RunService implements vscode.Disposable {
     echoCommand: boolean,
     keepOpenPrompt: boolean
   ): Promise<void> {
-    if (!echoCommand) {
+    const useTaskExecution = !echoCommand && !reuseTerminal;
+    if (useTaskExecution) {
       await this.runIntegratedTask(request, profile, executable, reuseTerminal, reuseScope, perProject, keepOpen, keepOpenPrompt);
       return;
     }
@@ -327,16 +329,7 @@ export class RunService implements vscode.Disposable {
       const rand = Math.random().toString(36).slice(2, 8);
       return `run-${stamp}-${rand}`;
     }
-    if (options.reuseScope === 'shared') {
-      if (options.perProject && options.projectId) {
-        return `shared:${options.projectId}`;
-      }
-      return 'shared';
-    }
-    if (options.perProject && options.projectId) {
-      return `${profile.id}:${options.projectId}`;
-    }
-    return profile.id;
+    return buildReusableTerminalKey(profile.id, options);
   }
 
   private async runExternal(

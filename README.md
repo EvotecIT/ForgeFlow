@@ -137,6 +137,7 @@ ForgeFlow uses VS Code's GitHub authentication when available. For GitLab and Az
 
 - `forgeflow.projects.identityScanDepth` controls how deep we look for psd1/csproj/Directory.Build.props.
 - `forgeflow.projects.identityPreferredFolders` sets preferred folder names for ranking.
+- `forgeflow.projects.scanIgnoreFolders` lets you optionally skip folders during project discovery (default is empty, scanning all), while `.worktrees` remains discoverable.
 
 ## Install in VS Code Insiders (live usage)
 

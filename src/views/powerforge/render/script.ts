@@ -6,8 +6,13 @@ export function renderWebviewScript(): string {
       vscode.postMessage(Object.assign({ type }, payload || {}));
     }
 
+    function closestFromEventTarget(event, selector) {
+      const origin = event.target;
+      return origin instanceof Element ? origin.closest(selector) : null;
+    }
+
     document.addEventListener('click', (event) => {
-      const button = event.target.closest('button[data-action]');
+      const button = closestFromEventTarget(event, 'button[data-action]');
       if (!button) return;
       const action = button.dataset.action;
       if (action === 'refresh') {
@@ -271,7 +276,7 @@ export function renderWebviewScript(): string {
     });
 
     document.addEventListener('click', (event) => {
-      const button = event.target.closest('button[data-template-path]');
+      const button = closestFromEventTarget(event, 'button[data-template-path]');
       if (!button) return;
       const targetPath = button.dataset.templatePath;
       if (targetPath) {
@@ -280,7 +285,7 @@ export function renderWebviewScript(): string {
     });
 
     document.addEventListener('click', (event) => {
-      const button = event.target.closest('button[data-action]');
+      const button = closestFromEventTarget(event, 'button[data-action]');
       if (!button) return;
       const action = button.dataset.action;
       if (action === 'addDependency') {

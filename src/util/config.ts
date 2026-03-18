@@ -8,6 +8,10 @@ export interface ForgeFlowSettings {
   projectScanRoots: string[];
   projectScanMaxDepth: number;
   projectScanCacheMinutes: number;
+  projectScanIgnoreFolders: string[];
+  projectPeriodicForceRefreshMinutes: number;
+  projectPeriodicProjectRefreshMinutes: number;
+  projectPeriodicWorktreeRefreshMinutes: number;
   projectSortMode: ProjectSortMode;
   projectSortDirection: SortDirection;
   projectDuplicateGroupMainFirst: boolean;
@@ -95,6 +99,16 @@ export function getForgeFlowSettings(): ForgeFlowSettings {
     projectScanRoots: config.get<string[]>('projects.scanRoots', []),
     projectScanMaxDepth: config.get<number>('projects.scanMaxDepth', 4),
     projectScanCacheMinutes: config.get<number>('projects.scanCacheMinutes', 2),
+    projectScanIgnoreFolders: config.get<string[]>('projects.scanIgnoreFolders', []),
+    projectPeriodicForceRefreshMinutes: config.get<number>('projects.periodicForceRefreshMinutes', 5),
+    projectPeriodicProjectRefreshMinutes: config.get<number>(
+      'projects.periodicProjectRefreshMinutes',
+      config.get<number>('projects.periodicForceRefreshMinutes', 5)
+    ),
+    projectPeriodicWorktreeRefreshMinutes: config.get<number>(
+      'projects.periodicWorktreeRefreshMinutes',
+      config.get<number>('projects.periodicForceRefreshMinutes', 5)
+    ),
     projectSortMode: config.get<ProjectSortMode>('projects.sortMode', 'recentOpened'),
     projectSortDirection: config.get<SortDirection>('projects.sortDirection', 'desc'),
     projectDuplicateGroupMainFirst: config.get<boolean>('projects.duplicateGroupMainFirst', true),

@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import type { PowerShellProfile } from '../models/run';
 import { resolveExecutable } from './powershellProfiles';
+import { buildReusableTerminalKey } from './terminalKeys';
 
 export interface TerminalOptions {
   reuseTerminal: boolean;
@@ -61,15 +62,6 @@ export class TerminalManager implements vscode.Disposable {
   }
 
   private getKey(profile: PowerShellProfile, options: TerminalOptions): string {
-    if (options.reuseScope === 'shared') {
-      if (options.perProject && options.projectId) {
-        return `shared:${options.projectId}`;
-      }
-      return 'shared';
-    }
-    if (options.perProject && options.projectId) {
-      return `${profile.id}:${options.projectId}`;
-    }
-    return profile.id;
+    return buildReusableTerminalKey(profile.id, options);
   }
 }

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { StateStore } from './stateStore';
+import { createRevisionStamp } from '../util/revision';
 
 export type FilterScope = 'workspace' | 'global';
 
@@ -31,10 +32,4 @@ export async function setScopedValue<T>(state: StateStore, key: string, value: T
 
 async function bumpFiltersRevision(state: StateStore): Promise<void> {
   await state.setGlobal(FILTERS_REVISION_KEY, createRevisionStamp());
-}
-
-function createRevisionStamp(): string {
-  const base = Date.now().toString(36);
-  const rand = Math.random().toString(36).slice(2, 8);
-  return `${base}-${rand}`;
 }

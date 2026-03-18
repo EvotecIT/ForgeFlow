@@ -1,7 +1,5 @@
-import * as path from 'path';
-import * as vscode from 'vscode';
 import type { Project } from '../../models/project';
-import { statPath } from '../../util/fs';
+import { readProjectGitWorktreeMetadata } from '../../git/worktreeMetadata';
 import type { DuplicateInfo } from './types';
 
 interface GitMeta {
@@ -118,32 +116,8 @@ function shortestPathEntry(entries: Array<{ project: Project; meta: GitMeta }>):
 }
 
 async function readGitMeta(projectPath: string): Promise<GitMeta> {
-  const gitPath = path.join(projectPath, '.git');
-  const stat = await statPath(gitPath);
-  if (!stat) {
-    return { isWorktree: false, hasGitDir: false };
-  }
-  if (stat.type === vscode.FileType.Directory) {
-    return { isWorktree: false, hasGitDir: true };
-  }
-  if (stat.type !== vscode.FileType.File) {
-    return { isWorktree: false, hasGitDir: false };
-  }
-  try {
-    const raw = await vscode.workspace.fs.readFile(vscode.Uri.file(gitPath));
-    const text = Buffer.from(raw).toString('utf8');
-    const gitDirLine = text
-      .split(/\r?\n/g)
-      .map((line) => line.trim())
-      .find((line) => line.toLowerCase().startsWith('gitdir:'));
-    if (!gitDirLine) {
-      return { isWorktree: false, hasGitDir: false };
-    }
-    const gitDirValue = gitDirLine.slice('gitdir:'.length).trim();
-    const normalized = gitDirValue.replace(/\\/g, '/').toLowerCase();
-    const isWorktree = normalized.includes('/worktrees/');
-    return { isWorktree, hasGitDir: false };
-  } catch {
-    return { isWorktree: false, hasGitDir: false };
-  }
+  const metadata = await readProjectGitWorktreeMetadata(projectPath);
+  // Duplicate-primary selection historically prefers repos with physical .git directories.
+  const hasGitDir = metadata.dotGitKind === 'directory';
+  return { isWorktree: metadata.isWorktree, hasGitDir };
 }
