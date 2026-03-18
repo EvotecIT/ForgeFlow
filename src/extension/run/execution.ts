@@ -63,6 +63,7 @@ export async function runPath(
   runHistoryStore: RunHistoryStore,
   target: RunTarget | undefined,
   profileId?: string,
+  reuseTerminal?: boolean,
   keepOpenMode?: 'never' | 'onError' | 'always'
 ): Promise<void> {
   const filePathRaw = inputPath ?? vscode.window.activeTextEditor?.document.uri.fsPath;
@@ -99,6 +100,7 @@ export async function runPath(
     projectId: project?.id,
     profileId,
     target: resolvedTarget,
+    reuseTerminal,
     keepOpenMode
   });
 

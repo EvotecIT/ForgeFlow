@@ -15,6 +15,7 @@ export interface RunRequest {
   projectId?: string;
   profileId?: string;
   target?: RunTarget;
+  reuseTerminal?: boolean;
   keepOpenMode?: 'never' | 'onError' | 'always';
 }
 
