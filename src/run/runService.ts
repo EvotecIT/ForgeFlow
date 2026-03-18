@@ -257,7 +257,8 @@ export class RunService implements vscode.Disposable {
     echoCommand: boolean,
     keepOpenPrompt: boolean
   ): Promise<void> {
-    if (!echoCommand) {
+    const useTaskExecution = !echoCommand && !reuseTerminal;
+    if (useTaskExecution) {
       await this.runIntegratedTask(request, profile, executable, reuseTerminal, reuseScope, perProject, keepOpen, keepOpenPrompt);
       return;
     }

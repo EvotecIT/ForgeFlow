@@ -18,6 +18,10 @@ import { statPath } from '../../util/fs';
 import type { GitCommitCacheEntry } from '../../store/gitCommitCacheStore';
 import type { DuplicateInfo, ProjectsWebviewEntry } from './types';
 
+interface DuplicateBuildOptions {
+  gitCommonDirs?: ReadonlyMap<string, string>;
+}
+
 export function sortProjects(
   projects: Project[],
   mode: ProjectSortMode,
@@ -150,10 +154,14 @@ export function buildEntryPointCacheKey(project: Project, settings: ForgeFlowSet
   ].join('::');
 }
 
-export function buildDuplicateInfo(projects: Project[]): Map<string, DuplicateInfo> {
+export function buildDuplicateInfo(projects: Project[], options?: DuplicateBuildOptions): Map<string, DuplicateInfo> {
+  const gitCommonDirCounts = buildGitCommonDirCounts(projects, options?.gitCommonDirs);
   const byKey = new Map<string, Project[]>();
   for (const project of projects) {
-    const key = buildProjectDuplicateKey(project);
+    const key = buildProjectDuplicateKey(project, {
+      gitCommonDirs: options?.gitCommonDirs,
+      gitCommonDirCounts
+    });
     if (!key) {
       continue;
     }
@@ -168,8 +176,13 @@ export function buildDuplicateInfo(projects: Project[]): Map<string, DuplicateIn
       continue;
     }
     const sorted = [...list].sort((a, b) => a.path.localeCompare(b.path));
+    const peerById = new Map<string, string | undefined>();
+    sorted.forEach((project) => {
+      const peer = sorted.find((item) => item.id !== project.id)?.path;
+      peerById.set(project.id, peer);
+    });
     sorted.forEach((project, index) => {
-      result.set(project.id, { index, total: sorted.length, key });
+      result.set(project.id, { index, total: sorted.length, key, peerPath: peerById.get(project.id) });
     });
   }
   return result;
@@ -182,8 +195,59 @@ export function shouldShowLoadMore(total: number, visible: number): boolean {
   return visible < total;
 }
 
-export function buildProjectDuplicateKey(project: Project): string | undefined {
+export function buildProjectDuplicateKey(
+  project: Project,
+  options?: {
+    gitCommonDirs?: ReadonlyMap<string, string>;
+    gitCommonDirCounts?: ReadonlyMap<string, number>;
+  }
+): string | undefined {
+  if (project.type === 'git') {
+    const commonDir = options?.gitCommonDirs?.get(project.id);
+    const count = commonDir ? options?.gitCommonDirCounts?.get(commonDir) ?? 0 : 0;
+    if (commonDir && count > 1) {
+      return `git-common:${commonDir}`;
+    }
+  }
   return resolveProjectDuplicateKey(project);
+}
+
+export function getWorktreeSiblingProjects(
+  projects: Project[],
+  project: Project,
+  duplicateInfo: ReadonlyMap<string, DuplicateInfo>,
+  worktreeInfo: ReadonlyMap<string, boolean>
+): Project[] {
+  const duplicate = duplicateInfo.get(project.id);
+  if (!duplicate || !isGitCommonDuplicate(duplicate)) {
+    return [];
+  }
+  return projects.filter((candidate) => (
+    candidate.id !== project.id
+    && duplicateInfo.get(candidate.id)?.key === duplicate.key
+    && Boolean(worktreeInfo.get(candidate.id))
+  ));
+}
+
+function buildGitCommonDirCounts(
+  projects: Project[],
+  gitCommonDirs?: ReadonlyMap<string, string>
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  if (!gitCommonDirs || gitCommonDirs.size === 0) {
+    return counts;
+  }
+  for (const project of projects) {
+    if (project.type !== 'git') {
+      continue;
+    }
+    const commonDir = gitCommonDirs.get(project.id);
+    if (!commonDir) {
+      continue;
+    }
+    counts.set(commonDir, (counts.get(commonDir) ?? 0) + 1);
+  }
+  return counts;
 }
 
 export function formatProjectDescription(
@@ -203,7 +267,14 @@ export function formatProjectDescription(
     }
   }
   if (duplicate) {
-    parts.push(`dup ${duplicate.index + 1}/${duplicate.total}`);
+    if (isGitCommonDuplicate(duplicate)) {
+      const worktreeCount = Math.max(0, duplicate.total - 1);
+      if (worktreeCount > 0) {
+        parts.push(`worktrees:${worktreeCount}`);
+      }
+    } else {
+      parts.push(`dup ${duplicate.index + 1}/${duplicate.total}`);
+    }
   }
   if (tags.length > 0) {
     const clipped = tags.slice(0, 2);
@@ -211,6 +282,10 @@ export function formatProjectDescription(
     parts.push(`tags:${label}`);
   }
   return parts.join(' • ');
+}
+
+export function isGitCommonDuplicate(duplicate: DuplicateInfo): boolean {
+  return duplicate.key.startsWith('git-common:');
 }
 
 export function formatSummaryParts(summary: GitProjectSummary): string[] {

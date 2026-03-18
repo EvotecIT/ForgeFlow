@@ -319,8 +319,13 @@ ${projectsWebviewStyles}
       applyFilter();
     }
 
+    function closestFromEventTarget(event, selector) {
+      const origin = event.target;
+      return origin instanceof Element ? origin.closest(selector) : null;
+    }
+
     document.addEventListener('click', (event) => {
-      const target = event.target.closest('[data-action]');
+      const target = closestFromEventTarget(event, '[data-action]');
       if (!target) return;
       const action = target.dataset.action;
       if (action === 'browse-toggle') {
@@ -367,7 +372,7 @@ ${projectsWebviewStyles}
     }
     if (tagBar) {
       tagBar.addEventListener('click', (event) => {
-        const chip = event.target.closest('.tag-chip');
+        const chip = closestFromEventTarget(event, '.tag-chip');
         if (!chip) return;
         const tag = chip.dataset.tag;
         if (tag) toggleTag(tag);

@@ -8,6 +8,7 @@ import type { DuplicateInfo, ProjectNode } from './types';
 import {
   buildSortDescription,
   collectTagCounts,
+  getWorktreeSiblingProjects,
   getScanRoots,
   matchesProjectFilter,
   matchesTagFilter,
@@ -207,11 +208,13 @@ function createGroupResolvers(context: ProjectChildrenContext): {
   entryPointResolver: (project: Project) => Promise<EntryPointGroups>;
   tagsResolver: (projectId: string) => string[];
   historyResolver: (project: Project) => RunHistoryEntry[];
+  worktreeSiblingsResolver: (project: Project) => Project[];
 } {
   return {
     entryPointResolver: (project) => context.getEntryPointGroups(project),
     tagsResolver: (projectId) => context.tagsStore.getTags(projectId),
-    historyResolver: (project) => context.getRecentRuns(project)
+    historyResolver: (project) => context.getRecentRuns(project),
+    worktreeSiblingsResolver: (project) => getWorktreeSiblingsForProject(context, project)
   };
 }
 
@@ -343,4 +346,14 @@ function maybeAddPrimaryWorktreeSibling(
 
 function pickPrimaryWorktreeSibling(siblings: Project[], worktreeInfo: Map<string, boolean>): Project | undefined {
   return pickPrimaryByPath(siblings, (project) => Boolean(worktreeInfo.get(project.id)));
+}
+
+function getWorktreeSiblingsForProject(context: ProjectChildrenContext, project: Project): Project[] {
+  const siblings = getWorktreeSiblingProjects(context.projects, project, context.duplicateInfo, context.worktreeInfo);
+  const settings = getForgeFlowSettings();
+  const fallbackToName = !(
+    (settings.projectSortMode === 'gitCommit' && context.gitCommitLoading)
+    || (settings.projectSortMode === 'recentModified' && context.modifiedLoading)
+  );
+  return sortProjects(siblings, settings.projectSortMode, settings.projectSortDirection, fallbackToName);
 }

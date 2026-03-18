@@ -8,6 +8,7 @@ export interface ForgeFlowSettings {
   projectScanRoots: string[];
   projectScanMaxDepth: number;
   projectScanCacheMinutes: number;
+  projectScanIgnoreFolders: string[];
   projectPeriodicForceRefreshMinutes: number;
   projectPeriodicProjectRefreshMinutes: number;
   projectPeriodicWorktreeRefreshMinutes: number;
@@ -98,6 +99,7 @@ export function getForgeFlowSettings(): ForgeFlowSettings {
     projectScanRoots: config.get<string[]>('projects.scanRoots', []),
     projectScanMaxDepth: config.get<number>('projects.scanMaxDepth', 4),
     projectScanCacheMinutes: config.get<number>('projects.scanCacheMinutes', 2),
+    projectScanIgnoreFolders: config.get<string[]>('projects.scanIgnoreFolders', []),
     projectPeriodicForceRefreshMinutes: config.get<number>('projects.periodicForceRefreshMinutes', 5),
     projectPeriodicProjectRefreshMinutes: config.get<number>(
       'projects.periodicProjectRefreshMinutes',

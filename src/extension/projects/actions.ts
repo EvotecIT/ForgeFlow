@@ -132,26 +132,31 @@ export async function searchProjectsQuickPick(store: ProjectsStore, tagsStore: T
     iconPath: new vscode.ThemeIcon('add'),
     tooltip: 'Add to workspace'
   };
-  const items = projects.map((project) => ({
+  const typedItems = projects.map((project) => ({
     ...buildProjectQuickPickItem(project, tagsStore),
+    isWorktree: detectWorktreePath(project.path).isWorktree,
     buttons: [openNewButton, addWorkspaceButton]
   }));
+  const items = buildSearchQuickPickItems(typedItems);
 
   await new Promise<void>((resolve) => {
-    const quickPick = vscode.window.createQuickPick<(vscode.QuickPickItem & { project: Project })>();
+    const quickPick = vscode.window.createQuickPick<SearchQuickPickItem>();
     quickPick.title = 'Search projects';
     quickPick.placeholder = 'Type to filter projects';
     quickPick.matchOnDescription = true;
     quickPick.matchOnDetail = true;
     quickPick.items = items;
     quickPick.onDidTriggerItemButton(async (event) => {
+      if (!isSearchProjectItem(event.item)) {
+        return;
+      }
       const action = event.button === openNewButton ? 'new' : 'add';
       await openProjectWithAction(store, event.item.project, action);
       quickPick.hide();
     });
     quickPick.onDidAccept(async () => {
       const [selection] = quickPick.selectedItems;
-      if (selection) {
+      if (selection && isSearchProjectItem(selection)) {
         await openProjectWithAction(store, selection.project, 'current');
       }
       quickPick.hide();
@@ -196,10 +201,68 @@ async function openProjectWithAction(
 
 function buildProjectQuickPickItem(project: Project, tagsStore: TagsStore): vscode.QuickPickItem & { project: Project } {
   const tags = tagsStore.getTags(project.id);
+  const detailParts: string[] = [];
+  const worktree = detectWorktreePath(project.path);
+  if (worktree.isWorktree) {
+    detailParts.push(worktree.worktreeName ? `Worktree: ${worktree.worktreeName}` : 'Worktree');
+  }
+  if (tags.length > 0) {
+    detailParts.push(`Tags: ${tags.join(', ')}`);
+  }
   return {
     label: project.name,
     description: project.path,
-    detail: tags.length > 0 ? `Tags: ${tags.join(', ')}` : undefined,
+    detail: detailParts.length > 0 ? detailParts.join(' • ') : undefined,
     project
   };
+}
+
+interface SearchProjectItem extends vscode.QuickPickItem {
+  project: Project;
+  isWorktree: boolean;
+  buttons: vscode.QuickInputButton[];
+}
+
+type SearchQuickPickItem = SearchProjectItem | vscode.QuickPickItem;
+
+function isSearchProjectItem(item: SearchQuickPickItem): item is SearchProjectItem {
+  return 'project' in item && typeof item.project === 'object';
+}
+
+function buildSearchQuickPickItems(items: SearchProjectItem[]): SearchQuickPickItem[] {
+  const sorted = [...items].sort((left, right) => {
+    const group = Number(left.isWorktree) - Number(right.isWorktree);
+    if (group !== 0) {
+      return group;
+    }
+    const label = left.label.localeCompare(right.label);
+    if (label !== 0) {
+      return label;
+    }
+    return (left.description ?? '').localeCompare(right.description ?? '');
+  });
+  const primary = sorted.filter((item) => !item.isWorktree);
+  const worktrees = sorted.filter((item) => item.isWorktree);
+  const result: SearchQuickPickItem[] = [];
+  if (primary.length > 0) {
+    result.push({ label: `Primary projects (${primary.length})`, kind: vscode.QuickPickItemKind.Separator });
+    result.push(...primary);
+  }
+  if (worktrees.length > 0) {
+    result.push({ label: `Worktrees (${worktrees.length})`, kind: vscode.QuickPickItemKind.Separator });
+    result.push(...worktrees);
+  }
+  return result;
+}
+
+function detectWorktreePath(projectPath: string): { isWorktree: boolean; worktreeName?: string } {
+  const normalized = normalizeFsPath(path.resolve(projectPath)).replace(/\\/g, '/');
+  const segments = normalized.split('/').filter(Boolean);
+  const markers = new Set(['.worktrees', '_worktrees', '.wt', '_wt']);
+  const markerIndex = segments.findIndex((segment) => markers.has(segment.toLowerCase()));
+  if (markerIndex < 0) {
+    return { isWorktree: false };
+  }
+  const worktreeName = segments[markerIndex + 1];
+  return { isWorktree: true, worktreeName };
 }

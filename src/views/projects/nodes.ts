@@ -18,6 +18,7 @@ import {
   formatProjectDescription,
   formatSummaryTooltip,
   historyIconForEntry,
+  isGitCommonDuplicate,
   isPowerShellPath,
   resolveProjectProfileLabel,
   sortProjects
@@ -29,6 +30,7 @@ interface ProjectNodeResolvers {
   readonly entryPointResolver?: (project: Project) => Promise<EntryPointGroups>;
   readonly tagsResolver?: (projectId: string) => string[];
   readonly historyResolver?: (project: Project) => RunHistoryEntry[];
+  readonly worktreeSiblingsResolver?: (project: Project) => Project[];
 }
 
 export class ProjectHintNode implements ProjectNode {
@@ -308,6 +310,7 @@ export class ProjectItemNode implements ProjectNode, ProjectNodeWithProject {
     private readonly summary?: GitProjectSummary,
     private readonly showSummary = false,
     private readonly entryPointResolver?: (project: Project) => Promise<EntryPointGroups>,
+    private readonly worktreeSiblingsResolver?: (project: Project) => Project[],
     private readonly tags: string[] = [],
     private readonly recentRuns: RunHistoryEntry[] = []
   ) {
@@ -324,7 +327,11 @@ export class ProjectItemNode implements ProjectNode, ProjectNodeWithProject {
         maxCount: getForgeFlowSettings().projectEntryPointMaxCount,
         customPaths: this.project.entryPointOverrides
       });
+    const siblingWorktrees = this.worktreeSiblingsResolver?.(this.project) ?? [];
     const children: ProjectNode[] = [new ProjectPinnedGroupNode(this.project)];
+    if (siblingWorktrees.length > 0) {
+      children.push(new ProjectWorktreeSiblingsGroupNode(this.project, siblingWorktrees));
+    }
     if (this.recentRuns.length > 0) {
       children.push(new ProjectRecentRunsGroupNode(this.project, this.recentRuns));
     }
@@ -346,7 +353,15 @@ export class ProjectItemNode implements ProjectNode, ProjectNodeWithProject {
     item.description = formatProjectDescription(this.project.type, this.duplicateInfo, this.summary, this.showSummary, this.tags);
     let tooltip = '';
     if (this.duplicateInfo) {
-      tooltip = `${this.project.name}\n${this.project.path}\nDuplicate ${this.duplicateInfo.index + 1}/${this.duplicateInfo.total}`;
+      if (isGitCommonDuplicate(this.duplicateInfo)) {
+        const worktreeCount = Math.max(0, this.duplicateInfo.total - 1);
+        tooltip = `${this.project.name}\n${this.project.path}\nWorktrees: ${worktreeCount}`;
+      } else {
+        tooltip = `${this.project.name}\n${this.project.path}\nDuplicate ${this.duplicateInfo.index + 1}/${this.duplicateInfo.total}`;
+        if (this.duplicateInfo.peerPath) {
+          tooltip = `${tooltip}\nSibling: ${this.duplicateInfo.peerPath}`;
+        }
+      }
     } else if (this.summary && this.showSummary && this.project.type === 'git') {
       tooltip = `${this.project.name}\n${this.project.path}\n${formatSummaryTooltip(this.summary)}`;
     } else {
@@ -441,6 +456,53 @@ class ProjectBuildGroupNode implements ProjectNode {
 
   public getTreeItem(): vscode.TreeItem {
     return createProjectEntryGroupTreeItem('Build Scripts', 'forgeflowProjectBuildGroup', 'tools');
+  }
+}
+
+class ProjectWorktreeSiblingsGroupNode implements ProjectNode, ProjectNodeWithProject {
+  public readonly id: string;
+  public readonly project: Project;
+
+  public constructor(project: Project, private readonly siblings: Project[]) {
+    this.project = project;
+    this.id = treeId('project-worktree-siblings-group', project.id);
+  }
+
+  public async getChildren(): Promise<ProjectNode[]> {
+    return this.siblings.map((sibling) => new ProjectWorktreeSiblingNode(this.project, sibling));
+  }
+
+  public getTreeItem(): vscode.TreeItem {
+    const item = new vscode.TreeItem('Worktrees', vscode.TreeItemCollapsibleState.Collapsed);
+    item.contextValue = 'forgeflowProjectWorktreeSiblingsGroup';
+    item.iconPath = new vscode.ThemeIcon('source-control');
+    item.description = String(this.siblings.length);
+    return item;
+  }
+}
+
+class ProjectWorktreeSiblingNode implements ProjectNode, ProjectNodeWithProject {
+  public readonly id: string;
+  public readonly project: Project;
+
+  public constructor(private readonly owner: Project, sibling: Project) {
+    this.project = sibling;
+    this.id = treeId('project-worktree-sibling', `${owner.id}:${sibling.id}`);
+  }
+
+  public async getChildren(): Promise<ProjectNode[]> {
+    return noProjectChildren();
+  }
+
+  public getTreeItem(): vscode.TreeItem {
+    const item = new vscode.TreeItem(this.project.name, vscode.TreeItemCollapsibleState.None);
+    item.contextValue = 'forgeflowProject';
+    item.resourceUri = vscode.Uri.file(this.project.path);
+    item.description = 'worktree';
+    item.tooltip = `${this.project.name}\n${this.project.path}\nLinked worktree for ${this.owner.name}`;
+    item.iconPath = new vscode.ThemeIcon('git-branch');
+    item.command = { command: 'forgeflow.projects.open', title: 'Open Project', arguments: [this] };
+    return item;
   }
 }
 
@@ -680,6 +742,7 @@ function createProjectItemNode(
     summary,
     showSummary,
     resolvers.entryPointResolver,
+    resolvers.worktreeSiblingsResolver,
     resolvers.tagsResolver?.(project.id) ?? [],
     resolvers.historyResolver?.(project) ?? []
   );

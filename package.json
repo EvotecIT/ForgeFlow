@@ -3515,6 +3515,14 @@
           "minimum": 0,
           "maximum": 60
         },
+        "forgeflow.projects.scanIgnoreFolders": {
+          "type": "array",
+          "description": "Folder names to skip while scanning project roots (case-insensitive).",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
         "forgeflow.projects.periodicForceRefreshMinutes": {
           "type": "number",
           "description": "Fallback cadence in minutes for periodic refreshes when specific project/worktree cadences are not set (0 = disabled).",

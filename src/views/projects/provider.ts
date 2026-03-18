@@ -432,6 +432,7 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
   ): Promise<void> {
     const runId = ++this.scanVersion;
     const scanStart = Date.now();
+    const settings = getForgeFlowSettings();
     try {
       if (sortMode === 'gitCommit') {
         this.gitCommitLoading = true;
@@ -456,7 +457,7 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
         this.modifiedTotal = 0;
       }
       const existing = this.projectsStore.list();
-      const scanned = await this.scanner.scan(scanRoots, maxDepth, existing);
+      const scanned = await this.scanner.scan(scanRoots, maxDepth, existing, settings.projectScanIgnoreFolders);
       const projects = scanRoots.length === allRoots.length
         ? scanned
         : mergeScanResults(existing, scanned, scanRoots);
@@ -620,13 +621,16 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
     const commonDirChanged = !mapEquals(this.worktreeCommonDirInfo, nextCommonDirs);
     this.worktreeInfo = next;
     this.worktreeCommonDirInfo = nextCommonDirs;
+    this.updateDuplicateInfo(projects);
     if (worktreeChanged || commonDirChanged) {
       this.onDidChangeTreeDataEmitter.fire(undefined);
     }
   }
 
   private updateDuplicateInfo(projects: Project[]): void {
-    this.duplicateInfo = buildDuplicateInfoFromStore(this.projectsStore, projects);
+    this.duplicateInfo = buildDuplicateInfoFromStore(this.projectsStore, projects, {
+      gitCommonDirs: this.worktreeCommonDirInfo
+    });
   }
 
   public invalidateEntryPointCache(projectId?: string): void {
