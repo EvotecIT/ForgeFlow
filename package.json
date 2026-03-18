@@ -776,8 +776,8 @@
       },
       {
         "command": "forgeflow.run.chooseProfile",
-        "title": "Run (Choose Profile)",
-        "shortTitle": "Run (Choose Profile)",
+        "title": "Run with PowerShell Profile",
+        "shortTitle": "Run with Profile",
         "category": "ForgeFlow",
         "icon": {
           "light": "resources/icons/profile-light.svg",
@@ -810,8 +810,8 @@
       },
       {
         "command": "forgeflow.run.integrated",
-        "title": "Run Integrated (Default Profile)",
-        "shortTitle": "Run Integrated",
+        "title": "Run in Current Terminal",
+        "shortTitle": "Current Terminal",
         "icon": {
           "light": "resources/icons/run-terminal-light.svg",
           "dark": "resources/icons/run-terminal-dark.svg"
@@ -820,11 +820,11 @@
       },
       {
         "command": "forgeflow.run.integrated.newTerminal",
-        "title": "Run Integrated (New Terminal)",
-        "shortTitle": "Run New Terminal",
+        "title": "Run in New Terminal",
+        "shortTitle": "New Terminal",
         "icon": {
-          "light": "resources/icons/run-light.svg",
-          "dark": "resources/icons/run-dark.svg"
+          "light": "resources/icons/run-terminal-new-light.svg",
+          "dark": "resources/icons/run-terminal-new-dark.svg"
         },
         "category": "ForgeFlow"
       },
@@ -842,8 +842,8 @@
       },
       {
         "command": "forgeflow.run.external",
-        "title": "Run External (Default Profile)",
-        "shortTitle": "Run External",
+        "title": "Run in External Window",
+        "shortTitle": "External Window",
         "icon": {
           "light": "resources/icons/run-external-light.svg",
           "dark": "resources/icons/run-external-dark.svg"
@@ -862,8 +862,8 @@
       },
       {
         "command": "forgeflow.run.externalAdmin",
-        "title": "Run as Admin (Default Profile)",
-        "shortTitle": "Run as Admin",
+        "title": "Run in Elevated Window",
+        "shortTitle": "Elevated Window",
         "icon": {
           "light": "resources/icons/run-admin-light.svg",
           "dark": "resources/icons/run-admin-dark.svg"
@@ -3099,8 +3099,8 @@
           "when": "resourceExtname == .ps1",
           "group": "navigation",
           "icon": {
-            "light": "resources/icons/run-light.svg",
-            "dark": "resources/icons/run-dark.svg"
+            "light": "resources/icons/run-terminal-new-light.svg",
+            "dark": "resources/icons/run-terminal-new-dark.svg"
           }
         },
         {
