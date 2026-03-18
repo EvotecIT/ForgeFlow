@@ -819,6 +819,16 @@
         "category": "ForgeFlow"
       },
       {
+        "command": "forgeflow.run.integrated.newTerminal",
+        "title": "Run Integrated (New Terminal)",
+        "shortTitle": "Run New Terminal",
+        "icon": {
+          "light": "resources/icons/run-light.svg",
+          "dark": "resources/icons/run-dark.svg"
+        },
+        "category": "ForgeFlow"
+      },
+      {
         "command": "forgeflow.run.integrated.keepOpenAlways",
         "title": "Run Integrated (Keep Open)",
         "shortTitle": "Run Keep Open",
@@ -3076,7 +3086,16 @@
       ],
       "editor/title": [
         {
-          "command": "forgeflow.run",
+          "command": "forgeflow.run.integrated",
+          "when": "resourceExtname == .ps1",
+          "group": "navigation",
+          "icon": {
+            "light": "resources/icons/run-terminal-light.svg",
+            "dark": "resources/icons/run-terminal-dark.svg"
+          }
+        },
+        {
+          "command": "forgeflow.run.integrated.newTerminal",
           "when": "resourceExtname == .ps1",
           "group": "navigation",
           "icon": {
