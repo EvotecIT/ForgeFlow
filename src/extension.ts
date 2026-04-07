@@ -57,6 +57,7 @@ import { touchProjectActivity } from './extension/workspace/activity';
 import { registerFileCommands } from './extension/commands/files';
 import { registerProjectCommands } from './extension/commands/projects';
 import { schedulePowerShellProfileHealthCheck } from './extension/run/health';
+import { openPathPreview } from './extension/fsActions';
 
 const GLOBAL_STATE_SYNC_KEYS = [
   'forgeflow.layout.mode.v1',
@@ -315,10 +316,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (activeEditorPath && normalizeFsPath(activeEditorPath) === normalizeFsPath(candidatePath)) {
         return;
       }
-      await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(candidatePath), {
-        preview: true,
-        preserveFocus: true
-      });
+      await openPathPreview(candidatePath);
     }, openSelectionDelayMs);
     openSelectionTimers.set(viewId, timer);
   };

@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
 import { pastePaths } from '../../src/extension/fsActions';
 import { deletePaths } from '../../src/extension/fsActions';
 import { deletePath } from '../../src/extension/fsActions';
+import { openPath, openPathPreview } from '../../src/extension/fsActions';
 
 async function pathExists(candidate: string): Promise<boolean> {
   try {
@@ -43,6 +44,61 @@ describe('pastePaths', () => {
       assert.equal(await pathExists(source), true);
       assert.equal(await pathExists(path.join(root, 'file - Copy.txt')), true);
     } finally {
+      await fs.promises.rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('openPath', () => {
+  it('opens files as non-preview tabs', async () => {
+    const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'forgeflow-'));
+    const filePath = path.join(root, 'file.txt');
+    await fs.promises.writeFile(filePath, 'data');
+    const commandsAny = vscode.commands as unknown as {
+      executeCommand: (command: string, ...args: unknown[]) => Thenable<unknown>;
+    };
+    const originalExecute = commandsAny.executeCommand;
+    const calls: Array<{ command: string; args: unknown[] }> = [];
+    commandsAny.executeCommand = async (command: string, ...args: unknown[]) => {
+      calls.push({ command, args });
+      return undefined;
+    };
+    try {
+      await openPath(filePath);
+
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0]?.command, 'vscode.open');
+      assert.deepEqual(calls[0]?.args[1], { preview: false });
+    } finally {
+      commandsAny.executeCommand = originalExecute;
+      await fs.promises.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('opens selection previews without taking focus', async () => {
+    const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'forgeflow-'));
+    const filePath = path.join(root, 'file.txt');
+    await fs.promises.writeFile(filePath, 'data');
+    const commandsAny = vscode.commands as unknown as {
+      executeCommand: (command: string, ...args: unknown[]) => Thenable<unknown>;
+    };
+    const originalExecute = commandsAny.executeCommand;
+    const calls: Array<{ command: string; args: unknown[] }> = [];
+    commandsAny.executeCommand = async (command: string, ...args: unknown[]) => {
+      calls.push({ command, args });
+      return undefined;
+    };
+    try {
+      await openPathPreview(filePath);
+
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0]?.command, 'vscode.open');
+      assert.deepEqual(calls[0]?.args[1], {
+        preview: true,
+        preserveFocus: true
+      });
+    } finally {
+      commandsAny.executeCommand = originalExecute;
       await fs.promises.rm(root, { recursive: true, force: true });
     }
   });

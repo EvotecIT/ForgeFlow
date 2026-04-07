@@ -3156,22 +3156,22 @@
       {
         "command": "forgeflow.dashboard.focusFilter",
         "key": "ctrl+shift+alt+f",
-        "when": "view == forgeflow.dashboard"
+        "when": "focusedView == forgeflow.dashboard"
       },
       {
         "command": "forgeflow.dashboard.focusFilter",
         "key": "cmd+shift+alt+f",
-        "when": "isMac && view == forgeflow.dashboard"
+        "when": "isMac && focusedView == forgeflow.dashboard"
       },
       {
         "command": "forgeflow.files.focusFilter",
         "key": "ctrl+shift+alt+f",
-        "when": "view == forgeflow.files || view == forgeflow.files.panel"
+        "when": "focusedView == forgeflow.files || focusedView == forgeflow.files.panel"
       },
       {
         "command": "forgeflow.files.focusFilter",
         "key": "cmd+shift+alt+f",
-        "when": "isMac && (view == forgeflow.files || view == forgeflow.files.panel)"
+        "when": "isMac && (focusedView == forgeflow.files || focusedView == forgeflow.files.panel)"
       },
       {
         "command": "forgeflow.files.rename",
@@ -3179,7 +3179,7 @@
         "args": {
           "viewId": "forgeflow.files"
         },
-        "when": "view == forgeflow.files && listFocus"
+        "when": "focusedView == forgeflow.files && listFocus"
       },
       {
         "command": "forgeflow.files.rename",
@@ -3187,7 +3187,7 @@
         "args": {
           "viewId": "forgeflow.files.panel"
         },
-        "when": "view == forgeflow.files.panel && listFocus"
+        "when": "focusedView == forgeflow.files.panel && listFocus"
       },
       {
         "command": "forgeflow.files.open",
@@ -3195,7 +3195,7 @@
         "args": {
           "viewId": "forgeflow.files"
         },
-        "when": "view == forgeflow.files && listFocus && viewItem != forgeflowWorktree && viewItem != forgeflowWorktreeMissing"
+        "when": "focusedView == forgeflow.files && listFocus && viewItem != forgeflowWorktree && viewItem != forgeflowWorktreeMissing"
       },
       {
         "command": "forgeflow.files.open",
@@ -3203,7 +3203,7 @@
         "args": {
           "viewId": "forgeflow.files.panel"
         },
-        "when": "view == forgeflow.files.panel && listFocus && viewItem != forgeflowWorktree && viewItem != forgeflowWorktreeMissing"
+        "when": "focusedView == forgeflow.files.panel && listFocus && viewItem != forgeflowWorktree && viewItem != forgeflowWorktreeMissing"
       },
       {
         "command": "forgeflow.worktrees.openDefault",
@@ -3211,7 +3211,7 @@
         "args": {
           "viewId": "forgeflow.files"
         },
-        "when": "view == forgeflow.files && listFocus && viewItem == forgeflowWorktree"
+        "when": "focusedView == forgeflow.files && listFocus && viewItem == forgeflowWorktree"
       },
       {
         "command": "forgeflow.worktrees.openDefault",
@@ -3219,7 +3219,7 @@
         "args": {
           "viewId": "forgeflow.files.panel"
         },
-        "when": "view == forgeflow.files.panel && listFocus && viewItem == forgeflowWorktree"
+        "when": "focusedView == forgeflow.files.panel && listFocus && viewItem == forgeflowWorktree"
       },
       {
         "command": "forgeflow.files.openToSide",
@@ -3227,7 +3227,7 @@
         "args": {
           "viewId": "forgeflow.files"
         },
-        "when": "view == forgeflow.files && listFocus"
+        "when": "focusedView == forgeflow.files && listFocus"
       },
       {
         "command": "forgeflow.files.openToSide",
@@ -3235,7 +3235,7 @@
         "args": {
           "viewId": "forgeflow.files.panel"
         },
-        "when": "view == forgeflow.files.panel && listFocus"
+        "when": "focusedView == forgeflow.files.panel && listFocus"
       },
       {
         "command": "forgeflow.files.openToSide",
@@ -3243,7 +3243,7 @@
         "args": {
           "viewId": "forgeflow.files"
         },
-        "when": "isMac && view == forgeflow.files && listFocus"
+        "when": "isMac && focusedView == forgeflow.files && listFocus"
       },
       {
         "command": "forgeflow.files.openToSide",
@@ -3251,7 +3251,7 @@
         "args": {
           "viewId": "forgeflow.files.panel"
         },
-        "when": "isMac && view == forgeflow.files.panel && listFocus"
+        "when": "isMac && focusedView == forgeflow.files.panel && listFocus"
       },
       {
         "command": "forgeflow.worktrees.remove",
@@ -3259,7 +3259,7 @@
         "args": {
           "viewId": "forgeflow.files"
         },
-        "when": "view == forgeflow.files && listFocus && (viewItem == forgeflowWorktree || viewItem == forgeflowWorktreeMissing)"
+        "when": "focusedView == forgeflow.files && listFocus && (viewItem == forgeflowWorktree || viewItem == forgeflowWorktreeMissing)"
       },
       {
         "command": "forgeflow.worktrees.remove",
@@ -3267,7 +3267,7 @@
         "args": {
           "viewId": "forgeflow.files.panel"
         },
-        "when": "view == forgeflow.files.panel && listFocus && (viewItem == forgeflowWorktree || viewItem == forgeflowWorktreeMissing)"
+        "when": "focusedView == forgeflow.files.panel && listFocus && (viewItem == forgeflowWorktree || viewItem == forgeflowWorktreeMissing)"
       },
       {
         "command": "forgeflow.files.delete",
@@ -3275,7 +3275,7 @@
         "args": {
           "viewId": "forgeflow.files"
         },
-        "when": "view == forgeflow.files && listFocus"
+        "when": "focusedView == forgeflow.files && listFocus"
       },
       {
         "command": "forgeflow.files.delete",
@@ -3283,7 +3283,7 @@
         "args": {
           "viewId": "forgeflow.files.panel"
         },
-        "when": "view == forgeflow.files.panel && listFocus"
+        "when": "focusedView == forgeflow.files.panel && listFocus"
       },
       {
         "command": "forgeflow.files.delete",
@@ -3291,7 +3291,7 @@
         "args": {
           "viewId": "forgeflow.files"
         },
-        "when": "isMac && view == forgeflow.files && listFocus"
+        "when": "isMac && focusedView == forgeflow.files && listFocus"
       },
       {
         "command": "forgeflow.files.delete",
@@ -3299,7 +3299,7 @@
         "args": {
           "viewId": "forgeflow.files.panel"
         },
-        "when": "isMac && view == forgeflow.files.panel && listFocus"
+        "when": "isMac && focusedView == forgeflow.files.panel && listFocus"
       },
       {
         "command": "forgeflow.files.copy",
@@ -3307,7 +3307,7 @@
         "args": {
           "viewId": "forgeflow.files"
         },
-        "when": "view == forgeflow.files && listFocus"
+        "when": "focusedView == forgeflow.files && listFocus"
       },
       {
         "command": "forgeflow.files.copy",
@@ -3315,7 +3315,7 @@
         "args": {
           "viewId": "forgeflow.files.panel"
         },
-        "when": "view == forgeflow.files.panel && listFocus"
+        "when": "focusedView == forgeflow.files.panel && listFocus"
       },
       {
         "command": "forgeflow.files.cut",
@@ -3323,7 +3323,7 @@
         "args": {
           "viewId": "forgeflow.files"
         },
-        "when": "view == forgeflow.files && listFocus"
+        "when": "focusedView == forgeflow.files && listFocus"
       },
       {
         "command": "forgeflow.files.cut",
@@ -3331,7 +3331,7 @@
         "args": {
           "viewId": "forgeflow.files.panel"
         },
-        "when": "view == forgeflow.files.panel && listFocus"
+        "when": "focusedView == forgeflow.files.panel && listFocus"
       },
       {
         "command": "forgeflow.files.paste",
@@ -3339,7 +3339,7 @@
         "args": {
           "viewId": "forgeflow.files"
         },
-        "when": "view == forgeflow.files && listFocus"
+        "when": "focusedView == forgeflow.files && listFocus"
       },
       {
         "command": "forgeflow.files.paste",
@@ -3347,7 +3347,7 @@
         "args": {
           "viewId": "forgeflow.files.panel"
         },
-        "when": "view == forgeflow.files.panel && listFocus"
+        "when": "focusedView == forgeflow.files.panel && listFocus"
       },
       {
         "command": "forgeflow.files.copy",
@@ -3355,7 +3355,7 @@
         "args": {
           "viewId": "forgeflow.files"
         },
-        "when": "isMac && view == forgeflow.files && listFocus"
+        "when": "isMac && focusedView == forgeflow.files && listFocus"
       },
       {
         "command": "forgeflow.files.copy",
@@ -3363,7 +3363,7 @@
         "args": {
           "viewId": "forgeflow.files.panel"
         },
-        "when": "isMac && view == forgeflow.files.panel && listFocus"
+        "when": "isMac && focusedView == forgeflow.files.panel && listFocus"
       },
       {
         "command": "forgeflow.files.cut",
@@ -3371,7 +3371,7 @@
         "args": {
           "viewId": "forgeflow.files"
         },
-        "when": "isMac && view == forgeflow.files && listFocus"
+        "when": "isMac && focusedView == forgeflow.files && listFocus"
       },
       {
         "command": "forgeflow.files.cut",
@@ -3379,7 +3379,7 @@
         "args": {
           "viewId": "forgeflow.files.panel"
         },
-        "when": "isMac && view == forgeflow.files.panel && listFocus"
+        "when": "isMac && focusedView == forgeflow.files.panel && listFocus"
       },
       {
         "command": "forgeflow.files.paste",
@@ -3387,7 +3387,7 @@
         "args": {
           "viewId": "forgeflow.files"
         },
-        "when": "isMac && view == forgeflow.files && listFocus"
+        "when": "isMac && focusedView == forgeflow.files && listFocus"
       },
       {
         "command": "forgeflow.files.paste",
@@ -3395,17 +3395,17 @@
         "args": {
           "viewId": "forgeflow.files.panel"
         },
-        "when": "isMac && view == forgeflow.files.panel && listFocus"
+        "when": "isMac && focusedView == forgeflow.files.panel && listFocus"
       },
       {
         "command": "forgeflow.projects.focusFilter",
         "key": "ctrl+shift+alt+f",
-        "when": "view == forgeflow.projects || view == forgeflow.projects.panel"
+        "when": "focusedView == forgeflow.projects || focusedView == forgeflow.projects.panel"
       },
       {
         "command": "forgeflow.projects.focusFilter",
         "key": "cmd+shift+alt+f",
-        "when": "isMac && (view == forgeflow.projects || view == forgeflow.projects.panel)"
+        "when": "isMac && (focusedView == forgeflow.projects || focusedView == forgeflow.projects.panel)"
       },
       {
         "command": "forgeflow.projects.delete",
@@ -3413,7 +3413,7 @@
         "args": {
           "viewId": "forgeflow.projects"
         },
-        "when": "view == forgeflow.projects && listFocus && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        "when": "focusedView == forgeflow.projects && listFocus && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
       },
       {
         "command": "forgeflow.projects.delete",
@@ -3421,7 +3421,7 @@
         "args": {
           "viewId": "forgeflow.projects.panel"
         },
-        "when": "view == forgeflow.projects.panel && listFocus && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        "when": "focusedView == forgeflow.projects.panel && listFocus && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
       },
       {
         "command": "forgeflow.projects.delete",
@@ -3429,7 +3429,7 @@
         "args": {
           "viewId": "forgeflow.projects"
         },
-        "when": "isMac && view == forgeflow.projects && listFocus && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        "when": "isMac && focusedView == forgeflow.projects && listFocus && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
       },
       {
         "command": "forgeflow.projects.delete",
@@ -3437,17 +3437,17 @@
         "args": {
           "viewId": "forgeflow.projects.panel"
         },
-        "when": "isMac && view == forgeflow.projects.panel && listFocus && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
+        "when": "isMac && focusedView == forgeflow.projects.panel && listFocus && (viewItem == forgeflowProject || viewItem == forgeflowProjectFavorite)"
       },
       {
         "command": "forgeflow.git.focusFilter",
         "key": "ctrl+shift+alt+f",
-        "when": "view == forgeflow.git || view == forgeflow.git.panel"
+        "when": "focusedView == forgeflow.git || focusedView == forgeflow.git.panel"
       },
       {
         "command": "forgeflow.git.focusFilter",
         "key": "cmd+shift+alt+f",
-        "when": "isMac && (view == forgeflow.git || view == forgeflow.git.panel)"
+        "when": "isMac && (focusedView == forgeflow.git || focusedView == forgeflow.git.panel)"
       }
     ],
     "configuration": {
