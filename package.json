@@ -4244,8 +4244,19 @@
     "typescript": "^5.9.3"
   },
   "overrides": {
-    "@isaacs/brace-expansion": "^5.0.1",
+    "@isaacs/brace-expansion": "^5.0.5",
+    "ajv@^6.12.4": "6.14.0",
+    "ajv@^8.0.1": "8.18.0",
+    "ajv@^8.17.1": "8.18.0",
+    "brace-expansion@^1.1.7": "1.1.14",
+    "brace-expansion@^2.0.2": "2.0.3",
+    "brace-expansion@^5.0.2": "5.0.5",
     "diff": "^8.0.3",
-    "lodash": "^4.17.22"
+    "lodash": "^4.17.22",
+    "markdown-it": "14.1.1",
+    "mocha": {
+      "serialize-javascript": "7.0.5"
+    },
+    "underscore": "1.13.8"
   }
 }
