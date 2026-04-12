@@ -5,6 +5,8 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { pastePaths } from '../../src/extension/fsActions';
 import { deletePaths } from '../../src/extension/fsActions';
+import { deletePath } from '../../src/extension/fsActions';
+import { openPath, openPathPreview } from '../../src/extension/fsActions';
 
 async function pathExists(candidate: string): Promise<boolean> {
   try {
@@ -47,7 +49,118 @@ describe('pastePaths', () => {
   });
 });
 
+describe('openPath', () => {
+  it('opens files as non-preview tabs', async () => {
+    const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'forgeflow-'));
+    const filePath = path.join(root, 'file.txt');
+    await fs.promises.writeFile(filePath, 'data');
+    const commandsAny = vscode.commands as unknown as {
+      executeCommand: (command: string, ...args: unknown[]) => Thenable<unknown>;
+    };
+    const originalExecute = commandsAny.executeCommand;
+    const calls: Array<{ command: string; args: unknown[] }> = [];
+    commandsAny.executeCommand = async (command: string, ...args: unknown[]) => {
+      calls.push({ command, args });
+      return undefined;
+    };
+    try {
+      await openPath(filePath);
+
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0]?.command, 'vscode.open');
+      assert.deepEqual(calls[0]?.args[1], { preview: false });
+    } finally {
+      commandsAny.executeCommand = originalExecute;
+      await fs.promises.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('opens selection previews without taking focus', async () => {
+    const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'forgeflow-'));
+    const filePath = path.join(root, 'file.txt');
+    await fs.promises.writeFile(filePath, 'data');
+    const commandsAny = vscode.commands as unknown as {
+      executeCommand: (command: string, ...args: unknown[]) => Thenable<unknown>;
+    };
+    const originalExecute = commandsAny.executeCommand;
+    const calls: Array<{ command: string; args: unknown[] }> = [];
+    commandsAny.executeCommand = async (command: string, ...args: unknown[]) => {
+      calls.push({ command, args });
+      return undefined;
+    };
+    try {
+      await openPathPreview(filePath);
+
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0]?.command, 'vscode.open');
+      assert.deepEqual(calls[0]?.args[1], {
+        preview: true,
+        preserveFocus: true
+      });
+    } finally {
+      commandsAny.executeCommand = originalExecute;
+      await fs.promises.rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('deletePaths', () => {
+  it('blocks deleting an open workspace root', async () => {
+    const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'forgeflow-'));
+    const windowAny = vscode.window as unknown as { showWarningMessage: (message: string, ...items: string[]) => Thenable<string | undefined> };
+    const workspaceAny = vscode.workspace as unknown as { workspaceFolders?: Array<{ uri: vscode.Uri; name: string; index: number }> };
+    const originalWarning = windowAny.showWarningMessage;
+    const originalFolders = workspaceAny.workspaceFolders;
+    let lastMessage = '';
+    windowAny.showWarningMessage = async (message: string) => {
+      lastMessage = message;
+      return undefined;
+    };
+    workspaceAny.workspaceFolders = [{ uri: vscode.Uri.file(root), name: 'root', index: 0 }];
+    try {
+      await deletePath(root);
+
+      assert.equal(await pathExists(root), true);
+      assert.equal(lastMessage.includes('Cannot delete an open workspace root folder'), true);
+    } finally {
+      windowAny.showWarningMessage = originalWarning;
+      workspaceAny.workspaceFolders = originalFolders;
+      await fs.promises.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('skips open workspace roots in multi-delete', async () => {
+    const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'forgeflow-'));
+    const externalDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'forgeflow-'));
+    const externalFile = path.join(externalDir, 'remove-me.txt');
+    await fs.promises.writeFile(externalFile, 'data');
+    const windowAny = vscode.window as unknown as { showWarningMessage: (message: string, ...items: string[]) => Thenable<string | undefined> };
+    const workspaceAny = vscode.workspace as unknown as { workspaceFolders?: Array<{ uri: vscode.Uri; name: string; index: number }> };
+    const originalWarning = windowAny.showWarningMessage;
+    const originalFolders = workspaceAny.workspaceFolders;
+    const messages: string[] = [];
+    windowAny.showWarningMessage = async (message: string) => {
+      messages.push(message);
+      if (message.startsWith('ForgeFlow: Delete')) {
+        return 'Delete';
+      }
+      return undefined;
+    };
+    workspaceAny.workspaceFolders = [{ uri: vscode.Uri.file(root), name: 'root', index: 0 }];
+    try {
+      await deletePaths([root, externalFile]);
+
+      assert.equal(await pathExists(root), true);
+      assert.equal(await pathExists(externalFile), false);
+      assert.equal(messages.some((message) => message.includes('Skipped 1 open workspace root')), true);
+    } finally {
+      windowAny.showWarningMessage = originalWarning;
+      workspaceAny.workspaceFolders = originalFolders;
+      await fs.promises.rm(root, { recursive: true, force: true });
+      await fs.promises.rm(externalDir, { recursive: true, force: true });
+    }
+  });
+
   it('continues after a delete failure and reports a warning', async () => {
     const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'forgeflow-'));
     const windowAny = vscode.window as unknown as { showWarningMessage: (message: string, ...items: string[]) => Thenable<string | undefined> };

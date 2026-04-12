@@ -1,4 +1,6 @@
 import type { StateStore } from './stateStore';
+import { createRevisionStamp } from '../util/revision';
+import { normalizeTagList } from '../util/tags';
 
 const TAGS_KEY = 'forgeflow.projects.tags.v1';
 const TAGS_REVISION_KEY = 'forgeflow.projects.tags.revision.v1';
@@ -42,7 +44,7 @@ export class TagsStore {
 
     Object.entries(map).forEach(([projectId, entry]) => {
       const next = entry.tags.map((tag) => (tag.toLowerCase() === oldLower ? newTag : tag));
-      const deduped = Array.from(new Map(next.map((tag) => [tag.toLowerCase(), tag])).values());
+      const deduped = normalizeTagList(next);
       if (deduped.join('|') !== entry.tags.join('|')) {
         map[projectId] = { tags: deduped };
         touched.add(projectId);
@@ -81,10 +83,4 @@ export class TagsStore {
   private async bumpRevision(): Promise<void> {
     await this.state.setGlobal(TAGS_REVISION_KEY, createRevisionStamp());
   }
-}
-
-function createRevisionStamp(): string {
-  const base = Date.now().toString(36);
-  const rand = Math.random().toString(36).slice(2, 8);
-  return `${base}-${rand}`;
 }

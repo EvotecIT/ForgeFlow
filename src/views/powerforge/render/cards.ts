@@ -1,6 +1,7 @@
 import type { PowerForgeConfigSummary } from '../types';
 import { escapeHtml } from '../utils';
 import { renderPipelineCard } from './pipelineCard';
+import { renderConfigCardShell } from './cardShell';
 
 export function renderConfigCard(config: PowerForgeConfigSummary, index: number): string {
   if (config.kind === 'pipeline') {
@@ -10,26 +11,18 @@ export function renderConfigCard(config: PowerForgeConfigSummary, index: number)
 }
 
 function renderDotnetCard(config: PowerForgeConfigSummary, index: number): string {
-  const title = escapeHtml(config.title);
-  const configPath = escapeHtml(config.path);
-  const projectRoot = escapeHtml(config.projectRoot ?? '');
-  return `
-    <div class="card" data-config-path="${configPath}" data-config-id="${index}">
-      <div class="card-header">
-        <div class="card-title-row">
-          <div class="card-title">${title}</div>
-          <span class="pill">DotNet Publish</span>
-        </div>
-        <div class="card-meta">${configPath}</div>
-        ${projectRoot ? `<div class="card-meta">Project: ${projectRoot}</div>` : ''}
-        <div class="card-actions">
-          <button data-action="openConfig">Open JSON</button>
-          <button class="secondary" data-action="saveDotnetPublish">Save</button>
-          <button data-action="planDotnetPublish">Plan</button>
-          <button data-action="runDotnetPublish">Publish</button>
-          <button data-action="validateDotnetPublish">Validate</button>
-        </div>
-      </div>
+  return renderConfigCardShell({
+    config,
+    index,
+    pillLabel: 'DotNet Publish',
+    actionsHtml: `
+      <button data-action="openConfig">Open JSON</button>
+      <button class="secondary" data-action="saveDotnetPublish">Save</button>
+      <button data-action="planDotnetPublish">Plan</button>
+      <button data-action="runDotnetPublish">Publish</button>
+      <button data-action="validateDotnetPublish">Validate</button>
+    `,
+    bodyHtml: `
       <div class="row">
         <div class="field">
           <label>Project Root</label>
@@ -50,8 +43,8 @@ function renderDotnetCard(config: PowerForgeConfigSummary, index: number): strin
           <input id="pf-dotnet-runtimes-${index}" value="${escapeHtml((config.dotnet?.runtimes ?? []).join(', '))}" />
         </div>
       </div>
-    </div>
-  `;
+    `
+  });
 }
 
 export function renderLegacyCard(scriptPath: string): string {

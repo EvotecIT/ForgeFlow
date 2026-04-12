@@ -1,7 +1,4 @@
-import { execFile } from 'child_process';
-import { promisify } from 'util';
-
-const execFileAsync = promisify(execFile);
+import { execGit } from '../git/exec';
 
 export interface GitHubRepoInfo {
   repo: string;
@@ -444,9 +441,4 @@ export async function getLocalGitInfo(projectPath: string): Promise<LocalGitInfo
     logProviderError(`Local git (${projectPath})`, error);
     return undefined;
   }
-}
-
-async function execGit(cwd: string, args: string[]): Promise<string> {
-  const result = await execFileAsync('git', ['-C', cwd, ...args]);
-  return result.stdout;
 }

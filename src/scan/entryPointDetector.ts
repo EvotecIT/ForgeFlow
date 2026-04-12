@@ -2,6 +2,8 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import type { ProjectEntryPoint } from '../models/project';
 import { readDirectory, readFileText, statPath } from '../util/fs';
+import { isSolutionFileName } from '../util/solutionFiles';
+import { walkDirectoriesBreadthFirst } from './walk';
 
 export interface EntryPointOptions {
   maxDepth: number;
@@ -87,7 +89,7 @@ export async function detectEntryPointGroups(projectPath: string, options?: Entr
       break;
     }
     const entryPath = path.join(projectPath, name);
-    if (name.endsWith('.sln')) {
+    if (isSolutionFileName(name)) {
       addEntry({
         label: name,
         path: entryPath,
@@ -236,7 +238,7 @@ function isPowerShellEntry(name: string): boolean {
 
 function classifyEntryKind(entryPath: string): ProjectEntryPoint['kind'] {
   const lower = entryPath.toLowerCase();
-  if (lower.endsWith('.sln')) {
+  if (isSolutionFileName(lower)) {
     return 'sln';
   }
   if (lower.endsWith('.csproj')) {
@@ -310,18 +312,10 @@ async function collectSearchDirs(
   const preferred: string[] = [];
   const others: string[] = [];
   const seen = new Set<string>();
-  const queue: Array<{ dir: string; depth: number }> = [{ dir: projectPath, depth: 0 }];
-
-  while (queue.length > 0) {
-    const next = queue.shift();
-    if (!next) {
-      continue;
-    }
-    const { dir, depth } = next;
+  await walkDirectoriesBreadthFirst(projectPath, maxDepth, async ({ dir, depth, entries, enqueuePath }) => {
     if (depth >= maxDepth) {
-      continue;
+      return;
     }
-    const entries = await readDirectory(dir);
     for (const [name, type] of entries) {
       if (type !== vscode.FileType.Directory) {
         continue;
@@ -340,9 +334,9 @@ async function collectSearchDirs(
       } else {
         others.push(childPath);
       }
-      queue.push({ dir: childPath, depth: depth + 1 });
+      enqueuePath(childPath);
     }
-  }
+  });
 
   return [...preferred, ...others];
 }

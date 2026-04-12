@@ -4,6 +4,7 @@ import type { DashboardViewProvider } from '../../views/dashboardView';
 import type { ProjectsStore } from '../../store/projectsStore';
 import type { TagsStore } from '../../store/tagsStore';
 import type { TagFilterStore } from '../../store/tagFilterStore';
+import { normalizeTagCsv } from '../../util/tags';
 import { resolveProjectTarget } from '../projectUtils';
 
 export async function setProjectTags(
@@ -13,9 +14,8 @@ export async function setProjectTags(
   projectsProvider: ProjectsViewProvider,
   dashboardProvider: DashboardViewProvider
 ): Promise<void> {
-  const project = resolveProjectTarget(target, projectsStore);
+  const project = resolveProjectOrWarn(target, projectsStore);
   if (!project) {
-    vscode.window.showWarningMessage('ForgeFlow: No project selected.');
     return;
   }
   const existing = tagsStore.getTags(project.id);
@@ -30,10 +30,9 @@ export async function setProjectTags(
   if (input === undefined) {
     return;
   }
-  const tags = normalizeTags(input);
+  const tags = normalizeTagCsv(input);
   await tagsStore.setTags(project.id, tags);
-  await projectsProvider.refresh();
-  await dashboardProvider.refresh();
+  await refreshTagViews(projectsProvider, dashboardProvider);
 }
 
 export async function clearProjectTags(
@@ -43,14 +42,12 @@ export async function clearProjectTags(
   projectsProvider: ProjectsViewProvider,
   dashboardProvider: DashboardViewProvider
 ): Promise<void> {
-  const project = resolveProjectTarget(target, projectsStore);
+  const project = resolveProjectOrWarn(target, projectsStore);
   if (!project) {
-    vscode.window.showWarningMessage('ForgeFlow: No project selected.');
     return;
   }
   await tagsStore.setTags(project.id, []);
-  await projectsProvider.refresh();
-  await dashboardProvider.refresh();
+  await refreshTagViews(projectsProvider, dashboardProvider);
 }
 
 export async function renameProjectTag(
@@ -77,8 +74,7 @@ export async function renameProjectTag(
     return;
   }
   await tagsStore.renameTag(pick.label, next);
-  await projectsProvider.refresh();
-  await dashboardProvider.refresh();
+  await refreshTagViews(projectsProvider, dashboardProvider);
 }
 
 export function listAllTags(tagsStore: TagsStore): string[] {
@@ -162,17 +158,19 @@ export async function deleteTagPreset(tagFilterStore: TagFilterStore): Promise<v
   vscode.window.setStatusBarMessage(`ForgeFlow: Deleted tag preset "${pick.label}".`, 3000);
 }
 
-function normalizeTags(input: string): string[] {
-  const raw = input
-    .split(',')
-    .map((value) => value.trim())
-    .filter(Boolean);
-  const deduped = new Map<string, string>();
-  raw.forEach((tag) => {
-    const key = tag.toLowerCase();
-    if (!deduped.has(key)) {
-      deduped.set(key, tag);
-    }
-  });
-  return Array.from(deduped.values());
+function resolveProjectOrWarn(target: unknown, projectsStore: ProjectsStore) {
+  const project = resolveProjectTarget(target, projectsStore);
+  if (!project) {
+    vscode.window.showWarningMessage('ForgeFlow: No project selected.');
+    return undefined;
+  }
+  return project;
+}
+
+async function refreshTagViews(
+  projectsProvider: ProjectsViewProvider,
+  dashboardProvider: DashboardViewProvider
+): Promise<void> {
+  await projectsProvider.refresh();
+  await dashboardProvider.refresh();
 }

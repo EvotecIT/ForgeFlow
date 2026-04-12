@@ -80,11 +80,14 @@ export function applyGitCommitUpdateToProjects(
 
 export function buildDuplicateInfoFromStore(
   projectsStore: ProjectsStore,
-  projects: Project[]
+  projects: Project[],
+  options?: {
+    gitCommonDirs?: ReadonlyMap<string, string>;
+  }
 ): Map<string, DuplicateInfo> {
   const fromStore = projectsStore.list();
-  const source = fromStore.length > 0 ? fromStore : projects;
-  return buildDuplicateInfo(source);
+  const source = projects.length > 0 ? projects : fromStore;
+  return buildDuplicateInfo(source, options);
 }
 
 export function shouldUpdateProgress(params: {

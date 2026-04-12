@@ -1,4 +1,3 @@
-import * as path from 'path';
 import * as vscode from 'vscode';
 import { DashboardService } from './dashboard/dashboardService';
 import { DashboardCache } from './dashboard/cache';
@@ -31,7 +30,6 @@ import { DashboardViewProvider } from './views/dashboardView';
 import { GitViewProvider } from './views/gitView';
 import { ForgeFlowLogger } from './util/log';
 import { getForgeFlowSettings } from './util/config';
-import { statPath } from './util/fs';
 import { maybeRunOnboarding } from './onboarding/onboarding';
 import { registerToggleQuotes } from './editor/toggleQuotes';
 import { registerUnicodeSubstitutions } from './editor/unicodeSubstitutions';
@@ -49,15 +47,11 @@ import {
   toggleFilterScope
 } from './extension/filters';
 import { getFiltersRevision } from './store/filterScope';
-import {
-  extractPath,
-  getActiveEditorPath
-} from './extension/selection';
-import { normalizeFsPath } from './extension/pathUtils';
 import { touchProjectActivity } from './extension/workspace/activity';
 import { registerFileCommands } from './extension/commands/files';
 import { registerProjectCommands } from './extension/commands/projects';
 import { schedulePowerShellProfileHealthCheck } from './extension/run/health';
+import { registerOpenOnSelection } from './extension/files/openOnSelection';
 
 const GLOBAL_STATE_SYNC_KEYS = [
   'forgeflow.layout.mode.v1',
@@ -125,12 +119,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       filesProvider.refresh();
     }, delay);
   };
+  const normalizeWatchPath = (value: string): string => {
+    return value.replace(/\\/g, '/').toLowerCase();
+  };
+  const isWorktreeMetadataEvent = (uri: vscode.Uri): boolean => {
+    const fsPath = normalizeWatchPath(uri.fsPath);
+    return fsPath.includes('/.git/worktrees/') || fsPath.endsWith('/.git/worktrees');
+  };
   const shouldIgnoreFileEvent = (uri: vscode.Uri): boolean => {
-    const fsPath = uri.fsPath;
-    const gitSegment = `${path.sep}.git${path.sep}`;
-    return fsPath === `${path.sep}.git`
-      || fsPath.endsWith(`${path.sep}.git`)
-      || fsPath.includes(gitSegment);
+    if (isWorktreeMetadataEvent(uri)) {
+      return false;
+    }
+    const fsPath = normalizeWatchPath(uri.fsPath);
+    return fsPath.endsWith('/.git') || fsPath.includes('/.git/');
   };
   const fileWatchers = new Map<string, vscode.FileSystemWatcher>();
   let fileWatchMode: 'off' | 'roots' | 'all' | undefined;
@@ -161,16 +162,28 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(folder, pattern));
       watcher.onDidCreate((uri) => {
+        if (isWorktreeMetadataEvent(uri)) {
+          scheduleWorktreeRefresh();
+          return;
+        }
         if (!shouldIgnoreFileEvent(uri)) {
           scheduleFilesRefresh();
         }
       });
       watcher.onDidChange((uri) => {
+        if (isWorktreeMetadataEvent(uri)) {
+          scheduleWorktreeRefresh();
+          return;
+        }
         if (!shouldIgnoreFileEvent(uri)) {
           scheduleFilesRefresh();
         }
       });
       watcher.onDidDelete((uri) => {
+        if (isWorktreeMetadataEvent(uri)) {
+          scheduleWorktreeRefresh();
+          return;
+        }
         if (!shouldIgnoreFileEvent(uri)) {
           scheduleFilesRefresh();
         }
@@ -213,6 +226,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const projectsWebviewPanelProvider = new ProjectsWebviewProvider(projectsProvider, projectsStore, dashboardProvider);
   const powerForgeViewProvider = new PowerForgeViewProvider(context, projectsStore);
   const powerForgePanelProvider = new PowerForgeViewProvider(context, projectsStore);
+  let worktreeRefreshTimer: NodeJS.Timeout | undefined;
+  const scheduleWorktreeRefresh = (): void => {
+    if (worktreeRefreshTimer) {
+      clearTimeout(worktreeRefreshTimer);
+    }
+    worktreeRefreshTimer = setTimeout(() => {
+      worktreeRefreshTimer = undefined;
+      filesProvider.refreshWorktrees();
+      void projectsProvider.refresh(true);
+      void gitProvider.refresh();
+    }, 400);
+  };
 
   const filesView = vscode.window.createTreeView('forgeflow.files', {
     treeDataProvider: filesProvider,
@@ -229,78 +254,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const gitView = vscode.window.createTreeView('forgeflow.git', { treeDataProvider: gitProvider });
   const gitPanelView = vscode.window.createTreeView('forgeflow.git.panel', { treeDataProvider: gitProvider });
 
-  const openSelectionTimers = new Map<string, NodeJS.Timeout>();
-  const openSelectionDelayMs = 150;
-
-  const clearOpenSelectionTimer = (viewId: string): void => {
-    const timer = openSelectionTimers.get(viewId);
-    if (timer) {
-      clearTimeout(timer);
-      openSelectionTimers.delete(viewId);
-    }
-  };
-
-  const getFilesViewById = (viewId: string): vscode.TreeView<unknown> | undefined => {
-    switch (viewId) {
-      case 'forgeflow.files':
-        return filesView;
-      case 'forgeflow.files.panel':
-        return filesPanelView;
-      default:
-        return undefined;
-    }
-  };
-
-  const scheduleOpenOnSelection = (viewId: string, selection: readonly unknown[]): void => {
-    clearOpenSelectionTimer(viewId);
-    if (!getForgeFlowSettings().filesOpenOnSelection) {
-      return;
-    }
-    if (selection.length !== 1) {
-      return;
-    }
-    const candidatePath = extractPath(selection[0]);
-    if (!candidatePath) {
-      return;
-    }
-    const timer = setTimeout(async () => {
-      openSelectionTimers.delete(viewId);
-      const view = getFilesViewById(viewId);
-      if (!view?.visible) {
-        return;
-      }
-      const activeSelection = view.selection;
-      if (activeSelection.length !== 1) {
-        return;
-      }
-      const activePath = extractPath(activeSelection[0]);
-      if (!activePath || normalizeFsPath(activePath) !== normalizeFsPath(candidatePath)) {
-        return;
-      }
-      const stat = await statPath(candidatePath);
-      if (stat?.type !== vscode.FileType.File) {
-        return;
-      }
-      const activeEditorPath = getActiveEditorPath();
-      if (activeEditorPath && normalizeFsPath(activeEditorPath) === normalizeFsPath(candidatePath)) {
-        return;
-      }
-      await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(candidatePath), {
-        preview: true,
-        preserveFocus: true
-      });
-    }, openSelectionDelayMs);
-    openSelectionTimers.set(viewId, timer);
-  };
-
-  context.subscriptions.push(
-    filesView.onDidChangeSelection((event) => {
-      scheduleOpenOnSelection('forgeflow.files', event.selection);
-    }),
-    filesPanelView.onDidChangeSelection((event) => {
-      scheduleOpenOnSelection('forgeflow.files.panel', event.selection);
-    })
-  );
+  registerOpenOnSelection(context, filesView, filesPanelView);
 
   const updateFilesFilterMessage = (): void => {
     const settings = getForgeFlowSettings();
@@ -416,6 +370,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     if (projectsChanged) {
       projectsProvider.syncFromStore();
       filesProvider.syncFilterFromStore();
+      filesProvider.refreshWorktrees();
       gitProvider.syncFilterFromStore();
       projectsWebviewProvider.clearDetailsCache();
       projectsWebviewPanelProvider.clearDetailsCache();
@@ -460,17 +415,77 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   };
 
   const syncIntervalMs = 30_000;
+  const resolvePeriodicRefreshMs = (configuredMinutes: number, fallbackMinutes: number): number => {
+    const rawMinutes = Number.isFinite(configuredMinutes) ? configuredMinutes : fallbackMinutes;
+    if (!Number.isFinite(rawMinutes)) {
+      return 5 * 60_000;
+    }
+    const boundedMinutes = Math.max(0, Math.min(120, rawMinutes));
+    if (boundedMinutes === 0) {
+      return 0;
+    }
+    return Math.round(boundedMinutes * 60_000);
+  };
+  let lastPeriodicProjectRefreshAt = Date.now();
+  let lastPeriodicWorktreeRefreshAt = Date.now();
   const syncTimer = setInterval(() => {
     void syncProjectsAcrossWindows();
+    if (!vscode.window.state.focused) {
+      return;
+    }
+    const settings = getForgeFlowSettings();
+    const projectRefreshMs = resolvePeriodicRefreshMs(
+      settings.projectPeriodicProjectRefreshMinutes,
+      settings.projectPeriodicForceRefreshMinutes
+    );
+    const worktreeRefreshMs = resolvePeriodicRefreshMs(
+      settings.projectPeriodicWorktreeRefreshMinutes,
+      settings.projectPeriodicForceRefreshMinutes
+    );
+    const now = Date.now();
+    if (worktreeRefreshMs > 0 && now - lastPeriodicWorktreeRefreshAt >= worktreeRefreshMs) {
+      lastPeriodicWorktreeRefreshAt = now;
+      filesProvider.refreshWorktrees();
+    }
+    if (projectRefreshMs > 0 && now - lastPeriodicProjectRefreshAt >= projectRefreshMs) {
+      lastPeriodicProjectRefreshAt = now;
+      void projectsProvider.refresh(true);
+      void gitProvider.refresh();
+    }
   }, syncIntervalMs);
+  let focusRefreshTimer: NodeJS.Timeout | undefined;
+  let lastBlurAt: number | undefined;
   context.subscriptions.push({ dispose: () => clearInterval(syncTimer) });
   context.subscriptions.push(
     vscode.window.onDidChangeWindowState((state) => {
-      if (state.focused) {
-        void syncProjectsAcrossWindows();
+      if (!state.focused) {
+        lastBlurAt = Date.now();
+        return;
       }
+      const wasBackgroundedLongEnough = lastBlurAt !== undefined && Date.now() - lastBlurAt > 60_000;
+      lastBlurAt = undefined;
+      if (focusRefreshTimer) {
+        clearTimeout(focusRefreshTimer);
+      }
+      focusRefreshTimer = setTimeout(() => {
+        focusRefreshTimer = undefined;
+        lastPeriodicProjectRefreshAt = Date.now();
+        lastPeriodicWorktreeRefreshAt = lastPeriodicProjectRefreshAt;
+        filesProvider.refreshWorktrees();
+        void projectsProvider.refresh(wasBackgroundedLongEnough);
+        void gitProvider.refresh();
+      }, 300);
+      void syncProjectsAcrossWindows();
     })
   );
+  context.subscriptions.push({
+    dispose: () => {
+      if (focusRefreshTimer) {
+        clearTimeout(focusRefreshTimer);
+        focusRefreshTimer = undefined;
+      }
+    }
+  });
 
   syncFileWatchers();
 
@@ -566,9 +581,25 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.workspace.onDidRenameFiles(() => scheduleFilesRefresh()),
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       syncFileWatchers();
+      filesProvider.refreshWorktrees();
       scheduleFilesRefresh();
+      void projectsProvider.refresh();
+      void powerForgeViewProvider.refresh();
+      void powerForgePanelProvider.refresh();
     })
   );
+  context.subscriptions.push({
+    dispose: () => {
+      if (filesRefreshTimer) {
+        clearTimeout(filesRefreshTimer);
+        filesRefreshTimer = undefined;
+      }
+      if (worktreeRefreshTimer) {
+        clearTimeout(worktreeRefreshTimer);
+        worktreeRefreshTimer = undefined;
+      }
+    }
+  });
 
   registerFileCommands({
     context,
@@ -588,7 +619,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   registerProjectCommands({
     context,
+    filesProvider,
     projectsProvider,
+    projectsView,
+    projectsPanelView,
     projectsWebviewProvider,
     projectsWebviewPanelProvider,
     projectsStore,
@@ -643,11 +677,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   });
 
   context.subscriptions.push(
-    vscode.workspace.onDidChangeWorkspaceFolders(async () => {
-      await projectsProvider.refresh();
-      await powerForgeViewProvider.refresh();
-      await powerForgePanelProvider.refresh();
-    }),
     vscode.workspace.onDidChangeConfiguration(async (event) => {
       if (event.affectsConfiguration('forgeflow.projects')) {
         await projectsProvider.refresh();

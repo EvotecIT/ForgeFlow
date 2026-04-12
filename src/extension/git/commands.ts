@@ -26,9 +26,10 @@ import {
   previewCleanAllProjects,
   previewCleanProject,
   refreshGitSummaries,
+  refreshGitProjectSummaryAndViews,
   selectGitProject,
-  summarizeProjectWithOverrides
 } from './operations';
+import { isProtectedBranch } from './safety';
 
 interface GitCommandContext {
   context: vscode.ExtensionContext;
@@ -51,6 +52,99 @@ export function registerGitCommands({
   filterPresetStore,
   logger
 }: GitCommandContext): void {
+  const openGitFilterInput = async (): Promise<void> => {
+    await openLiveFilterInput({
+      title: 'Filter branches',
+      value: gitProvider.getFilter(),
+      minChars: getForgeFlowSettings().filtersGitMinChars,
+      onChange: (value) => gitProvider.setFilter(value)
+    });
+  };
+
+  const configureAndRefreshGit = async (configure: () => Promise<void>): Promise<void> => {
+    await configure();
+    await gitProvider.refresh();
+  };
+
+  const resolveGitProject = (target?: unknown) => extractGitProject(projectsStore, gitProvider, target);
+
+  const deleteSelectedBranch = async (
+    target: unknown,
+    options: {
+      force: boolean;
+      confirmLabel: string;
+      confirmMessage: (branch: string) => string;
+    }
+  ): Promise<void> => {
+    const branch = extractGitBranch(target);
+    const project = getSelectedGitProject(projectsStore, gitProvider);
+    if (!branch || !project) {
+      return;
+    }
+    const protection = await gitService.getBranchProtectionReason(
+      project.path,
+      project.name,
+      branch,
+      gitStore.getProjectSettings(project.id)
+    );
+    if (protection) {
+      vscode.window.showWarningMessage(`ForgeFlow: Cannot delete "${branch}": ${protection}.`);
+      return;
+    }
+    const confirm = await vscode.window.showWarningMessage(
+      options.confirmMessage(branch),
+      { modal: true },
+      options.confirmLabel
+    );
+    if (confirm !== options.confirmLabel) {
+      return;
+    }
+    await gitService.deleteBranch(project.path, branch, options.force);
+    await gitProvider.refresh();
+  };
+
+  const deleteBranchesByMode = async (mode: 'gone' | 'merged', target?: unknown): Promise<void> => {
+    const project = resolveGitProject(target);
+    if (!project) {
+      return;
+    }
+    const status = await gitService.getRepoStatus(project.path, project.name, gitStore.getProjectSettings(project.id));
+    if (!status) {
+      vscode.window.showWarningMessage(`ForgeFlow: Git status unavailable for ${project.name}. See Output > ForgeFlow for details.`);
+      return;
+    }
+    const checkedOutInWorktrees = await gitService.getCheckedOutWorktreeBranches(project.path);
+    const candidates = status.branches
+      .filter((branch) => mode === 'gone' ? branch.isGone : (branch.isMerged && !branch.isGone))
+      .filter((branch) => !isProtectedBranch(branch.name, status.currentBranch, status.defaultBranch, checkedOutInWorktrees))
+      .map((branch) => branch.name);
+    if (candidates.length === 0) {
+      vscode.window.showInformationMessage(`ForgeFlow: No ${mode} branches found.`);
+      return;
+    }
+    const sample = candidates.slice(0, 5).join(', ');
+    const confirm = await vscode.window.showWarningMessage(
+      `Delete ${candidates.length} ${mode} branches in ${project.name}?${sample ? ` (${sample}${candidates.length > 5 ? ', …' : ''})` : ''}`,
+      { modal: true },
+      'Delete'
+    );
+    if (confirm !== 'Delete') {
+      return;
+    }
+    let failures = 0;
+    for (const branch of candidates) {
+      try {
+        await gitService.deleteBranch(project.path, branch, mode === 'gone');
+      } catch {
+        failures += 1;
+      }
+    }
+    if (failures > 0) {
+      vscode.window.showWarningMessage(`ForgeFlow: Failed to delete ${failures} ${mode} branch${failures === 1 ? '' : 'es'}.`);
+    }
+    await refreshGitProjectSummaryAndViews(project, gitService, gitStore, gitProvider, projectsProvider);
+  };
+
   context.subscriptions.push(
     vscode.commands.registerCommand('forgeflow.projects.gitClean', async (target?: unknown) => {
       const project = resolveProjectFromTarget(target, projectsStore);
@@ -67,20 +161,10 @@ export function registerGitCommands({
       await gitProvider.refresh();
     }),
     vscode.commands.registerCommand('forgeflow.git.filter', async () => {
-      await openLiveFilterInput({
-        title: 'Filter branches',
-        value: gitProvider.getFilter(),
-        minChars: getForgeFlowSettings().filtersGitMinChars,
-        onChange: (value) => gitProvider.setFilter(value)
-      });
+      await openGitFilterInput();
     }),
     vscode.commands.registerCommand('forgeflow.git.focusFilter', async () => {
-      await openLiveFilterInput({
-        title: 'Filter branches',
-        value: gitProvider.getFilter(),
-        minChars: getForgeFlowSettings().filtersGitMinChars,
-        onChange: (value) => gitProvider.setFilter(value)
-      });
+      await openGitFilterInput();
     }),
     vscode.commands.registerCommand('forgeflow.git.saveFilterPreset', async () => {
       await saveFilterPreset('git', gitProvider.getFilter(), filterPresetStore);
@@ -102,16 +186,13 @@ export function registerGitCommands({
       await selectGitProject(projectsStore, gitProvider);
     }),
     vscode.commands.registerCommand('forgeflow.git.setBranchSortMode', async () => {
-      await configureGitBranchSortMode();
-      await gitProvider.refresh();
+      await configureAndRefreshGit(configureGitBranchSortMode);
     }),
     vscode.commands.registerCommand('forgeflow.git.setBranchSortDirection', async () => {
-      await configureGitBranchSortDirection();
-      await gitProvider.refresh();
+      await configureAndRefreshGit(configureGitBranchSortDirection);
     }),
     vscode.commands.registerCommand('forgeflow.git.setBranchFilter', async () => {
-      await configureGitBranchFilter();
-      await gitProvider.refresh();
+      await configureAndRefreshGit(configureGitBranchFilter);
     }),
     vscode.commands.registerCommand('forgeflow.git.refreshSummaries', async () => {
       await refreshGitSummaries(projectsStore, gitService, gitStore);
@@ -188,41 +269,21 @@ export function registerGitCommands({
       vscode.window.setStatusBarMessage(`ForgeFlow: Copied ${branch}`, 2000);
     }),
     vscode.commands.registerCommand('forgeflow.git.deleteBranch', async (target?: unknown) => {
-      const branch = extractGitBranch(target);
-      const project = getSelectedGitProject(projectsStore, gitProvider);
-      if (!branch || !project) {
-        return;
-      }
-      const confirm = await vscode.window.showWarningMessage(
-        `Delete branch "${branch}"?`,
-        { modal: true },
-        'Delete'
-      );
-      if (confirm !== 'Delete') {
-        return;
-      }
-      await gitService.deleteBranch(project.path, branch, false);
-      await gitProvider.refresh();
+      await deleteSelectedBranch(target, {
+        force: false,
+        confirmLabel: 'Delete',
+        confirmMessage: (branch) => `Delete branch "${branch}"?`
+      });
     }),
     vscode.commands.registerCommand('forgeflow.git.forceDeleteBranch', async (target?: unknown) => {
-      const branch = extractGitBranch(target);
-      const project = getSelectedGitProject(projectsStore, gitProvider);
-      if (!branch || !project) {
-        return;
-      }
-      const confirm = await vscode.window.showWarningMessage(
-        `Force delete branch "${branch}"? This cannot be undone.`,
-        { modal: true },
-        'Force Delete'
-      );
-      if (confirm !== 'Force Delete') {
-        return;
-      }
-      await gitService.deleteBranch(project.path, branch, true);
-      await gitProvider.refresh();
+      await deleteSelectedBranch(target, {
+        force: true,
+        confirmLabel: 'Force Delete',
+        confirmMessage: (branch) => `Force delete branch "${branch}"? This cannot be undone.`
+      });
     }),
     vscode.commands.registerCommand('forgeflow.git.pruneRemotes', async () => {
-      const project = getSelectedGitProject(projectsStore, gitProvider);
+      const project = resolveGitProject();
       if (!project) {
         return;
       }
@@ -235,80 +296,13 @@ export function registerGitCommands({
         return;
       }
       await gitService.pruneRemotes(project.path);
-      const summary = await summarizeProjectWithOverrides(project, gitService, gitStore);
-      if (summary) {
-        await gitStore.setSummary(project.id, summary);
-      }
-      await gitProvider.refresh();
-      await projectsProvider.refresh();
+      await refreshGitProjectSummaryAndViews(project, gitService, gitStore, gitProvider, projectsProvider);
     }),
-    vscode.commands.registerCommand('forgeflow.git.deleteGoneBranches', async () => {
-      const project = getSelectedGitProject(projectsStore, gitProvider);
-      if (!project) {
-        return;
-      }
-      const status = await gitService.getRepoStatus(project.path, project.name, gitStore.getProjectSettings(project.id));
-      if (!status) {
-        vscode.window.showWarningMessage(`ForgeFlow: Git status unavailable for ${project.name}. See Output > ForgeFlow for details.`);
-        return;
-      }
-      const gone = status.branches.filter((branch) => branch.isGone && !branch.isCurrent).map((branch) => branch.name);
-      if (gone.length === 0) {
-        vscode.window.showInformationMessage('ForgeFlow: No gone branches found.');
-        return;
-      }
-      const sample = gone.slice(0, 5).join(', ');
-      const confirm = await vscode.window.showWarningMessage(
-        `Delete ${gone.length} gone branches in ${project.name}?${sample ? ` (${sample}${gone.length > 5 ? ', …' : ''})` : ''}`,
-        { modal: true },
-        'Delete'
-      );
-      if (confirm !== 'Delete') {
-        return;
-      }
-      for (const branch of gone) {
-        await gitService.deleteBranch(project.path, branch, true);
-      }
-      const summary = await summarizeProjectWithOverrides(project, gitService, gitStore);
-      if (summary) {
-        await gitStore.setSummary(project.id, summary);
-      }
-      await gitProvider.refresh();
-      await projectsProvider.refresh();
+    vscode.commands.registerCommand('forgeflow.git.deleteGoneBranches', async (target?: unknown) => {
+      await deleteBranchesByMode('gone', target);
     }),
-    vscode.commands.registerCommand('forgeflow.git.deleteMergedBranches', async () => {
-      const project = getSelectedGitProject(projectsStore, gitProvider);
-      if (!project) {
-        return;
-      }
-      const status = await gitService.getRepoStatus(project.path, project.name, gitStore.getProjectSettings(project.id));
-      if (!status) {
-        vscode.window.showWarningMessage(`ForgeFlow: Git status unavailable for ${project.name}. See Output > ForgeFlow for details.`);
-        return;
-      }
-      const merged = status.branches.filter((branch) => branch.isMerged && !branch.isCurrent).map((branch) => branch.name);
-      if (merged.length === 0) {
-        vscode.window.showInformationMessage('ForgeFlow: No merged branches found.');
-        return;
-      }
-      const sample = merged.slice(0, 5).join(', ');
-      const confirm = await vscode.window.showWarningMessage(
-        `Delete ${merged.length} merged branches in ${project.name}?${sample ? ` (${sample}${merged.length > 5 ? ', …' : ''})` : ''}`,
-        { modal: true },
-        'Delete'
-      );
-      if (confirm !== 'Delete') {
-        return;
-      }
-      for (const branch of merged) {
-        await gitService.deleteBranch(project.path, branch, false);
-      }
-      const summary = await summarizeProjectWithOverrides(project, gitService, gitStore);
-      if (summary) {
-        await gitStore.setSummary(project.id, summary);
-      }
-      await gitProvider.refresh();
-      await projectsProvider.refresh();
+    vscode.commands.registerCommand('forgeflow.git.deleteMergedBranches', async (target?: unknown) => {
+      await deleteBranchesByMode('merged', target);
     })
   );
 }

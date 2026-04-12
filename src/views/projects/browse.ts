@@ -4,6 +4,7 @@ import type { Project } from '../../models/project';
 import { readDirectory } from '../../util/fs';
 import type { ProjectNode, ProjectsWebviewBrowseEntry } from './types';
 import { ProjectBrowseNode } from './nodes';
+import { compareTreeNodeLabels, pushByFileType } from '../treeItems';
 
 export async function readBrowseChildren(folderPath: string, project: Project): Promise<ProjectNode[]> {
   const entries = await readDirectory(folderPath);
@@ -16,20 +17,10 @@ export async function readBrowseChildren(folderPath: string, project: Project): 
     }
     const entryPath = path.join(folderPath, name);
     const node = new ProjectBrowseNode(project, entryPath, type);
-    if (type === vscode.FileType.Directory) {
-      directories.push(node);
-    } else {
-      files.push(node);
-    }
+    pushByFileType(type, node, directories, files);
   }
 
-  const byName = (a: ProjectNode, b: ProjectNode): number => {
-    const aLabel = a.getTreeItem().label?.toString() ?? '';
-    const bLabel = b.getTreeItem().label?.toString() ?? '';
-    return aLabel.localeCompare(bLabel);
-  };
-
-  return [...directories.sort(byName), ...files.sort(byName)];
+  return [...directories.sort(compareTreeNodeLabels), ...files.sort(compareTreeNodeLabels)];
 }
 
 export async function readBrowseEntries(folderPath: string): Promise<ProjectsWebviewBrowseEntry[]> {
@@ -47,11 +38,7 @@ export async function readBrowseEntries(folderPath: string): Promise<ProjectsWeb
       name,
       isDirectory: type === vscode.FileType.Directory
     };
-    if (entry.isDirectory) {
-      directories.push(entry);
-    } else {
-      files.push(entry);
-    }
+    pushByFileType(type, entry, directories, files);
   }
 
   const byName = (a: ProjectsWebviewBrowseEntry, b: ProjectsWebviewBrowseEntry): number => a.name.localeCompare(b.name);

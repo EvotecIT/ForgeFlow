@@ -2,8 +2,8 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { readFileText } from '../../util/fs';
 import type { PowerForgeConfigSummary } from './types';
+import { writeJsonFile } from './io';
 import { asString, ensureRecord, safeJsonParse, toStringArray } from './utils';
-import type { JsonRecord } from './utils';
 
 export async function readDotNetPublishSummary(filePath: string): Promise<PowerForgeConfigSummary> {
   const text = await readFileText(filePath);
@@ -55,9 +55,4 @@ export async function saveDotNetPublishConfig(filePath: string, data: Record<str
   }
   await writeJsonFile(filePath, parsed);
   vscode.window.setStatusBarMessage('ForgeFlow: PowerForge dotnet publish config saved.', 3000);
-}
-
-async function writeJsonFile(filePath: string, data: JsonRecord): Promise<void> {
-  const json = JSON.stringify(data, null, 2);
-  await vscode.workspace.fs.writeFile(vscode.Uri.file(filePath), Buffer.from(json, 'utf8'));
 }

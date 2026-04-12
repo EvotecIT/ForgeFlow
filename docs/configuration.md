@@ -8,6 +8,10 @@ All settings live under the `forgeflow` namespace.
   - Use **ForgeFlow: Configure Project Scan Roots** to pick folders via UI.
 - `forgeflow.projects.scanMaxDepth` (number)
   - Maximum folder depth when scanning.
+- `forgeflow.projects.scanIgnoreFolders` (string[])
+  - Folder names to skip while scanning roots (case-insensitive).
+  - Default: empty list (scan all folders).
+  - Hidden worktree folders like `.worktrees` are scanned automatically.
 - `forgeflow.projects.sortMode` ("recentOpened" | "recentModified" | "alphabetical" | "lastActive" | "gitCommit")
   - Sort behavior for non-favorite projects.
   - Use **ForgeFlow: Set Project Sort Mode** to change via UI.
