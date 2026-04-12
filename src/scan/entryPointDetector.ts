@@ -2,6 +2,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import type { ProjectEntryPoint } from '../models/project';
 import { readDirectory, readFileText, statPath } from '../util/fs';
+import { isSolutionFileName } from '../util/solutionFiles';
 import { walkDirectoriesBreadthFirst } from './walk';
 
 export interface EntryPointOptions {
@@ -88,7 +89,7 @@ export async function detectEntryPointGroups(projectPath: string, options?: Entr
       break;
     }
     const entryPath = path.join(projectPath, name);
-    if (name.endsWith('.sln')) {
+    if (isSolutionFileName(name)) {
       addEntry({
         label: name,
         path: entryPath,
@@ -237,7 +238,7 @@ function isPowerShellEntry(name: string): boolean {
 
 function classifyEntryKind(entryPath: string): ProjectEntryPoint['kind'] {
   const lower = entryPath.toLowerCase();
-  if (lower.endsWith('.sln')) {
+  if (isSolutionFileName(lower)) {
     return 'sln';
   }
   if (lower.endsWith('.csproj')) {

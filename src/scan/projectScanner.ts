@@ -3,6 +3,7 @@ import * as vscode from 'vscode';
 import type { Project, ProjectType } from '../models/project';
 import { stableIdFromPath } from '../util/ids';
 import { statPath } from '../util/fs';
+import { isPreferredSolutionFileName, isSolutionFileName } from '../util/solutionFiles';
 import { walkDirectoriesBreadthFirst } from './walk';
 
 interface MarkerMatch {
@@ -20,6 +21,8 @@ const markerPriority: Record<ProjectType, number> = {
 };
 
 const defaultIgnoredScanFolders = new Set([
+  '_cleanup',
+  '_tmp',
   '_worktree_archives'
 ]);
 
@@ -45,7 +48,10 @@ export class ProjectScanner {
     const resultsById = new Map<string, Project>();
     const existingMap = new Map(existing.map((project) => [project.id, project]));
     const existingByPath = new Map(existing.map((project) => [normalizeScanPath(project.path), project]));
-    const ignoredFolderSet = new Set(ignoredFolders.map((value) => value.trim().toLowerCase()).filter(Boolean));
+    const ignoredFolderSet = new Set([
+      ...defaultIgnoredScanFolders,
+      ...ignoredFolders.map((value) => value.trim().toLowerCase()).filter(Boolean)
+    ]);
 
     for (const root of roots) {
       const found = await this.scanRoot(root, maxDepth, existingByPath, ignoredFolderSet);
@@ -121,7 +127,7 @@ export class ProjectScanner {
         marker = chooseMarker(marker, { type: 'git', markerPath: path.join(dir, '.git') });
         continue;
       }
-      if (nameLower.endsWith('.sln') && isFile) {
+      if (isSolutionFileName(nameLower) && isFile) {
         marker = chooseMarker(marker, { type: 'sln', markerPath: path.join(dir, name) });
         continue;
       }
@@ -189,7 +195,14 @@ function chooseMarker(current: MarkerMatch | undefined, next: MarkerMatch): Mark
   if (!current) {
     return next;
   }
-  return markerPriority[next.type] > markerPriority[current.type] ? next : current;
+  const priorityDiff = markerPriority[next.type] - markerPriority[current.type];
+  if (priorityDiff > 0) {
+    return next;
+  }
+  if (priorityDiff === 0 && next.type === 'sln' && current.type === 'sln' && isPreferredSolutionFileName(next.markerPath, current.markerPath)) {
+    return next;
+  }
+  return current;
 }
 
 function normalizeScanPath(value: string): string {

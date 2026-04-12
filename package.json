@@ -3536,7 +3536,7 @@
         },
         "forgeflow.projects.scanIgnoreFolders": {
           "type": "array",
-          "description": "Folder names to skip while scanning project roots (case-insensitive).",
+          "description": "Additional folder names to skip while scanning project roots (case-insensitive). ForgeFlow also skips built-in cleanup folders such as _cleanup, _tmp, and _worktree_archives.",
           "items": {
             "type": "string"
           },
