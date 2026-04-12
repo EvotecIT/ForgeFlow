@@ -247,6 +247,7 @@ export async function resolveDotnetProjectFile(
   let foundSolution: string | undefined;
   while (true) {
     const entries = await readDirectory(current);
+    let directorySolution: string | undefined;
     for (const [name, type] of entries) {
       if (type !== vscode.FileType.File) {
         continue;
@@ -256,10 +257,13 @@ export async function resolveDotnetProjectFile(
       }
       if (isSolutionFileName(name)) {
         const solutionPath = path.join(current, name);
-        if (isPreferredSolutionFileName(solutionPath, foundSolution)) {
-          foundSolution = solutionPath;
+        if (isPreferredSolutionFileName(solutionPath, directorySolution)) {
+          directorySolution = solutionPath;
         }
       }
+    }
+    if (!foundSolution && directorySolution) {
+      foundSolution = directorySolution;
     }
     if (normalizeFsPath(current) === normalizeFsPath(root)) {
       break;

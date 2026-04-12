@@ -102,4 +102,25 @@ describe('resolveDotnetProjectFile', () => {
       await fs.promises.rm(tempRoot, { recursive: true, force: true });
     }
   });
+
+  it('keeps a closer solution over a preferred parent solution format', async () => {
+    const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'forgeflow-run-'));
+    try {
+      const childRoot = path.join(tempRoot, 'nested');
+      const sourcePath = path.join(childRoot, 'src');
+      const filePath = path.join(sourcePath, 'Program.cs');
+      const parentSlnPath = path.join(tempRoot, 'Parent.sln');
+      const childSlnxPath = path.join(childRoot, 'Child.slnx');
+      await fs.promises.mkdir(sourcePath, { recursive: true });
+      await fs.promises.writeFile(filePath, 'Console.WriteLine("test");');
+      await fs.promises.writeFile(parentSlnPath, '');
+      await fs.promises.writeFile(childSlnxPath, '<Solution />');
+
+      const resolved = await resolveDotnetProjectFile(filePath, tempRoot);
+
+      assert.equal(resolved?.solutionFile, childSlnxPath);
+    } finally {
+      await fs.promises.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
 });
