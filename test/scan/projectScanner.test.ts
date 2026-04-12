@@ -43,6 +43,27 @@ describe('ProjectScanner', () => {
     }
   });
 
+  it('skips built-in cleanup folders even when no scan ignores are configured', async () => {
+    const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'forgeflow-scan-'));
+    try {
+      const mainRepoPath = path.join(tempRoot, 'main-repo');
+      await fs.promises.mkdir(path.join(mainRepoPath, '.git'), { recursive: true });
+
+      const cleanupProbePath = path.join(tempRoot, '_cleanup', 'quarantine', '_tmp', 'officeimo-probe');
+      await fs.promises.mkdir(cleanupProbePath, { recursive: true });
+      await fs.promises.writeFile(path.join(cleanupProbePath, 'officeimo-probe.csproj'), '<Project />');
+
+      const scanner = new ProjectScanner();
+      const projects = await scanner.scan([tempRoot], 5, [] as Project[], []);
+      const discoveredPaths = projects.map((project) => project.path);
+
+      assert.equal(discoveredPaths.includes(mainRepoPath), true);
+      assert.equal(discoveredPaths.includes(cleanupProbePath), false);
+    } finally {
+      await fs.promises.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it('allows overriding ignored scan folders', async () => {
     const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'forgeflow-scan-'));
     try {
@@ -108,6 +129,30 @@ describe('ProjectScanner', () => {
       assert.equal(projects.length, 1);
       assert.equal(projects[0]?.path, projectPath);
       assert.equal(projects[0]?.type, 'csproj');
+    } finally {
+      await fs.promises.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('treats slnx files as solution markers instead of splitting child csproj folders', async () => {
+    const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'forgeflow-scan-'));
+    try {
+      const projectPath = path.join(tempRoot, 'DomainDetectiveNext 1');
+      await fs.promises.mkdir(path.join(projectPath, 'DomainDetectiveNext.Core'), { recursive: true });
+      await fs.promises.mkdir(path.join(projectPath, 'DomainDetectiveNext.Service'), { recursive: true });
+      await fs.promises.mkdir(path.join(projectPath, 'DomainDetectiveNext.Tests'), { recursive: true });
+      await fs.promises.writeFile(path.join(projectPath, 'DomainDetectiveNext.slnx'), '<Solution />');
+      await fs.promises.writeFile(path.join(projectPath, 'DomainDetectiveNext.Core', 'DomainDetectiveNext.Core.csproj'), '<Project />');
+      await fs.promises.writeFile(path.join(projectPath, 'DomainDetectiveNext.Service', 'DomainDetectiveNext.Service.csproj'), '<Project />');
+      await fs.promises.writeFile(path.join(projectPath, 'DomainDetectiveNext.Tests', 'DomainDetectiveNext.Tests.csproj'), '<Project />');
+
+      const scanner = new ProjectScanner();
+      const projects = await scanner.scan([tempRoot], 3, [] as Project[]);
+
+      assert.equal(projects.length, 1);
+      assert.equal(projects[0]?.path, projectPath);
+      assert.equal(projects[0]?.type, 'sln');
+      assert.equal(projects[0]?.name, 'DomainDetectiveNext 1');
     } finally {
       await fs.promises.rm(tempRoot, { recursive: true, force: true });
     }

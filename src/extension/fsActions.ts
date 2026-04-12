@@ -14,7 +14,20 @@ export async function openPath(targetPath: string): Promise<void> {
     await vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(targetPath), false);
     return;
   }
-  await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(targetPath));
+  await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(targetPath), {
+    preview: false
+  });
+}
+
+export async function openPathPreview(targetPath: string): Promise<void> {
+  const stat = await statPath(targetPath);
+  if (stat?.type === vscode.FileType.Directory) {
+    return;
+  }
+  await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(targetPath), {
+    preview: true,
+    preserveFocus: true
+  });
 }
 
 export async function openPathToSide(targetPath: string): Promise<void> {

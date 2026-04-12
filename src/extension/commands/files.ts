@@ -27,6 +27,7 @@ import {
   deletePaths,
   openInTerminal,
   openPath,
+  openPathPreview,
   openPathToSide,
   openWith,
   pastePaths,
@@ -365,6 +366,18 @@ export function registerFileCommands(deps: FileCommandDeps): void {
         }
         await openPath(filePath);
       }
+    }),
+    vscode.commands.registerCommand('forgeflow.files.openOnSelection', async (target?: unknown) => {
+      const targetPath = extractPath(target);
+      const filePath = targetPath ?? collectSelectedPaths(target, filesView, filesPanelView)[0];
+      if (!filePath) {
+        return;
+      }
+      const stat = await statPath(filePath);
+      if (stat?.type !== vscode.FileType.File) {
+        return;
+      }
+      await openPathPreview(filePath);
     }),
     vscode.commands.registerCommand('forgeflow.worktrees.open', async (target?: unknown) => {
       await openWorktrees(target, false);

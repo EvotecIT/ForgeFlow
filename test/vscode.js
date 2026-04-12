@@ -175,8 +175,24 @@ const env = {
   }
 };
 
+const registeredCommands = new Map();
+
 const commands = {
-  executeCommand: async () => undefined
+  registerCommand: (command, callback) => {
+    registeredCommands.set(command, callback);
+    return {
+      dispose: () => {
+        registeredCommands.delete(command);
+      }
+    };
+  },
+  executeCommand: async (command, ...args) => {
+    const callback = registeredCommands.get(command);
+    if (!callback) {
+      return undefined;
+    }
+    return await callback(...args);
+  }
 };
 
 module.exports = {
