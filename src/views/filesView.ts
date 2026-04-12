@@ -317,8 +317,12 @@ class FavoriteItemNode implements FilesNode, PathNode {
     if (profileLabel) {
       item.description = profileLabel;
     }
-    if (!isFolder) {
-      // Leave click to select (Explorer-like). Use Enter or context menu to open.
+    if (!isFolder && getForgeFlowSettings().filesOpenOnSelection) {
+      item.command = {
+        command: 'forgeflow.files.openOnSelection',
+        title: 'Open',
+        arguments: [this.favorite.path]
+      };
     }
     return item;
   }
@@ -377,7 +381,8 @@ class WorkspaceEntryNode implements FilesNode, PathNode {
   public getTreeItem(): vscode.TreeItem {
     return createPathTreeItem(this.path, this.entryType, {
       contextValue: 'forgeflowFile',
-      tooltipPath: true
+      tooltipPath: true,
+      openCommandId: getForgeFlowSettings().filesOpenOnSelection ? 'forgeflow.files.openOnSelection' : undefined
     });
   }
 }

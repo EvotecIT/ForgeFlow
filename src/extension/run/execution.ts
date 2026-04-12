@@ -7,6 +7,7 @@ import type { RunService } from '../../run/runService';
 import { baseName } from '../../util/path';
 import { getForgeFlowSettings } from '../../util/config';
 import { readDirectory, statPath } from '../../util/fs';
+import { isPreferredSolutionFileName, isSolutionFileName, solutionFileKindLabel } from '../../util/solutionFiles';
 import type { FavoritesStore } from '../../store/favoritesStore';
 import type { ProjectsStore } from '../../store/projectsStore';
 import type { RunHistoryStore } from '../../store/runHistoryStore';
@@ -207,7 +208,7 @@ export async function runByFile(
       command,
       workingDirectory: path.dirname(resolution.solutionFile),
       projectId: project?.id,
-      label: `${path.basename(filePath)} (sln)`
+      label: `${path.basename(filePath)} (${solutionFileKindLabel(resolution.solutionFile)})`
     });
     return true;
   }
@@ -229,7 +230,7 @@ export async function runByFile(
     return true;
   }
 
-  vscode.window.showWarningMessage('ForgeFlow: No .csproj or .sln found. Enable .cs script runs or open a project.');
+  vscode.window.showWarningMessage('ForgeFlow: No .csproj, .sln, or .slnx found. Enable .cs script runs or open a project.');
   return true;
 }
 
@@ -246,6 +247,7 @@ export async function resolveDotnetProjectFile(
   let foundSolution: string | undefined;
   while (true) {
     const entries = await readDirectory(current);
+    let directorySolution: string | undefined;
     for (const [name, type] of entries) {
       if (type !== vscode.FileType.File) {
         continue;
@@ -253,9 +255,15 @@ export async function resolveDotnetProjectFile(
       if (name.toLowerCase().endsWith('.csproj')) {
         return { projectFile: path.join(current, name) };
       }
-      if (!foundSolution && name.toLowerCase().endsWith('.sln')) {
-        foundSolution = path.join(current, name);
+      if (isSolutionFileName(name)) {
+        const solutionPath = path.join(current, name);
+        if (isPreferredSolutionFileName(solutionPath, directorySolution)) {
+          directorySolution = solutionPath;
+        }
       }
+    }
+    if (!foundSolution && directorySolution) {
+      foundSolution = directorySolution;
     }
     if (normalizeFsPath(current) === normalizeFsPath(root)) {
       break;

@@ -5,7 +5,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import type { Project } from '../../src/models/project';
 import type { RunRequest } from '../../src/models/run';
-import { runProjectEntryPoint } from '../../src/extension/run/execution';
+import { resolveDotnetProjectFile, runProjectEntryPoint } from '../../src/extension/run/execution';
 
 describe('runProjectEntryPoint', () => {
   it('runs the only runnable entry point without showing a picker', async () => {
@@ -79,5 +79,48 @@ describe('runProjectEntryPoint', () => {
     assert.equal(runRequests[0]?.filePath, scriptPath);
     assert.equal(runRequests[0]?.projectId, project.id);
     assert.equal(runRequests[0]?.workingDirectory, tempRoot);
+  });
+});
+
+describe('resolveDotnetProjectFile', () => {
+  it('prefers sln over slnx when both solution formats are available', async () => {
+    const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'forgeflow-run-'));
+    try {
+      const sourcePath = path.join(tempRoot, 'src');
+      const filePath = path.join(sourcePath, 'Program.cs');
+      const slnPath = path.join(tempRoot, 'Zed.sln');
+      const slnxPath = path.join(tempRoot, 'Alpha.slnx');
+      await fs.promises.mkdir(sourcePath, { recursive: true });
+      await fs.promises.writeFile(filePath, 'Console.WriteLine("test");');
+      await fs.promises.writeFile(slnxPath, '<Solution />');
+      await fs.promises.writeFile(slnPath, '');
+
+      const resolved = await resolveDotnetProjectFile(filePath, tempRoot);
+
+      assert.equal(resolved?.solutionFile, slnPath);
+    } finally {
+      await fs.promises.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps a closer solution over a preferred parent solution format', async () => {
+    const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'forgeflow-run-'));
+    try {
+      const childRoot = path.join(tempRoot, 'nested');
+      const sourcePath = path.join(childRoot, 'src');
+      const filePath = path.join(sourcePath, 'Program.cs');
+      const parentSlnPath = path.join(tempRoot, 'Parent.sln');
+      const childSlnxPath = path.join(childRoot, 'Child.slnx');
+      await fs.promises.mkdir(sourcePath, { recursive: true });
+      await fs.promises.writeFile(filePath, 'Console.WriteLine("test");');
+      await fs.promises.writeFile(parentSlnPath, '');
+      await fs.promises.writeFile(childSlnxPath, '<Solution />');
+
+      const resolved = await resolveDotnetProjectFile(filePath, tempRoot);
+
+      assert.equal(resolved?.solutionFile, childSlnxPath);
+    } finally {
+      await fs.promises.rm(tempRoot, { recursive: true, force: true });
+    }
   });
 });
