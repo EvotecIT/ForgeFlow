@@ -4,6 +4,7 @@ import type { Project } from '../../models/project';
 import type { ProjectsViewProvider } from '../../views/projectsView';
 import type { ProjectsStore } from '../../store/projectsStore';
 import { openInVisualStudio } from '../../util/open';
+import { isSolutionFileName } from '../../util/solutionFiles';
 import { extractPath, extractProject } from '../selection';
 import { findProjectByPath, pickProject } from '../projectUtils';
 
@@ -118,9 +119,9 @@ export async function manageEntryPoints(
 export async function openProjectInVisualStudio(project: Project, projectsProvider: ProjectsViewProvider): Promise<void> {
   const groups = await projectsProvider.getEntryPointGroups(project);
   const entries = [...groups.entryPoints, ...groups.buildScripts];
-  const solutions = entries.filter((entry) => path.extname(entry.path).toLowerCase() === '.sln');
+  const solutions = entries.filter((entry) => isSolutionFileName(entry.path));
   if (solutions.length === 0) {
-    vscode.window.showWarningMessage('ForgeFlow: No .sln file found for this project.');
+    vscode.window.showWarningMessage('ForgeFlow: No .sln or .slnx file found for this project.');
     return;
   }
   const first = solutions[0];

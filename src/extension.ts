@@ -30,7 +30,6 @@ import { DashboardViewProvider } from './views/dashboardView';
 import { GitViewProvider } from './views/gitView';
 import { ForgeFlowLogger } from './util/log';
 import { getForgeFlowSettings } from './util/config';
-import { statPath } from './util/fs';
 import { maybeRunOnboarding } from './onboarding/onboarding';
 import { registerToggleQuotes } from './editor/toggleQuotes';
 import { registerUnicodeSubstitutions } from './editor/unicodeSubstitutions';
@@ -48,15 +47,11 @@ import {
   toggleFilterScope
 } from './extension/filters';
 import { getFiltersRevision } from './store/filterScope';
-import {
-  extractPath,
-  getActiveEditorPath
-} from './extension/selection';
-import { normalizeFsPath } from './extension/pathUtils';
 import { touchProjectActivity } from './extension/workspace/activity';
 import { registerFileCommands } from './extension/commands/files';
 import { registerProjectCommands } from './extension/commands/projects';
 import { schedulePowerShellProfileHealthCheck } from './extension/run/health';
+import { registerOpenOnSelection } from './extension/files/openOnSelection';
 
 const GLOBAL_STATE_SYNC_KEYS = [
   'forgeflow.layout.mode.v1',
@@ -259,78 +254,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const gitView = vscode.window.createTreeView('forgeflow.git', { treeDataProvider: gitProvider });
   const gitPanelView = vscode.window.createTreeView('forgeflow.git.panel', { treeDataProvider: gitProvider });
 
-  const openSelectionTimers = new Map<string, NodeJS.Timeout>();
-  const openSelectionDelayMs = 150;
-
-  const clearOpenSelectionTimer = (viewId: string): void => {
-    const timer = openSelectionTimers.get(viewId);
-    if (timer) {
-      clearTimeout(timer);
-      openSelectionTimers.delete(viewId);
-    }
-  };
-
-  const getFilesViewById = (viewId: string): vscode.TreeView<unknown> | undefined => {
-    switch (viewId) {
-      case 'forgeflow.files':
-        return filesView;
-      case 'forgeflow.files.panel':
-        return filesPanelView;
-      default:
-        return undefined;
-    }
-  };
-
-  const scheduleOpenOnSelection = (viewId: string, selection: readonly unknown[]): void => {
-    clearOpenSelectionTimer(viewId);
-    if (!getForgeFlowSettings().filesOpenOnSelection) {
-      return;
-    }
-    if (selection.length !== 1) {
-      return;
-    }
-    const candidatePath = extractPath(selection[0]);
-    if (!candidatePath) {
-      return;
-    }
-    const timer = setTimeout(async () => {
-      openSelectionTimers.delete(viewId);
-      const view = getFilesViewById(viewId);
-      if (!view?.visible) {
-        return;
-      }
-      const activeSelection = view.selection;
-      if (activeSelection.length !== 1) {
-        return;
-      }
-      const activePath = extractPath(activeSelection[0]);
-      if (!activePath || normalizeFsPath(activePath) !== normalizeFsPath(candidatePath)) {
-        return;
-      }
-      const stat = await statPath(candidatePath);
-      if (stat?.type !== vscode.FileType.File) {
-        return;
-      }
-      const activeEditorPath = getActiveEditorPath();
-      if (activeEditorPath && normalizeFsPath(activeEditorPath) === normalizeFsPath(candidatePath)) {
-        return;
-      }
-      await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(candidatePath), {
-        preview: true,
-        preserveFocus: true
-      });
-    }, openSelectionDelayMs);
-    openSelectionTimers.set(viewId, timer);
-  };
-
-  context.subscriptions.push(
-    filesView.onDidChangeSelection((event) => {
-      scheduleOpenOnSelection('forgeflow.files', event.selection);
-    }),
-    filesPanelView.onDidChangeSelection((event) => {
-      scheduleOpenOnSelection('forgeflow.files.panel', event.selection);
-    })
-  );
+  registerOpenOnSelection(context, filesView, filesPanelView);
 
   const updateFilesFilterMessage = (): void => {
     const settings = getForgeFlowSettings();
