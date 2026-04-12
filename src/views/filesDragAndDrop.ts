@@ -1,6 +1,7 @@
 import * as path from 'path';
 import * as vscode from 'vscode';
 import type { FilesNode, PathNode } from './filesView';
+import { isWithin, normalizeFsPath } from '../extension/pathUtils';
 import { statPath } from '../util/fs';
 
 const INTERNAL_MIME = 'application/vnd.code.tree.forgeflow.files';
@@ -168,24 +169,4 @@ function findWorkspaceRoot(candidatePath: string, workspaceRoots: string[]): str
     }
   }
   return undefined;
-}
-
-function isWithin(parent: string, child: string): boolean {
-  const resolvedParent = normalizeFsPath(path.resolve(parent));
-  const resolvedChild = normalizeFsPath(path.resolve(child));
-  const compareParent = process.platform === 'win32' ? resolvedParent.toLowerCase() : resolvedParent;
-  const compareChild = process.platform === 'win32' ? resolvedChild.toLowerCase() : resolvedChild;
-  const relative = path.relative(compareParent, compareChild);
-  return relative === '' || (!relative.startsWith('..') && !path.isAbsolute(relative));
-}
-
-function normalizeFsPath(value: string): string {
-  if (process.platform === 'win32') {
-    const match = /^\/([a-zA-Z]:)(\/.*)/.exec(value);
-    if (match) {
-      return `${match[1]}${match[2]}`.replace(/\//g, '\\');
-    }
-    return value.replace(/\//g, '\\');
-  }
-  return value;
 }

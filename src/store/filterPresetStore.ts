@@ -1,4 +1,5 @@
 import type { StateStore } from './stateStore';
+import { createRevisionStamp } from '../util/revision';
 
 export type FilterPresetScope = 'files' | 'projects' | 'git' | 'dashboard';
 
@@ -63,10 +64,4 @@ export class FilterPresetStore {
   private async bumpRevision(): Promise<void> {
     await this.state.setGlobal(PRESETS_REVISION_KEY, createRevisionStamp());
   }
-}
-
-function createRevisionStamp(): string {
-  const base = Date.now().toString(36);
-  const rand = Math.random().toString(36).slice(2, 8);
-  return `${base}-${rand}`;
 }

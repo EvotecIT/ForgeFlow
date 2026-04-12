@@ -7,7 +7,13 @@ import type { RunHistoryStore } from '../../store/runHistoryStore';
 import { buildPresetFromEntry } from '../../run/runPresets';
 import { getForgeFlowSettings } from '../../util/config';
 import { pickProject } from '../projectUtils';
-import { formatHistoryDescription, formatPresetDescription, getRunHistoryMaxItems, buildPresetId, buildRunHistoryId } from './utils';
+import { formatPresetDescription, getRunHistoryMaxItems, buildPresetId, buildRunHistoryId } from './utils';
+import {
+  listProjectHistoryEntries,
+  pickRunHistoryEntries,
+  pickRunHistoryEntry,
+  showNoProjectHistoryWarning
+} from './historyPicker';
 import { runShellCommand } from './terminal';
 import { runTaskByName } from './tasks';
 
@@ -16,28 +22,16 @@ export async function saveProjectHistoryAsPreset(
   runHistoryStore: RunHistoryStore,
   projectsStore: ProjectsStore
 ): Promise<void> {
-  const entries = runHistoryStore.listForProject(
-    project.id,
-    getRunHistoryMaxItems(),
-    getForgeFlowSettings().runHistoryPerProjectSortMode
-  );
+  const entries = listProjectHistoryEntries(project, runHistoryStore);
   if (entries.length === 0) {
-    vscode.window.showWarningMessage(`ForgeFlow: No recent runs for ${project.name}.`);
+    showNoProjectHistoryWarning(project);
     return;
   }
-  const pick = await vscode.window.showQuickPick(
-    entries.map((entry) => ({
-      label: entry.label,
-      description: formatHistoryDescription(entry),
-      detail: entry.filePath ?? entry.command ?? '',
-      entry
-    })),
-    { placeHolder: `Save recent run as preset for ${project.name}` }
-  );
-  if (!pick) {
+  const entry = await pickRunHistoryEntry(entries, `Save recent run as preset for ${project.name}`);
+  if (!entry) {
     return;
   }
-  await saveRunPresetFromEntry(pick.entry, projectsStore);
+  await saveRunPresetFromEntry(entry, projectsStore);
 }
 
 export async function saveProjectHistoryAsPresets(
@@ -45,30 +39,18 @@ export async function saveProjectHistoryAsPresets(
   runHistoryStore: RunHistoryStore,
   projectsStore: ProjectsStore
 ): Promise<void> {
-  const entries = runHistoryStore.listForProject(
-    project.id,
-    getRunHistoryMaxItems(),
-    getForgeFlowSettings().runHistoryPerProjectSortMode
-  );
+  const entries = listProjectHistoryEntries(project, runHistoryStore);
   if (entries.length === 0) {
-    vscode.window.showWarningMessage(`ForgeFlow: No recent runs for ${project.name}.`);
+    showNoProjectHistoryWarning(project);
     return;
   }
-  const picks = await vscode.window.showQuickPick(
-    entries.map((entry) => ({
-      label: entry.label,
-      description: formatHistoryDescription(entry),
-      detail: entry.filePath ?? entry.command ?? '',
-      entry
-    })),
-    { placeHolder: `Select recent runs to save as presets for ${project.name}`, canPickMany: true }
-  );
-  if (!picks || picks.length === 0) {
+  const picks = await pickRunHistoryEntries(entries, `Select recent runs to save as presets for ${project.name}`);
+  if (!picks) {
     return;
   }
   let saved = 0;
-  for (const pick of picks) {
-    await saveRunPresetFromEntry(pick.entry, projectsStore);
+  for (const entry of picks) {
+    await saveRunPresetFromEntry(entry, projectsStore);
     saved += 1;
   }
   vscode.window.setStatusBarMessage(`ForgeFlow: Saved ${saved} preset${saved === 1 ? '' : 's'}.`, 3000);
@@ -83,19 +65,11 @@ export async function saveRunPresetFromHistory(
     vscode.window.showWarningMessage('ForgeFlow: Run history is empty.');
     return;
   }
-  const pick = await vscode.window.showQuickPick(
-    entries.map((entry) => ({
-      label: entry.label,
-      description: formatHistoryDescription(entry),
-      detail: entry.filePath ?? entry.command ?? '',
-      entry
-    })),
-    { placeHolder: 'Select a run to save as preset' }
-  );
-  if (!pick) {
+  const entry = await pickRunHistoryEntry(entries, 'Select a run to save as preset');
+  if (!entry) {
     return;
   }
-  await saveRunPresetFromEntry(pick.entry, projectsStore);
+  await saveRunPresetFromEntry(entry, projectsStore);
 }
 
 export async function saveRunPresetFromEntry(entry: RunHistoryEntry, projectsStore: ProjectsStore): Promise<void> {

@@ -4,6 +4,7 @@ import type { Project, ProjectIdentity } from '../models/project';
 import type { ProjectSortMode, SortDirection } from '../util/config';
 import type { RunPreset } from '../models/run';
 import { statPath } from '../util/fs';
+import { createRevisionStamp } from '../util/revision';
 
 const PROJECTS_KEY = 'forgeflow.projects.items.v1';
 const FAVORITES_KEY = 'forgeflow.projects.favorites.v1';
@@ -209,73 +210,35 @@ export class ProjectsStore {
   }
 
   public async updateLastOpened(projectId: string, timestamp: number): Promise<void> {
-    const overrides = this.state.getWorkspace<Record<string, ProjectWorkspaceOverride>>(WORKSPACE_OVERRIDES_KEY, {});
-    overrides[projectId] = { ...overrides[projectId], lastOpened: timestamp };
-    await this.state.setWorkspace(WORKSPACE_OVERRIDES_KEY, overrides);
-    await this.bumpWorkspaceRevision();
+    await this.updateWorkspaceOverride(projectId, { lastOpened: timestamp });
   }
 
   public async updateLastActivity(projectId: string, timestamp: number): Promise<void> {
-    const overrides = this.state.getWorkspace<Record<string, ProjectWorkspaceOverride>>(WORKSPACE_OVERRIDES_KEY, {});
-    overrides[projectId] = { ...overrides[projectId], lastActivity: timestamp };
-    await this.state.setWorkspace(WORKSPACE_OVERRIDES_KEY, overrides);
-    await this.bumpWorkspaceRevision();
+    await this.updateWorkspaceOverride(projectId, { lastActivity: timestamp });
   }
 
   public async updatePinnedItems(projectId: string, pinnedItems: string[]): Promise<void> {
-    const projects = this.state.getGlobal<Project[]>(PROJECTS_KEY, []);
-    const index = projects.findIndex((item) => item.id === projectId);
-    if (index === -1) {
-      return;
-    }
-    const existing = projects[index];
-    if (!existing) {
-      return;
-    }
-    projects[index] = this.sanitizeProject({ ...existing, pinnedItems });
-    await this.saveAllProjects(projects);
+    await this.updateStoredProject(projectId, (project) => ({ ...project, pinnedItems }));
   }
 
   public async updateEntryPointOverrides(projectId: string, entryPointOverrides: string[]): Promise<void> {
-    const projects = this.state.getGlobal<Project[]>(PROJECTS_KEY, []);
-    const index = projects.findIndex((item) => item.id === projectId);
-    if (index === -1) {
-      return;
-    }
-    const existing = projects[index];
-    if (!existing) {
-      return;
-    }
-    projects[index] = this.sanitizeProject({ ...existing, entryPointOverrides });
-    await this.saveAllProjects(projects);
+    await this.updateStoredProject(projectId, (project) => ({ ...project, entryPointOverrides }));
   }
 
   public async updatePreferredProfile(projectId: string, profileId?: string): Promise<void> {
-    const overrides = this.state.getWorkspace<Record<string, ProjectWorkspaceOverride>>(WORKSPACE_OVERRIDES_KEY, {});
-    overrides[projectId] = { ...overrides[projectId], preferredRunProfileId: profileId };
-    await this.state.setWorkspace(WORKSPACE_OVERRIDES_KEY, overrides);
-    await this.bumpWorkspaceRevision();
+    await this.updateWorkspaceOverride(projectId, { preferredRunProfileId: profileId });
   }
 
   public async updatePreferredRunTarget(projectId: string, target?: 'integrated' | 'external' | 'externalAdmin'): Promise<void> {
-    const overrides = this.state.getWorkspace<Record<string, ProjectWorkspaceOverride>>(WORKSPACE_OVERRIDES_KEY, {});
-    overrides[projectId] = { ...overrides[projectId], preferredRunTarget: target };
-    await this.state.setWorkspace(WORKSPACE_OVERRIDES_KEY, overrides);
-    await this.bumpWorkspaceRevision();
+    await this.updateWorkspaceOverride(projectId, { preferredRunTarget: target });
   }
 
   public async updatePreferredRunWorkingDirectory(projectId: string, workingDirectory?: string): Promise<void> {
-    const overrides = this.state.getWorkspace<Record<string, ProjectWorkspaceOverride>>(WORKSPACE_OVERRIDES_KEY, {});
-    overrides[projectId] = { ...overrides[projectId], preferredRunWorkingDirectory: workingDirectory };
-    await this.state.setWorkspace(WORKSPACE_OVERRIDES_KEY, overrides);
-    await this.bumpWorkspaceRevision();
+    await this.updateWorkspaceOverride(projectId, { preferredRunWorkingDirectory: workingDirectory });
   }
 
   public async updatePreferredRunKeepOpen(projectId: string, keepOpen?: 'never' | 'onError' | 'always'): Promise<void> {
-    const overrides = this.state.getWorkspace<Record<string, ProjectWorkspaceOverride>>(WORKSPACE_OVERRIDES_KEY, {});
-    overrides[projectId] = { ...overrides[projectId], preferredRunKeepOpen: keepOpen };
-    await this.state.setWorkspace(WORKSPACE_OVERRIDES_KEY, overrides);
-    await this.bumpWorkspaceRevision();
+    await this.updateWorkspaceOverride(projectId, { preferredRunKeepOpen: keepOpen });
   }
 
   public async removeProject(projectId: string): Promise<void> {
@@ -301,31 +264,11 @@ export class ProjectsStore {
   }
 
   public async updateRunPresets(projectId: string, presets: RunPreset[]): Promise<void> {
-    const projects = this.state.getGlobal<Project[]>(PROJECTS_KEY, []);
-    const index = projects.findIndex((item) => item.id === projectId);
-    if (index === -1) {
-      return;
-    }
-    const existing = projects[index];
-    if (!existing) {
-      return;
-    }
-    projects[index] = this.sanitizeProject({ ...existing, runPresets: presets });
-    await this.saveAllProjects(projects);
+    await this.updateStoredProject(projectId, (project) => ({ ...project, runPresets: presets }));
   }
 
   public async updateIdentity(projectId: string, identity: ProjectIdentity): Promise<void> {
-    const projects = this.state.getGlobal<Project[]>(PROJECTS_KEY, []);
-    const index = projects.findIndex((item) => item.id === projectId);
-    if (index === -1) {
-      return;
-    }
-    const existing = projects[index];
-    if (!existing) {
-      return;
-    }
-    projects[index] = this.sanitizeProject({ ...existing, identity });
-    await this.saveAllProjects(projects);
+    await this.updateStoredProject(projectId, (project) => ({ ...project, identity }));
   }
 
   public async tryAcquireScanLock(owner: string, ttlMs: number): Promise<boolean> {
@@ -369,6 +312,27 @@ export class ProjectsStore {
     delete sanitized.preferredRunWorkingDirectory;
     delete sanitized.preferredRunKeepOpen;
     return sanitized;
+  }
+
+  private async updateStoredProject(projectId: string, mutate: (project: Project) => Project): Promise<void> {
+    const projects = this.state.getGlobal<Project[]>(PROJECTS_KEY, []);
+    const index = projects.findIndex((item) => item.id === projectId);
+    if (index === -1) {
+      return;
+    }
+    const existing = projects[index];
+    if (!existing) {
+      return;
+    }
+    projects[index] = this.sanitizeProject(mutate(existing));
+    await this.saveAllProjects(projects);
+  }
+
+  private async updateWorkspaceOverride(projectId: string, update: Partial<ProjectWorkspaceOverride>): Promise<void> {
+    const overrides = this.state.getWorkspace<Record<string, ProjectWorkspaceOverride>>(WORKSPACE_OVERRIDES_KEY, {});
+    overrides[projectId] = { ...overrides[projectId], ...update };
+    await this.state.setWorkspace(WORKSPACE_OVERRIDES_KEY, overrides);
+    await this.bumpWorkspaceRevision();
   }
 
   private async saveAllProjects(projects: Project[]): Promise<void> {
@@ -426,12 +390,6 @@ export class ProjectsStore {
   private async bumpWorkspaceRevision(): Promise<void> {
     await this.state.setWorkspace(WORKSPACE_REVISION_KEY, createRevisionStamp());
   }
-}
-
-function createRevisionStamp(): string {
-  const base = Date.now().toString(36);
-  const rand = Math.random().toString(36).slice(2, 8);
-  return `${base}-${rand}`;
 }
 
 function normalizeRootKey(value: string): string {

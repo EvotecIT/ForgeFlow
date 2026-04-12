@@ -5,7 +5,8 @@ import type { RunService } from '../../run/runService';
 import type { ProjectsStore } from '../../store/projectsStore';
 import type { RunHistoryStore } from '../../store/runHistoryStore';
 import { getForgeFlowSettings } from '../../util/config';
-import { buildRunHistoryId, formatHistoryDescription, getRunHistoryMaxItems } from './utils';
+import { buildRunHistoryId, getRunHistoryMaxItems } from './utils';
+import { listProjectHistoryEntries, pickRunHistoryEntry, showNoProjectHistoryWarning } from './historyPicker';
 import { runShellCommand } from './terminal';
 import { runTaskByName } from './tasks';
 
@@ -33,19 +34,11 @@ export async function runFromHistory(
     vscode.window.showWarningMessage('ForgeFlow: Run history is empty.');
     return;
   }
-  const pick = await vscode.window.showQuickPick(
-    entries.map((entry) => ({
-      label: entry.label,
-      description: formatHistoryDescription(entry),
-      detail: entry.filePath ?? entry.command ?? '',
-      entry
-    })),
-    { placeHolder: 'Select a recent run' }
-  );
-  if (!pick) {
+  const entry = await pickRunHistoryEntry(entries, 'Select a recent run');
+  if (!entry) {
     return;
   }
-  await runHistoryEntry(pick.entry, runHistoryStore, runService, projectsStore);
+  await runHistoryEntry(entry, runHistoryStore, runService, projectsStore);
 }
 
 export async function runHistoryEntry(
@@ -101,26 +94,14 @@ export async function runProjectHistory(
   runService: RunService,
   projectsStore: ProjectsStore
 ): Promise<void> {
-  const entries = runHistoryStore.listForProject(
-    project.id,
-    getRunHistoryMaxItems(),
-    getForgeFlowSettings().runHistoryPerProjectSortMode
-  );
+  const entries = listProjectHistoryEntries(project, runHistoryStore);
   if (entries.length === 0) {
-    vscode.window.showWarningMessage(`ForgeFlow: No recent runs for ${project.name}.`);
+    showNoProjectHistoryWarning(project);
     return;
   }
-  const pick = await vscode.window.showQuickPick(
-    entries.map((entry) => ({
-      label: entry.label,
-      description: formatHistoryDescription(entry),
-      detail: entry.filePath ?? entry.command ?? '',
-      entry
-    })),
-    { placeHolder: `Select a recent run for ${project.name}` }
-  );
-  if (!pick) {
+  const entry = await pickRunHistoryEntry(entries, `Select a recent run for ${project.name}`);
+  if (!entry) {
     return;
   }
-  await runHistoryEntry(pick.entry, runHistoryStore, runService, projectsStore);
+  await runHistoryEntry(entry, runHistoryStore, runService, projectsStore);
 }

@@ -109,9 +109,8 @@ export class ProjectsWebviewProvider implements vscode.WebviewViewProvider {
         if (!message.projectId) {
           return;
         }
-        const details = await this.projectsProvider.getWebviewProjectDetails(message.projectId);
+        const details = await this.getProjectDetails(message.projectId);
         if (details) {
-          this.detailsCache.set(message.projectId, details);
           void this.view?.webview.postMessage({ type: 'projectDetails', details });
         }
         break;
@@ -224,7 +223,7 @@ export class ProjectsWebviewProvider implements vscode.WebviewViewProvider {
         return;
       }
       case 'open-entry': {
-        const entry = this.resolveEntry(projectId, message.extra);
+        const entry = await this.resolveEntry(projectId, message.extra);
         if (entry) {
           await vscode.commands.executeCommand('forgeflow.projects.openEntryPoint', entry);
         }
@@ -238,7 +237,7 @@ export class ProjectsWebviewProvider implements vscode.WebviewViewProvider {
         return;
       }
       case 'run-entry': {
-        const entry = this.resolveEntry(projectId, message.extra);
+        const entry = await this.resolveEntry(projectId, message.extra);
         if (entry) {
           if (entry.kind === 'task') {
             await vscode.commands.executeCommand('forgeflow.projects.runTask', entry, project);
@@ -250,7 +249,7 @@ export class ProjectsWebviewProvider implements vscode.WebviewViewProvider {
       }
       case 'run-preset': {
         const presetId = message.extra;
-        const details = this.detailsCache.get(projectId);
+        const details = await this.getProjectDetails(projectId);
         const preset = details?.runPresets.find((item) => item.id === presetId);
         if (preset) {
           await vscode.commands.executeCommand('forgeflow.projects.runPresetItem', preset, project);
@@ -259,7 +258,7 @@ export class ProjectsWebviewProvider implements vscode.WebviewViewProvider {
       }
       case 'run-history': {
         const historyId = message.extra;
-        const details = this.detailsCache.get(projectId);
+        const details = await this.getProjectDetails(projectId);
         const entry = details?.recentRuns.find((item) => item.id === historyId);
         if (entry) {
           await vscode.commands.executeCommand('forgeflow.projects.runHistoryItem', entry, project);
@@ -271,11 +270,23 @@ export class ProjectsWebviewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  private resolveEntry(projectId: string, entryKey?: string) {
+  private async getProjectDetails(projectId: string): Promise<ProjectsWebviewDetails | undefined> {
+    const cached = this.detailsCache.get(projectId);
+    if (cached) {
+      return cached;
+    }
+    const details = await this.projectsProvider.getWebviewProjectDetails(projectId);
+    if (details) {
+      this.detailsCache.set(projectId, details);
+    }
+    return details;
+  }
+
+  private async resolveEntry(projectId: string, entryKey?: string) {
     if (!entryKey) {
       return undefined;
     }
-    const details = this.detailsCache.get(projectId);
+    const details = await this.getProjectDetails(projectId);
     if (!details) {
       return undefined;
     }

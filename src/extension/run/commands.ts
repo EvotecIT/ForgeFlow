@@ -122,15 +122,19 @@ export function registerRunCommands({
     }),
     vscode.commands.registerCommand('forgeflow.run.integrated', async (target?: unknown) => {
       const filePath = extractPath(target);
-      await runPath(filePath, runService, projectsStore, favoritesStore, runHistoryStore, 'integrated');
+      await runPath(filePath, runService, projectsStore, favoritesStore, runHistoryStore, 'integrated', undefined, true);
+    }),
+    vscode.commands.registerCommand('forgeflow.run.integrated.newTerminal', async (target?: unknown) => {
+      const filePath = extractPath(target);
+      await runPath(filePath, runService, projectsStore, favoritesStore, runHistoryStore, 'integrated', undefined, false);
     }),
     vscode.commands.registerCommand('forgeflow.run.integrated.keepOpenAlways', async (target?: unknown) => {
       const filePath = extractPath(target);
-      await runPath(filePath, runService, projectsStore, favoritesStore, runHistoryStore, 'integrated', undefined, 'always');
+      await runPath(filePath, runService, projectsStore, favoritesStore, runHistoryStore, 'integrated', undefined, true, 'always');
     }),
     vscode.commands.registerCommand('forgeflow.run.integrated.keepOpenOnError', async (target?: unknown) => {
       const filePath = extractPath(target);
-      await runPath(filePath, runService, projectsStore, favoritesStore, runHistoryStore, 'integrated', undefined, 'onError');
+      await runPath(filePath, runService, projectsStore, favoritesStore, runHistoryStore, 'integrated', undefined, true, 'onError');
     }),
     vscode.commands.registerCommand('forgeflow.run.external', async (target?: unknown) => {
       const filePath = extractPath(target);

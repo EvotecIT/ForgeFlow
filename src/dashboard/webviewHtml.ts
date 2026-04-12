@@ -2,6 +2,8 @@ import type { DashboardRow } from './dashboardService';
 import type * as vscode from 'vscode';
 import { dashboardWebviewStyles } from './webviewStyles';
 import { renderDashboardScript } from './webviewScript';
+import { escapeHtml, randomNonce, serializeJsonForHtml } from '../util/webview';
+import { formatAgeFromTimestamp } from '../util/age';
 
 export interface DashboardRenderState {
   loading?: boolean;
@@ -25,7 +27,7 @@ export interface DashboardRenderState {
 }
 
 export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webview, state?: DashboardRenderState): string {
-  const nonce = randomNonce();
+  const nonce = randomNonce(16, 'abcdefghijklmnopqrstuvwxyz0123456789');
   const showGroupChildren = state?.showGroupChildren ?? true;
   const rowsHtml = rows.length > 0
     ? rows.map((row) => renderRowWithChildren(row, state?.updatedAt, showGroupChildren)).join('')
@@ -48,7 +50,7 @@ export function renderDashboardHtml(rows: DashboardRow[], webview: vscode.Webvie
     showAllChildren: state?.showAllChildren ?? false,
     hideActionsColumn: state?.hideActionsColumn ?? false
   };
-  const initialStateJson = serializeJson(initialState);
+  const initialStateJson = serializeJsonForHtml(initialState);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -522,38 +524,6 @@ function formatHealthTitle(score: number | undefined, issues: string[]): string 
   return `Health score: ${score}/100 — missing ${issues.join(', ')}.`;
 }
 
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (char) => {
-    switch (char) {
-      case '&':
-        return '&amp;';
-      case '<':
-        return '&lt;';
-      case '>':
-        return '&gt;';
-      case '"':
-        return '&quot;';
-      case "'":
-        return '&#39;';
-      default:
-        return char;
-    }
-  });
-}
-
-function randomNonce(): string {
-  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-  let value = '';
-  for (let index = 0; index < 16; index += 1) {
-    value += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return value;
-}
-
-function serializeJson(value: unknown): string {
-  return JSON.stringify(value ?? {}).replace(/</g, '\\u003c');
-}
-
 function formatTimestamp(value: number): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -581,22 +551,9 @@ function formatProgressPercent(current?: number, total?: number): string {
 }
 
 function formatAge(value: number): string {
-  const deltaMs = Date.now() - value;
-  if (!Number.isFinite(deltaMs) || deltaMs < 0) {
-    return 'n/a';
-  }
-  const seconds = Math.floor(deltaMs / 1000);
-  if (seconds < 60) {
-    return `${seconds}s ago`;
-  }
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) {
-    return `${minutes}m ago`;
-  }
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) {
-    return `${hours}h ago`;
-  }
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  return formatAgeFromTimestamp(value, {
+    invalid: 'n/a',
+    future: 'n/a',
+    includeSeconds: true
+  });
 }

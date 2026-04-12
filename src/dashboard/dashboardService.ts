@@ -4,8 +4,9 @@ import type { ProjectsStore } from '../store/projectsStore';
 import type { TagsStore } from '../store/tagsStore';
 import type { ForgeFlowLogger } from '../util/log';
 import { getForgeFlowSettings } from '../util/config';
-import { readDirectory, readFileText, statPath } from '../util/fs';
+import { readDirectory, statPath } from '../util/fs';
 import * as path from 'path';
+import { readProjectGitWorktreeMetadata } from '../git/worktreeMetadata';
 import {
   fetchAzureOpenPrs,
   fetchAzureRepo,
@@ -630,22 +631,8 @@ function pickPrimaryRow(rows: DashboardRow[]): DashboardRow {
 }
 
 async function isGitWorktree(projectPath: string): Promise<boolean> {
-  const gitPath = path.join(projectPath, '.git');
-  const stat = await statPath(gitPath);
-  if (!stat || stat.type !== vscode.FileType.File) {
-    return false;
-  }
-  const content = await readFileText(gitPath);
-  if (!content) {
-    return false;
-  }
-  const match = /gitdir:\\s*(.+)/i.exec(content);
-  const gitDirValue = match?.[1]?.trim();
-  if (!gitDirValue) {
-    return false;
-  }
-  const normalized = gitDirValue.replace(/\\\\/g, '/').toLowerCase();
-  return normalized.includes('/worktrees/');
+  const metadata = await readProjectGitWorktreeMetadata(projectPath);
+  return metadata.isWorktree;
 }
 
 function mergeIdentity(existing: ProjectIdentity | undefined, detected: ProjectIdentity): ProjectIdentity {
