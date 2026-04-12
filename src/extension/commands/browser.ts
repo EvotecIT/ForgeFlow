@@ -1,7 +1,7 @@
-import * as path from 'path';
 import * as vscode from 'vscode';
 import { getForgeFlowSettings } from '../../util/config';
 import { openFileInBrowser, openFileInDefaultApp, openInVisualStudio } from '../../util/open';
+import { isSolutionFileName } from '../../util/solutionFiles';
 import { ensureCustomBrowserPath, isBrowserFile, pickBrowserTarget } from '../browserUtils';
 import { resolveTargetPath } from '../selection';
 
@@ -80,8 +80,8 @@ export function registerBrowserCommands(context: vscode.ExtensionContext): void 
         vscode.window.showWarningMessage('ForgeFlow: No file selected to open.');
         return;
       }
-      if (path.extname(filePath).toLowerCase() !== '.sln') {
-        vscode.window.showWarningMessage('ForgeFlow: Visual Studio open is only supported for .sln files.');
+      if (!isSolutionFileName(filePath)) {
+        vscode.window.showWarningMessage('ForgeFlow: Visual Studio open is only supported for .sln and .slnx files.');
         return;
       }
       await openInVisualStudio(filePath);
