@@ -2,7 +2,7 @@
   "name": "forgeflow",
   "displayName": "ForgeFlow",
   "description": "ForgeFlow: Explorer replacement, Projects manager, PowerShell execution control plane, and Dashboard.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "EvotecServices",
   "author": "Evotec Services sp. z o.o.",
   "license": "MIT",

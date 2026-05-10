@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.1
+- Published the first public Marketplace release.
+
 ## 0.1.0
 - Initial ForgeFlow foundation.
 - Files and Projects views.
