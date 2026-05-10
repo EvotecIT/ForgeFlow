@@ -77,6 +77,11 @@ Use the **Publish VS Code Extension** workflow.
 
 The workflow always uploads the packaged VSIX as an artifact. Marketplace publishing is branch-guarded to `master`.
 
+### Publish from a GitHub Release
+Publishing a GitHub Release named `v<version>` or `forgeflow-v<version>` publishes that version to the Visual Studio Marketplace and attaches the packaged VSIX to the release. The release tag must match `package.json` and point to a commit contained in `master`.
+
+Mark the GitHub Release as pre-release to publish a VS Code pre-release build. Normal GitHub Releases publish normal Marketplace builds.
+
 ### Verified Publisher
 Marketplace verification is handled by Microsoft. Use the Marketplace publisher settings to:
 - Set display name to "Evotec Services".
