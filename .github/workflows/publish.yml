@@ -1,76 +1,53 @@
-name: Publish (Signed VSIX)
+name: Publish VS Code Extension
 
 on:
   workflow_dispatch:
     inputs:
-      vsix_url:
-        description: 'URL to signed VSIX (optional if using release_tag + asset_name)'
-        required: false
-      release_tag:
-        description: 'GitHub release tag to download VSIX from'
-        required: false
-      asset_name:
-        description: 'Release asset name (default: forgeflow.vsix)'
-        required: false
-        default: 'forgeflow.vsix'
+      publish_marketplace:
+        description: 'Publish the packaged VSIX to the Visual Studio Marketplace'
+        required: true
+        type: boolean
+        default: false
+      pre_release:
+        description: 'Package and publish as a pre-release extension'
+        required: true
+        type: boolean
+        default: true
 
 jobs:
-  publish:
-    runs-on: windows-latest
+  package:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
+          cache: 'npm'
 
-      - name: Download signed VSIX
-        shell: pwsh
+      - name: Package VSIX
         env:
-          VSIX_URL: ${{ inputs.vsix_url }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-          ASSET_NAME: ${{ inputs.asset_name }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
-          $vsixPath = Join-Path $PWD 'forgeflow.signed.vsix'
-          if ($env:VSIX_URL) {
-            Invoke-WebRequest -Uri $env:VSIX_URL -OutFile $vsixPath
-          } elseif ($env:RELEASE_TAG) {
-            if (-not (Get-Command gh -ErrorAction SilentlyContinue)) {
-              throw 'gh CLI not found on runner.'
-            }
-            gh release download $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --pattern $env:ASSET_NAME
-            if (-not (Test-Path -LiteralPath $env:ASSET_NAME)) {
-              throw "Asset '$env:ASSET_NAME' not found in release $env:RELEASE_TAG."
-            }
-            Move-Item -LiteralPath $env:ASSET_NAME -Destination $vsixPath -Force
-          } else {
-            throw 'Provide vsix_url or release_tag.'
-          }
-          Write-Host "VSIX downloaded to $vsixPath"
+          args=()
+          if [ "${{ inputs.publish_marketplace }}" = "true" ]; then
+            if [ "${GITHUB_REF_NAME}" != "master" ]; then
+              echo "Marketplace publishing is only allowed from master. Current branch: ${GITHUB_REF_NAME}" >&2
+              exit 1
+            fi
+            args+=("--publish-marketplace")
+          fi
+          if [ "${{ inputs.pre_release }}" = "true" ]; then
+            args+=("--pre-release")
+          fi
+          node scripts/package-vsix.cjs "${args[@]}"
 
-      - name: Verify signature
-        shell: pwsh
-        run: |
-          $vsixPath = Join-Path $PWD 'forgeflow.signed.vsix'
-          $signtool = Get-Command signtool.exe -ErrorAction SilentlyContinue
-          if ($signtool) {
-            & $signtool.Source verify /pa /v $vsixPath
-            exit 0
-          }
-          $signature = Get-AuthenticodeSignature -FilePath $vsixPath
-          if ($signature.Status -ne 'Valid') {
-            throw "VSIX signature is not valid: $($signature.Status)"
-          }
-
-      - name: Publish to Marketplace
-        env:
-          VSCE_TOKEN: ${{ secrets.VSCE_TOKEN }}
-        shell: pwsh
-        run: |
-          if (-not $env:VSCE_TOKEN) {
-            throw 'VSCE_TOKEN secret is missing.'
-          }
-          npx vsce publish --packagePath "${PWD}\forgeflow.signed.vsix" -p "$env:VSCE_TOKEN"
+      - name: Upload VSIX artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: forgeflow-vsix
+          path: dist/*.vsix

@@ -2,7 +2,7 @@
 
 ## Requirements
 - Node.js 20+
-- VS Code 1.90+
+- VS Code 1.107.0+
 
 ## Install
 ```bash
@@ -37,39 +37,49 @@ npm run test:coverage
 npm run package
 ```
 
+The generated VSIX is written to `dist/forgeflow-<version>.vsix`.
+
 ## Publishing (Marketplace)
 
 ### Prerequisites
-- VS Code Marketplace publisher created (publisher id: `evotec`).
-- Marketplace PAT exported to `VSCE_TOKEN` (or pass `-MarketplaceToken`).
-- Windows code signing certificate installed (USB token supported) and its thumbprint.
-- Windows SDK installed (for `signtool.exe`).
+- VS Code Marketplace publisher created with publisher id `EvotecServices`.
+- Marketplace PAT stored as the GitHub organization or repository secret `VSCE_PAT`.
+- The PAT needs the Azure DevOps Marketplace `Manage` scope.
+- `package.json` must keep `"publisher": "EvotecServices"` so the extension lands under the correct publisher.
 
-### Publish locally (Windows)
+### Package locally
 ```powershell
-# Build + test + package
+# Build, lint, typecheck, test, and package
 ./publish.ps1
 
-# Sign with USB token (PIN prompt)
-./publish.ps1 -Sign -SigningThumbprint "92e95fb58effa6a4a75e77a33cdd6bfe6dd30f1a" -TimestampUrl "https://timestamp.digicert.com"
-
-# Publish
-./publish.ps1 -Publish -MarketplaceToken $env:VSCE_TOKEN
-
-# Publish using token file (default: C:\Support\Important\VSCode.txt)
-./publish.ps1 -Publish
+# Skip the slower parts when the workspace is already validated
+./publish.ps1 -SkipNpmCi -SkipTests
 ```
 
-### Publish from GitHub Actions (signed VSIX only)
-This workflow **will not publish** unless the VSIX signature is valid. Signing remains local (USB token).
+### Publish locally
+```powershell
+$env:VSCE_PAT = '<marketplace-pat>'
+./publish.ps1 -Publish -PreRelease
+```
 
-1) Sign locally and upload the VSIX to a GitHub Release (e.g., `forgeflow.vsix`).
-2) Run the **Publish (Signed VSIX)** workflow with `release_tag` (or `vsix_url`).
-3) Ensure `VSCE_TOKEN` is set in repo secrets.
+Equivalent npm scripts:
+```bash
+npm run publish:local
+npm run publish:marketplace:pre
+```
+
+### Publish from GitHub Actions
+Use the **Publish VS Code Extension** workflow.
+
+1. Run it from `master`.
+2. Keep `pre_release` checked for early Marketplace builds.
+3. Check `publish_marketplace` only when the VSIX should be pushed to Marketplace.
+
+The workflow always uploads the packaged VSIX as an artifact. Marketplace publishing is branch-guarded to `master`.
 
 ### Verified Publisher
 Marketplace verification is handled by Microsoft. Use the Marketplace publisher settings to:
-- Set display name to "Evotec Services" (publisher id can remain `evotec`).
+- Set display name to "Evotec Services".
 - Verify your domain and request a verified publisher badge.
 
 ## Dev install (Insiders)
