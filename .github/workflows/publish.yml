@@ -1,6 +1,9 @@
 name: Publish VS Code Extension
 
 on:
+  release:
+    types:
+      - published
   workflow_dispatch:
     inputs:
       publish_marketplace:
@@ -22,6 +25,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -31,17 +36,30 @@ jobs:
 
       - name: Package VSIX
         env:
+          IS_PRE_RELEASE: ${{ (github.event_name == 'release' && github.event.release.prerelease) || (github.event_name == 'workflow_dispatch' && inputs.pre_release) }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          SHOULD_PUBLISH: ${{ github.event_name == 'release' || inputs.publish_marketplace }}
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
+          if [ "${GITHUB_EVENT_NAME}" = "release" ]; then
+            git fetch origin master
+            if ! git merge-base --is-ancestor HEAD origin/master; then
+              echo "Release publishing is only allowed from commits contained in origin/master." >&2
+              exit 1
+            fi
+
+            node -e "const pkg=require('./package.json'); const tag=process.env.RELEASE_TAG || ''; const match=/^(?:v|forgeflow-v)(.+)$/i.exec(tag); if (!match) { throw new Error('Release tag ' + tag + ' must use v' + pkg.version + ' or forgeflow-v' + pkg.version + '.'); } if (match[1] !== pkg.version) { throw new Error('Release tag ' + tag + ' must match package version ' + pkg.version + '.'); }"
+          fi
+
           args=()
-          if [ "${{ inputs.publish_marketplace }}" = "true" ]; then
-            if [ "${GITHUB_REF_NAME}" != "master" ]; then
+          if [ "${SHOULD_PUBLISH}" = "true" ]; then
+            if [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ] && [ "${GITHUB_REF_NAME}" != "master" ]; then
               echo "Marketplace publishing is only allowed from master. Current branch: ${GITHUB_REF_NAME}" >&2
               exit 1
             fi
             args+=("--publish-marketplace")
           fi
-          if [ "${{ inputs.pre_release }}" = "true" ]; then
+          if [ "${IS_PRE_RELEASE}" = "true" ]; then
             args+=("--pre-release")
           fi
           node scripts/package-vsix.cjs "${args[@]}"
@@ -51,3 +69,21 @@ jobs:
         with:
           name: forgeflow-vsix
           path: dist/*.vsix
+
+  attach-release-asset:
+    if: ${{ github.event_name == 'release' }}
+    needs: package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download VSIX artifact
+        uses: actions/download-artifact@v8
+        with:
+          name: forgeflow-vsix
+          path: release-vsix
+
+      - name: Attach VSIX to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ github.event.release.tag_name }}" release-vsix/*.vsix --repo "${GITHUB_REPOSITORY}" --clobber
