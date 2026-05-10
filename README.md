@@ -8,6 +8,7 @@ ForgeFlow is a VS Code extension that replaces the built-in Explorer and project
 - [Architecture](docs/architecture.md)
 - [Onboarding](docs/onboarding.md)
 - [Development](docs/development.md)
+- [Support](SUPPORT.md)
 - [Changelog](CHANGELOG.md)
 
 🛠️ Build Status
@@ -21,6 +22,26 @@ ForgeFlow is a VS Code extension that replaces the built-in Explorer and project
 [![license](https://img.shields.io/github/license/EvotecIT/ForgeFlow.svg)](https://github.com/EvotecIT/ForgeFlow)
 
 Coverage reports are generated in CI as artifacts and can be uploaded to Codecov.
+
+## Marketplace summary
+
+ForgeFlow is published under the `EvotecServices` Visual Studio Marketplace publisher. The first Marketplace builds are expected to ship as pre-release builds while the extension is validated against day-to-day repositories.
+
+Requirements:
+- VS Code 1.107.0 or newer
+- Node.js is only required for development or building from source
+- PowerShell 7+ is recommended for PowerShell execution profiles
+- Windows is required for elevated external PowerShell sessions
+
+No telemetry is collected. Any dashboard tokens are stored with VS Code secret storage and stay on the local machine.
+
+## Screenshots
+
+![ForgeFlow Explorer](assets/forgeflow-explorer.png)
+
+![ForgeFlow Projects](assets/forgeflow-projects.png)
+
+![ForgeFlow Git](assets/forgeflow-git1.png)
 
 ## What it's all about
 
@@ -162,7 +183,7 @@ Manual steps (if you prefer):
 1) `npm run compile`
 2) `npm run package`
 3) Install the VSIX into Insiders:
-   - Command line: `code-insiders --install-extension forgeflow-0.1.0.vsix --force`
+   - Command line: `code-insiders --install-extension dist/forgeflow-0.1.0.vsix --force`
    - Or Extensions view → “…” → **Install from VSIX…**
 4) Reload window.
 
