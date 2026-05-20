@@ -21,4 +21,25 @@ describe('excel markdown conversion', () => {
       '| name | value           |\n|------|-----------------|\n| a\\|b | line1<br/>line2 |'
     );
   });
+
+  it('parses quoted TSV fields before splitting columns', () => {
+    assert.equal(
+      excelToMarkdown('name\tvalue\r\n"a\tb"\tc'),
+      '| name | value |\n|------|-------|\n| a\tb  | c     |'
+    );
+  });
+
+  it('preserves boundary spaces in first and last cells', () => {
+    assert.equal(
+      excelToMarkdown('  first\tlast  \r\n'),
+      '|   first | last   |\n|---------|--------|'
+    );
+  });
+
+  it('unquotes normal quoted cells and doubled quote escapes', () => {
+    assert.equal(
+      excelToMarkdown('quote\r\n"He said ""hi"""'),
+      '| quote        |\n|--------------|\n| He said "hi" |'
+    );
+  });
 });

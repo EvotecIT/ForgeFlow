@@ -199,13 +199,16 @@ async function sortActiveJson(mode: JsonSortMode, direction: JsonSortDirection):
 
   try {
     const text = document.getText(range);
-    const sorted = sortJsonText(text, {
+    let sorted = sortJsonText(text, {
       mode,
       direction,
       ...readConfig(),
       indent: detectIndent(document.getText()),
       finalNewline: selection.isEmpty && document.getText().endsWith('\n')
     });
+    if (!selection.isEmpty) {
+      sorted = applySelectionBaseIndent(sorted, range.start.character);
+    }
     await editor.edit((editBuilder) => {
       editBuilder.replace(range, sorted);
     });
@@ -248,4 +251,12 @@ function toStringArray(value: unknown): string[] {
     return [];
   }
   return value.filter((entry): entry is string => typeof entry === 'string' && entry.length > 0);
+}
+
+export function applySelectionBaseIndent(text: string, baseColumn: number): string {
+  if (baseColumn <= 0 || !text.includes('\n')) {
+    return text;
+  }
+  const baseIndent = ' '.repeat(baseColumn);
+  return text.split('\n').map((line, index) => index === 0 ? line : `${baseIndent}${line}`).join('\n');
 }

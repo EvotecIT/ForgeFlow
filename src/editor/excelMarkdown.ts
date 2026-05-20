@@ -16,7 +16,6 @@ const ALIGNED_RIGHT = 'r';
 const ALIGNED_CENTER = 'c';
 const EXCEL_COLUMN_DELIMITER = '\t';
 const MARKDOWN_NEWLINE = '<br/>';
-const UNESCAPED_DOUBLE_QUOTE = '"';
 
 const ALIGNED_LEFT_SYNTAX: TableCellAlignment = { prefix: '', postfix: '', adjust: 0 };
 const ALIGNED_RIGHT_SYNTAX: TableCellAlignment = { prefix: '', postfix: ':', adjust: 1 };
@@ -24,10 +23,7 @@ const ALIGNED_CENTER_SYNTAX: TableCellAlignment = { prefix: ':', postfix: ':', a
 
 const EXCEL_ROW_DELIMITER_REGEX = /[\n\u0085\u2028\u2029]|\r\n?/g;
 const COLUMN_ALIGNMENT_REGEX = /^(\^[lcr])/i;
-const EXCEL_NEWLINE_ESCAPED_CELL_REGEX = /"([^\t]*\n[^\t]*)"/g;
-const EXCEL_NEWLINE_REGEX = /\n/g;
-const CRLF_REGEX = /\r\n/g;
-const EXCEL_DOUBLE_QUOTE_ESCAPED_REGEX = /""/g;
+const BOUNDARY_ROW_DELIMITER_REGEX = /^(?:\r\n?|\n|\u0085|\u2028|\u2029)+|(?:\r\n?|\n|\u0085|\u2028|\u2029)+$/g;
 
 export function registerExcelMarkdown(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
@@ -47,9 +43,9 @@ export function registerExcelMarkdown(context: vscode.ExtensionContext): void {
 }
 
 export function excelToMarkdown(rawData: string): string {
-  const data = rawData.replace(/^[^\S\t]+|[^\S\t]+$/g, '');
-  const rows = splitIntoRowsAndColumns(replaceIntraCellNewline(data))
-    .map((row) => row.map((cell) => cell.replace(/\|/g, '\\|')));
+  const data = trimBoundaryRowDelimiters(rawData);
+  const rows = splitIntoRowsAndColumns(data)
+    .map((row) => row.map((cell) => normalizeMarkdownCell(cell)));
   const { columnWidths, colAlignments } = getColumnWidthsAndAlignments(rows);
   const markdownRows = addMarkdownSyntax(rows, columnWidths);
   return addAlignmentSyntax(markdownRows, columnWidths, colAlignments).join('\n');
@@ -133,17 +129,65 @@ export function columnWidth(rows: string[][], columnIndex: number): number {
 }
 
 export function splitIntoRowsAndColumns(data: string): string[][] {
-  return data.split(EXCEL_ROW_DELIMITER_REGEX).map((row) => row.split(EXCEL_COLUMN_DELIMITER));
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < data.length; index += 1) {
+    const char = data[index];
+    const next = data[index + 1];
+    if (inQuotes) {
+      if (char === '"' && next === '"') {
+        cell += '"';
+        index += 1;
+      } else if (char === '"') {
+        inQuotes = false;
+      } else {
+        cell += char;
+      }
+      continue;
+    }
+
+    if (char === '"' && cell.length === 0) {
+      inQuotes = true;
+    } else if (char === EXCEL_COLUMN_DELIMITER) {
+      row.push(cell);
+      cell = '';
+    } else if (isRowDelimiter(char)) {
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = '';
+      if (char === '\r' && next === '\n') {
+        index += 1;
+      }
+    } else {
+      cell += char;
+    }
+  }
+
+  row.push(cell);
+  rows.push(row);
+  return rows;
 }
 
 export function replaceIntraCellNewline(data: string): string {
-  const crlfPlaceholder = '\x00';
-  return data.replace(EXCEL_NEWLINE_ESCAPED_CELL_REGEX, (_match, group: string) => {
-    return group
-      .replace(EXCEL_DOUBLE_QUOTE_ESCAPED_REGEX, UNESCAPED_DOUBLE_QUOTE)
-      .replace(CRLF_REGEX, crlfPlaceholder)
-      .replace(EXCEL_NEWLINE_REGEX, MARKDOWN_NEWLINE)
-      .split(crlfPlaceholder)
-      .join('\r\n');
-  });
+  return splitIntoRowsAndColumns(data)
+    .map((row) => row.map((cell) => cell.replace(EXCEL_ROW_DELIMITER_REGEX, MARKDOWN_NEWLINE)).join(EXCEL_COLUMN_DELIMITER))
+    .join('\r\n');
+}
+
+function normalizeMarkdownCell(cell: string): string {
+  return cell
+    .replace(EXCEL_ROW_DELIMITER_REGEX, MARKDOWN_NEWLINE)
+    .replace(/\|/g, '\\|');
+}
+
+function trimBoundaryRowDelimiters(data: string): string {
+  return data.replace(BOUNDARY_ROW_DELIMITER_REGEX, '');
+}
+
+function isRowDelimiter(char: string | undefined): boolean {
+  return char === '\r' || char === '\n' || char === '\u0085' || char === '\u2028' || char === '\u2029';
 }

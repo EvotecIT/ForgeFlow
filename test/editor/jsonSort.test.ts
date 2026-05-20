@@ -1,5 +1,5 @@
 import { strict as assert } from 'assert';
-import { orderKeys, sortJsonText } from '../../src/editor/jsonSort';
+import { applySelectionBaseIndent, orderKeys, sortJsonText } from '../../src/editor/jsonSort';
 
 describe('json sorting', () => {
   it('sorts object keys recursively', () => {
@@ -32,6 +32,13 @@ describe('json sorting', () => {
         indent: 2
       }),
       '{\n  "a": 1,\n  "b": 2\n}'
+    );
+  });
+
+  it('offsets sorted selection continuation lines to the selection column', () => {
+    assert.equal(
+      applySelectionBaseIndent('{\n  "a": 1,\n  "b": 2\n}', 4),
+      '{\n      "a": 1,\n      "b": 2\n    }'
     );
   });
 });

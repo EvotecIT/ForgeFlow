@@ -357,7 +357,7 @@ function updateDecorations(
   };
 
   for (const match of matches) {
-    const severity = match.rule.severity ?? 'warning';
+    const severity = normalizeRuleSeverity(match.rule.severity);
     const key = match.rule.zeroWidth ? `${severity}ZeroWidth` as DecorationKey : severity;
     grouped[key].push({
       range: rangeForDiagnostic(match.range),
@@ -387,7 +387,7 @@ function clearDecorations(
 }
 
 function severityToDiagnostic(severity: UnicodeSubstitutionRule['severity']): vscode.DiagnosticSeverity {
-  switch (severity) {
+  switch (normalizeRuleSeverity(severity)) {
     case 'info':
       return vscode.DiagnosticSeverity.Information;
     case 'error':
@@ -396,6 +396,12 @@ function severityToDiagnostic(severity: UnicodeSubstitutionRule['severity']): vs
     default:
       return vscode.DiagnosticSeverity.Warning;
   }
+}
+
+function normalizeRuleSeverity(severity: unknown): 'info' | 'warning' | 'error' {
+  return severity === 'info' || severity === 'warning' || severity === 'error'
+    ? severity
+    : 'warning';
 }
 
 function createDecorationTypes(): Record<DecorationKey, vscode.TextEditorDecorationType> {
