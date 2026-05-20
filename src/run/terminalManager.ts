@@ -12,6 +12,11 @@ export interface TerminalOptions {
   shellPath?: string;
 }
 
+export interface ManagedTerminal {
+  terminal: vscode.Terminal;
+  created: boolean;
+}
+
 export class TerminalManager implements vscode.Disposable {
   private readonly terminals = new Map<string, vscode.Terminal>();
   private readonly closeSubscription: vscode.Disposable;
@@ -27,10 +32,14 @@ export class TerminalManager implements vscode.Disposable {
   }
 
   public getTerminal(profile: PowerShellProfile, options: TerminalOptions): vscode.Terminal {
+    return this.getManagedTerminal(profile, options).terminal;
+  }
+
+  public getManagedTerminal(profile: PowerShellProfile, options: TerminalOptions): ManagedTerminal {
     const key = this.getKey(profile, options);
     const existing = options.reuseTerminal ? this.terminals.get(key) : undefined;
     if (existing) {
-      return existing;
+      return { terminal: existing, created: false };
     }
 
     const shellPath = options.shellPath ?? resolveExecutable(profile);
@@ -50,7 +59,7 @@ export class TerminalManager implements vscode.Disposable {
       this.terminals.set(key, terminal);
     }
 
-    return terminal;
+    return { terminal, created: true };
   }
 
   public dispose(): void {

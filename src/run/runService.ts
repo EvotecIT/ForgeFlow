@@ -258,7 +258,7 @@ export class RunService implements vscode.Disposable {
     keepOpenPrompt: boolean
   ): Promise<void> {
     void echoCommand;
-    const terminal = this.terminalManager.getTerminal(profile, {
+    const managedTerminal = this.terminalManager.getManagedTerminal(profile, {
       reuseTerminal,
       reuseScope,
       perProject,
@@ -266,8 +266,12 @@ export class RunService implements vscode.Disposable {
       workingDirectory: request.workingDirectory,
       shellPath: executable
     });
+    const terminal = managedTerminal.terminal;
     const command = buildTerminalCommand(request, { keepOpen, executable, keepOpenPrompt });
     terminal.show(true);
+    if (managedTerminal.created) {
+      await waitForTerminalStartup(terminal);
+    }
     terminal.sendText(command.commandLine, true);
     this.logger.info(`Run integrated: ${request.filePath}`);
   }
@@ -497,6 +501,18 @@ export class RunService implements vscode.Disposable {
       this.externalOutput = undefined;
     }
   }
+}
+
+async function waitForTerminalStartup(terminal: vscode.Terminal): Promise<void> {
+  await Promise.race([
+    terminal.processId.then(() => undefined, () => undefined),
+    delay(750)
+  ]);
+  await delay(150);
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function normalizePathForCompare(value: string): string {

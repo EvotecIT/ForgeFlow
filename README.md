@@ -88,7 +88,10 @@ Layout modes:
 
 **Editor tools**
 - **Toggle Quotes** (`Ctrl+'`) with per-language chars
-- **Unicode substitutions** lint + format with quick-fix actions
+- **Unicode substitutions** lint + format with quick-fix actions and suspicious-character highlighting
+- **JSON sorting** for full files or selections
+- **Excel to Markdown table** paste (`Shift+Alt+V` in Markdown)
+- **Folding** context menu wrappers for VS Code's built-in folding commands
 
 **Quality of life**
 - Live filters with presets (workspace/global scope)
@@ -209,6 +212,7 @@ Re-run `npm run compile` after changes, then reload VS Code.
 
 - `Alt+B` → Open current file in browser (extensions configurable via `forgeflow.browser.fileExtensions`)
 - `Shift+Alt+B` → Choose browser
+- `Shift+Alt+V` → Paste Excel/TSV clipboard content as a Markdown table
 - `Ctrl+Shift+Alt+F` / `Cmd+Shift+Alt+F` → Focus ForgeFlow filter for the current view
 - `Ctrl+'` / `Cmd+'` → Toggle Quotes (ForgeFlow)
 

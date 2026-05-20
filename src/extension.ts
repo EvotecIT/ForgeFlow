@@ -31,6 +31,9 @@ import { GitViewProvider } from './views/gitView';
 import { ForgeFlowLogger } from './util/log';
 import { getForgeFlowSettings } from './util/config';
 import { maybeRunOnboarding } from './onboarding/onboarding';
+import { registerExcelMarkdown } from './editor/excelMarkdown';
+import { registerFoldingCommands } from './editor/folding';
+import { registerJsonSort } from './editor/jsonSort';
 import { registerToggleQuotes } from './editor/toggleQuotes';
 import { registerUnicodeSubstitutions } from './editor/unicodeSubstitutions';
 import { registerBrowserCommands } from './extension/commands/browser';
@@ -513,6 +516,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     runHistoryStore
   );
 
+  registerExcelMarkdown(context);
+  registerFoldingCommands(context);
+  registerJsonSort(context);
   registerToggleQuotes(context);
   registerUnicodeSubstitutions(context);
   let runHistoryRefreshTimer: NodeJS.Timeout | undefined;
