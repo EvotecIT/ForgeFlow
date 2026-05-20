@@ -12,7 +12,7 @@ export interface JsonSortOptions {
   direction: JsonSortDirection;
   orderOverride?: string[];
   orderUnderride?: string[];
-  indent?: number;
+  indent?: number | string;
   finalNewline?: boolean;
 }
 
@@ -178,9 +178,13 @@ function isJsonObject(value: JsonValue | undefined): value is JsonObject {
   return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
 
-function detectIndent(text: string): number {
-  const line = text.split(/\r?\n/).find((entry) => /^ +"/.test(entry));
-  return line?.match(/^ +/)?.[0].length ?? 2;
+export function detectIndent(text: string): number | string {
+  const line = text.split(/\r?\n/).find((entry) => /^[\t ]+"/.test(entry));
+  const indent = line?.match(/^[\t ]+/)?.[0];
+  if (!indent) {
+    return 2;
+  }
+  return indent.includes('\t') ? indent : indent.length;
 }
 
 async function sortActiveJson(mode: JsonSortMode, direction: JsonSortDirection): Promise<void> {

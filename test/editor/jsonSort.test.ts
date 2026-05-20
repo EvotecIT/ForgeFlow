@@ -1,5 +1,5 @@
 import { strict as assert } from 'assert';
-import { applySelectionBaseIndent, orderKeys, sortJsonText } from '../../src/editor/jsonSort';
+import { applySelectionBaseIndent, detectIndent, orderKeys, sortJsonText } from '../../src/editor/jsonSort';
 
 describe('json sorting', () => {
   it('sorts object keys recursively', () => {
@@ -39,6 +39,14 @@ describe('json sorting', () => {
     assert.equal(
       applySelectionBaseIndent('{\n  "a": 1,\n  "b": 2\n}', 4),
       '{\n      "a": 1,\n      "b": 2\n    }'
+    );
+  });
+
+  it('preserves tab indentation when detecting JSON indent', () => {
+    assert.equal(detectIndent('{\n\t"b": 2,\n\t"a": 1\n}'), '\t');
+    assert.equal(
+      sortJsonText('{\n\t"b": 2,\n\t"a": 1\n}', { mode: 'alpha', direction: 'asc', indent: '\t' }),
+      '{\n\t"a": 1,\n\t"b": 2\n}'
     );
   });
 });
