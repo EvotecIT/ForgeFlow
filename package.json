@@ -1421,6 +1421,145 @@
         "category": "ForgeFlow"
       },
       {
+        "command": "forgeflow.markdown.pasteExcelTable",
+        "title": "Markdown: Paste Excel Table",
+        "shortTitle": "Paste Excel Table",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.json.sortKeys",
+        "title": "JSON: Sort Keys",
+        "shortTitle": "Sort Keys",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.json.sortKeysReverse",
+        "title": "JSON: Sort Keys (Reverse)",
+        "shortTitle": "Sort Keys Reverse",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.json.sortKeysByLength",
+        "title": "JSON: Sort Keys by Length",
+        "shortTitle": "Sort Keys by Length",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.json.sortKeysByLengthReverse",
+        "title": "JSON: Sort Keys by Length (Reverse)",
+        "shortTitle": "Sort Keys by Length Reverse",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.json.sortKeysAlphaNumeric",
+        "title": "JSON: Sort Keys Alphanumerically",
+        "shortTitle": "Sort Keys Alphanumeric",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.json.sortKeysAlphaNumericReverse",
+        "title": "JSON: Sort Keys Alphanumerically (Reverse)",
+        "shortTitle": "Sort Keys Alphanumeric Reverse",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.json.sortKeysByValue",
+        "title": "JSON: Sort Keys by Value",
+        "shortTitle": "Sort Keys by Value",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.json.sortKeysByValueReverse",
+        "title": "JSON: Sort Keys by Value (Reverse)",
+        "shortTitle": "Sort Keys by Value Reverse",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.json.sortKeysByType",
+        "title": "JSON: Sort Keys by Type",
+        "shortTitle": "Sort Keys by Type",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.json.sortKeysByTypeReverse",
+        "title": "JSON: Sort Keys by Type (Reverse)",
+        "shortTitle": "Sort Keys by Type Reverse",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.folding.fold",
+        "title": "Folding: Fold",
+        "shortTitle": "Fold",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.folding.foldRecursively",
+        "title": "Folding: Fold Recursively",
+        "shortTitle": "Fold Recursively",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.folding.foldAllBlockComments",
+        "title": "Folding: Fold All Block Comments",
+        "shortTitle": "Fold Block Comments",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.folding.unfold",
+        "title": "Folding: Unfold",
+        "shortTitle": "Unfold",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.folding.unfoldRecursively",
+        "title": "Folding: Unfold Recursively",
+        "shortTitle": "Unfold Recursively",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.folding.foldAll",
+        "title": "Folding: Fold All",
+        "shortTitle": "Fold All",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.folding.unfoldAll",
+        "title": "Folding: Unfold All",
+        "shortTitle": "Unfold All",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.folding.createRange",
+        "title": "Folding: Create Range from Selection",
+        "shortTitle": "Create Folding Range",
+        "category": "ForgeFlow",
+        "enablement": "editorHasSelection"
+      },
+      {
+        "command": "forgeflow.folding.createRanges",
+        "title": "Folding: Create Ranges from Selections",
+        "shortTitle": "Create Folding Ranges",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.folding.removeRangesOfSelection",
+        "title": "Folding: Remove Ranges of Selection",
+        "shortTitle": "Remove Folding Ranges",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.folding.removeRangesOfSelections",
+        "title": "Folding: Remove Ranges of Selections",
+        "shortTitle": "Remove Folding Ranges",
+        "category": "ForgeFlow"
+      },
+      {
+        "command": "forgeflow.folding.removeRangesHere",
+        "title": "Folding: Remove Ranges Here",
+        "shortTitle": "Remove Folding Ranges Here",
+        "category": "ForgeFlow"
+      },
+      {
         "command": "forgeflow.toggleQuotes",
         "title": "Toggle Quote",
         "category": "ForgeFlow"
@@ -1524,6 +1663,14 @@
       {
         "id": "forgeflow.worktrees.manageMenu",
         "label": "Worktree"
+      },
+      {
+        "id": "forgeflow.editor.jsonMenu",
+        "label": "JSON Sorting"
+      },
+      {
+        "id": "forgeflow.editor.foldingMenu",
+        "label": "Folding"
       }
     ],
     "menus": {
@@ -3104,6 +3251,120 @@
           "group": "5_forgeflow@8"
         }
       ],
+      "editor/context": [
+        {
+          "command": "forgeflow.markdown.pasteExcelTable",
+          "when": "editorTextFocus && editorLangId == markdown",
+          "group": "7_modification@1"
+        },
+        {
+          "submenu": "forgeflow.editor.jsonMenu",
+          "when": "editorTextFocus && editorLangId =~ /(json|jsonc)/",
+          "group": "7_modification@2"
+        },
+        {
+          "submenu": "forgeflow.editor.foldingMenu",
+          "when": "editorTextFocus",
+          "group": "8_folding"
+        }
+      ],
+      "forgeflow.editor.jsonMenu": [
+        {
+          "command": "forgeflow.json.sortKeys",
+          "group": "1_alpha@1"
+        },
+        {
+          "command": "forgeflow.json.sortKeysReverse",
+          "group": "1_alpha@2"
+        },
+        {
+          "command": "forgeflow.json.sortKeysAlphaNumeric",
+          "group": "2_variants@1"
+        },
+        {
+          "command": "forgeflow.json.sortKeysAlphaNumericReverse",
+          "group": "2_variants@2"
+        },
+        {
+          "command": "forgeflow.json.sortKeysByLength",
+          "group": "2_variants@3"
+        },
+        {
+          "command": "forgeflow.json.sortKeysByLengthReverse",
+          "group": "2_variants@4"
+        },
+        {
+          "command": "forgeflow.json.sortKeysByValue",
+          "group": "3_value@1"
+        },
+        {
+          "command": "forgeflow.json.sortKeysByValueReverse",
+          "group": "3_value@2"
+        },
+        {
+          "command": "forgeflow.json.sortKeysByType",
+          "group": "4_type@1"
+        },
+        {
+          "command": "forgeflow.json.sortKeysByTypeReverse",
+          "group": "4_type@2"
+        }
+      ],
+      "forgeflow.editor.foldingMenu": [
+        {
+          "command": "forgeflow.folding.fold",
+          "group": "1_current@1"
+        },
+        {
+          "command": "forgeflow.folding.unfold",
+          "group": "1_current@2"
+        },
+        {
+          "command": "forgeflow.folding.foldRecursively",
+          "group": "2_recursive@1"
+        },
+        {
+          "command": "forgeflow.folding.unfoldRecursively",
+          "group": "2_recursive@2"
+        },
+        {
+          "command": "forgeflow.folding.foldAll",
+          "group": "3_all@1"
+        },
+        {
+          "command": "forgeflow.folding.foldAllBlockComments",
+          "group": "3_all@2"
+        },
+        {
+          "command": "forgeflow.folding.unfoldAll",
+          "group": "3_all@3"
+        },
+        {
+          "command": "forgeflow.folding.createRange",
+          "when": "editorHasSelection && !editorHasMultipleSelections",
+          "group": "4_manual@1"
+        },
+        {
+          "command": "forgeflow.folding.createRanges",
+          "when": "editorHasMultipleSelections",
+          "group": "4_manual@2"
+        },
+        {
+          "command": "forgeflow.folding.removeRangesOfSelection",
+          "when": "editorHasSelection && !editorHasMultipleSelections",
+          "group": "4_manual@3"
+        },
+        {
+          "command": "forgeflow.folding.removeRangesOfSelections",
+          "when": "editorHasSelection && editorHasMultipleSelections",
+          "group": "4_manual@4"
+        },
+        {
+          "command": "forgeflow.folding.removeRangesHere",
+          "when": "!editorHasSelection",
+          "group": "4_manual@5"
+        }
+      ],
       "editor/title": [
         {
           "command": "forgeflow.run.integrated",
@@ -3162,6 +3423,11 @@
         "command": "forgeflow.openInBrowser.choose",
         "key": "shift+alt+b",
         "when": "editorTextFocus"
+      },
+      {
+        "command": "forgeflow.markdown.pasteExcelTable",
+        "key": "shift+alt+v",
+        "when": "editorTextFocus && editorLangId == markdown"
       },
       {
         "command": "forgeflow.toggleQuotes",
@@ -4212,6 +4478,12 @@
           "default": true,
           "scope": "language-overridable"
         },
+        "forgeflow.unicodeSubstitutions.enableDecorations": {
+          "description": "Highlight suspicious unicode characters directly in the editor.",
+          "type": "boolean",
+          "default": true,
+          "scope": "language-overridable"
+        },
         "forgeflow.unicodeSubstitutions.enabledLanguageIds": {
           "type": "array",
           "scope": "language-overridable",
@@ -4222,6 +4494,40 @@
             "*"
           ],
           "description": "Specify file types to lint."
+        },
+        "forgeflow.jsonSort.orderOverride": {
+          "type": "array",
+          "description": "JSON keys to keep at the beginning after sorting.",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "forgeflow.jsonSort.orderUnderride": {
+          "type": "array",
+          "description": "JSON keys to keep at the end after sorting.",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "forgeflow.jsonSort.excludedFiles": {
+          "type": "array",
+          "description": "Relative file paths or file names to skip when sorting a whole JSON document.",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "package.json"
+          ]
+        },
+        "forgeflow.jsonSort.excludedPaths": {
+          "type": "array",
+          "description": "Relative path prefixes to skip when sorting a whole JSON document.",
+          "items": {
+            "type": "string"
+          },
+          "default": []
         }
       }
     }
@@ -4257,8 +4563,8 @@
     "@typescript-eslint/eslint-plugin": "^8.59.2",
     "@typescript-eslint/parser": "^8.59.2",
     "@vscode/vsce": "^3.9.1",
-    "esbuild": "^0.25.12",
     "c8": "^10.1.3",
+    "esbuild": "^0.25.12",
     "eslint": "^9.39.4",
     "mocha": "^11.7.5",
     "typescript": "^5.9.3"
@@ -4271,7 +4577,7 @@
     "ajv@^8.17.1": "8.18.0",
     "brace-expansion@^1.1.7": "1.1.14",
     "brace-expansion@^2.0.2": "2.0.3",
-    "brace-expansion@^5.0.2": "5.0.5",
+    "brace-expansion@^5.0.2": "5.0.6",
     "diff": "^8.0.3",
     "fast-uri": "3.1.2",
     "lodash": "^4.17.22",
@@ -4280,5 +4586,8 @@
       "serialize-javascript": "7.0.5"
     },
     "underscore": "1.13.8"
+  },
+  "dependencies": {
+    "jsonc-parser": "^3.3.1"
   }
 }

@@ -1,0 +1,23 @@
+export const GLOBAL_STATE_SYNC_KEYS = [
+  'forgeflow.layout.mode.v1',
+  'forgeflow.filters.revision.v1',
+  'forgeflow.filters.presets.v1',
+  'forgeflow.filters.presets.revision.v1',
+  'forgeflow.tags.presets.v1',
+  'forgeflow.tags.presets.revision.v1',
+  'forgeflow.files.favorites.v1',
+  'forgeflow.files.favorites.revision.v1',
+  'forgeflow.projects.items.v1',
+  'forgeflow.projects.revision.v1',
+  'forgeflow.projects.favorites.v1',
+  'forgeflow.projects.tags.v1',
+  'forgeflow.projects.tags.revision.v1',
+  'forgeflow.projects.sortOrder.v1',
+  'forgeflow.files.filter.v1',
+  'forgeflow.projects.filter.v1',
+  'forgeflow.git.filter.v1',
+  'forgeflow.dashboard.filter.v1',
+  'forgeflow.tags.filter.v1',
+  'forgeflow.run.history.v1',
+  'forgeflow.run.history.revision.v1'
+];

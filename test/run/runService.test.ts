@@ -33,6 +33,7 @@ describe('RunService', () => {
 
     const sentCommands: Array<{ text: string; addNewLine?: boolean }> = [];
     const terminal = {
+      processId: Promise.resolve(1),
       show: () => undefined,
       sendText: (text: string, addNewLine?: boolean) => {
         sentCommands.push({ text, addNewLine });
@@ -53,9 +54,9 @@ describe('RunService', () => {
         list: () => []
       } as never,
       {
-        getTerminal: (requestedProfile: PowerShellProfile, options: unknown) => {
+        getManagedTerminal: (requestedProfile: PowerShellProfile, options: unknown) => {
           requests.push({ profile: requestedProfile, options });
-          return terminal as never;
+          return { terminal, created: true } as never;
         }
       } as never
     );
@@ -121,12 +122,14 @@ describe('RunService', () => {
         list: () => []
       } as never,
       {
-        getTerminal: (requestedProfile: PowerShellProfile, options: unknown) => {
+        getManagedTerminal: (requestedProfile: PowerShellProfile, options: unknown) => {
           requests.push({ profile: requestedProfile, options });
-          return {
+          const terminal = {
+            processId: Promise.resolve(1),
             show: () => undefined,
             sendText: () => undefined
-          } as never;
+          };
+          return { terminal, created: true } as never;
         }
       } as never
     );

@@ -31,12 +31,12 @@ import { GitViewProvider } from './views/gitView';
 import { ForgeFlowLogger } from './util/log';
 import { getForgeFlowSettings } from './util/config';
 import { maybeRunOnboarding } from './onboarding/onboarding';
-import { registerToggleQuotes } from './editor/toggleQuotes';
-import { registerUnicodeSubstitutions } from './editor/unicodeSubstitutions';
+import { registerEditorTools } from './editor';
 import { registerBrowserCommands } from './extension/commands/browser';
 import { registerMiscCommands } from './extension/commands/misc';
 import { registerDashboardCommands } from './extension/dashboard/commands';
 import { registerGitCommands } from './extension/git/commands';
+import { GLOBAL_STATE_SYNC_KEYS } from './extension/globalStateSync';
 import { registerPowerForgeCommands, handlePowerForgeTerminalClosed } from './extension/powerforge/commands';
 import { registerRunCommands } from './extension/run/commands';
 import { handleRunTerminalClosed } from './extension/run/terminal';
@@ -52,30 +52,6 @@ import { registerFileCommands } from './extension/commands/files';
 import { registerProjectCommands } from './extension/commands/projects';
 import { schedulePowerShellProfileHealthCheck } from './extension/run/health';
 import { registerOpenOnSelection } from './extension/files/openOnSelection';
-
-const GLOBAL_STATE_SYNC_KEYS = [
-  'forgeflow.layout.mode.v1',
-  'forgeflow.filters.revision.v1',
-  'forgeflow.filters.presets.v1',
-  'forgeflow.filters.presets.revision.v1',
-  'forgeflow.tags.presets.v1',
-  'forgeflow.tags.presets.revision.v1',
-  'forgeflow.files.favorites.v1',
-  'forgeflow.files.favorites.revision.v1',
-  'forgeflow.projects.items.v1',
-  'forgeflow.projects.revision.v1',
-  'forgeflow.projects.favorites.v1',
-  'forgeflow.projects.tags.v1',
-  'forgeflow.projects.tags.revision.v1',
-  'forgeflow.projects.sortOrder.v1',
-  'forgeflow.files.filter.v1',
-  'forgeflow.projects.filter.v1',
-  'forgeflow.git.filter.v1',
-  'forgeflow.dashboard.filter.v1',
-  'forgeflow.tags.filter.v1',
-  'forgeflow.run.history.v1',
-  'forgeflow.run.history.revision.v1'
-];
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const logger = new ForgeFlowLogger();
@@ -513,8 +489,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     runHistoryStore
   );
 
-  registerToggleQuotes(context);
-  registerUnicodeSubstitutions(context);
+  registerEditorTools(context);
   let runHistoryRefreshTimer: NodeJS.Timeout | undefined;
   const scheduleRunHistoryRefresh = (): void => {
     if (runHistoryRefreshTimer) {
