@@ -4564,7 +4564,7 @@
     "@typescript-eslint/parser": "^8.59.2",
     "@vscode/vsce": "^3.9.1",
     "c8": "^10.1.3",
-    "esbuild": "^0.25.12",
+    "esbuild": "^0.28.1",
     "eslint": "^9.39.4",
     "mocha": "^11.7.5",
     "typescript": "^5.9.3"
