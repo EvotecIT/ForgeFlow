@@ -24,9 +24,6 @@
   "engines": {
     "vscode": "^1.107.0"
   },
-  "activationEvents": [
-    "onStartupFinished"
-  ],
   "categories": [
     "Other",
     "SCM Providers"

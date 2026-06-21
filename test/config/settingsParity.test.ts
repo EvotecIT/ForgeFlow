@@ -32,6 +32,15 @@ function collectSettingsUsedByConfigFacade(): string[] {
 }
 
 describe('settings parity', () => {
+  it('does not force ForgeFlow activation during VS Code startup', () => {
+    const pkg = loadPackageJson() as PackageJsonShape & { activationEvents?: string[] };
+    assert.equal(
+      pkg.activationEvents?.includes('onStartupFinished') ?? false,
+      false,
+      'ForgeFlow should activate from contributed views and commands, not during every VS Code startup.'
+    );
+  });
+
   it('declares all forgeflow settings consumed by getForgeFlowSettings', () => {
     const pkg = loadPackageJson();
     const declared = new Set(Object.keys(pkg.contributes?.configuration?.properties ?? {}));

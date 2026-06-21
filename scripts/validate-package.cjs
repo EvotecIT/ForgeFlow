@@ -7,6 +7,9 @@ const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
 const errors = [];
 
 const activationEvents = Array.isArray(pkg.activationEvents) ? pkg.activationEvents : [];
+if (activationEvents.includes('onStartupFinished')) {
+  errors.push('ForgeFlow must not activate onStartupFinished; contributed views and commands activate it on demand.');
+}
 if (activationEvents.length > 0) {
   const contributedCommands = new Set((pkg.contributes?.commands ?? []).map((item) => item.command));
   const contributedViews = new Set();
