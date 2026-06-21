@@ -8,6 +8,7 @@ interface PackageJsonShape {
     configuration?: {
       properties?: Record<string, { description?: string; markdownDescription?: string; deprecationMessage?: string }>;
     };
+    views?: Record<string, Array<{ when?: string }>>;
   };
 }
 
@@ -50,6 +51,31 @@ describe('settings parity', () => {
       missing,
       [],
       `Missing settings in package.json contributes.configuration.properties:\n${missing.join('\n')}`
+    );
+  });
+
+  it('uses configuration-backed layout clauses so view placement does not require startup activation', () => {
+    const pkg = loadPackageJson();
+    const props = pkg.contributes?.configuration?.properties ?? {};
+    assert.ok(props['forgeflow.layout.mode'], 'Missing forgeflow.layout.mode setting.');
+
+    const whens = Object.values(pkg.contributes?.views ?? {})
+      .flat()
+      .map((view) => view.when ?? '')
+      .filter(Boolean);
+
+    assert.equal(
+      whens.some((when) => when.includes('forgeflow.layout ') || when.includes('forgeflow.layout=')),
+      false,
+      'View layout clauses should use config.forgeflow.layout.mode, not activation-time forgeflow.layout context.'
+    );
+    assert.ok(
+      whens.some((when) => when.includes('config.forgeflow.layout.mode == expanded')),
+      'Expanded panel views should be controlled by config.forgeflow.layout.mode.'
+    );
+    assert.ok(
+      whens.some((when) => when.includes('config.forgeflow.layout.mode != expanded')),
+      'Compact activity-bar views should be controlled by config.forgeflow.layout.mode.'
     );
   });
 

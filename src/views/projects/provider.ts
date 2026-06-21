@@ -163,7 +163,7 @@ export class ProjectsViewProvider implements vscode.TreeDataProvider<ProjectNode
     this.clearScanNotice();
     this.isScanning = true;
     this.scanLockHeld = true;
-    void this.runScan(rootsToScan, roots, settings.projectScanMaxDepth, settings.projectSortMode);
+    await this.runScan(rootsToScan, roots, settings.projectScanMaxDepth, settings.projectSortMode);
   }
 
   public syncFromStore(): void {

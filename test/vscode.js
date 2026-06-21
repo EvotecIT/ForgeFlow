@@ -72,6 +72,29 @@ class Uri {
 const fs = require('fs');
 const path = require('path');
 const fsp = fs.promises;
+const configurationValues = new Map();
+
+class WorkspaceConfiguration {
+  constructor(section) {
+    this.section = section;
+  }
+
+  get(key, defaultValue) {
+    const fullKey = `${this.section}.${key}`;
+    return configurationValues.has(fullKey) ? configurationValues.get(fullKey) : defaultValue;
+  }
+
+  inspect(key) {
+    const fullKey = `${this.section}.${key}`;
+    return {
+      globalValue: configurationValues.get(fullKey)
+    };
+  }
+
+  async update(key, value) {
+    configurationValues.set(`${this.section}.${key}`, value);
+  }
+}
 
 async function stat(uri) {
   const stats = await fsp.stat(uri.fsPath);
@@ -159,7 +182,8 @@ const workspace = {
     copy
   },
   workspaceFolders: undefined,
-  getWorkspaceFolder: () => undefined
+  getWorkspaceFolder: () => undefined,
+  getConfiguration: (section) => new WorkspaceConfiguration(section)
 };
 
 const window = {
@@ -173,6 +197,12 @@ const env = {
   clipboard: {
     writeText: async () => undefined
   }
+};
+
+const ConfigurationTarget = {
+  Global: 1,
+  Workspace: 2,
+  WorkspaceFolder: 3
 };
 
 const registeredCommands = new Map();
@@ -202,6 +232,7 @@ module.exports = {
   TreeItemCollapsibleState,
   FileType,
   Uri,
+  ConfigurationTarget,
   workspace,
   window,
   env,

@@ -139,8 +139,7 @@ export class ProjectScanner {
         continue;
       }
       const childEntries = await readDirectory(path.join(root, name));
-      const marker = await this.detectMarker(path.join(root, name), childEntries);
-      if (marker?.type === 'git') {
+      if (hasDirectGitDirectory(childEntries)) {
         projectNames.push(name);
       }
     }
@@ -223,6 +222,10 @@ function enqueueKnownWorktreeContainers(
 
 function isProjectContainerRoot(marker: MarkerMatch, depth: number, directChildProjectCount: number): boolean {
   return marker.type === 'git' && depth === 0 && directChildProjectCount >= 3;
+}
+
+function hasDirectGitDirectory(entries: [string, vscode.FileType][]): boolean {
+  return entries.some(([name, type]) => name.toLowerCase() === '.git' && type === vscode.FileType.Directory);
 }
 
 function shouldProbeChildProject(

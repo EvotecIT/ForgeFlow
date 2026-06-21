@@ -36,7 +36,8 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     private readonly filterStore: DashboardFilterStore,
     private readonly tokenStore: DashboardTokenStore,
     private readonly viewStateStore: DashboardViewStateStore,
-    private readonly tagFilterStore: TagFilterStore
+    private readonly tagFilterStore: TagFilterStore,
+    private readonly onDidResolveView?: () => void
   ) {}
 
   public resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -45,6 +46,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     webviewView.webview.options = {
       enableScripts: true
     };
+    this.onDidResolveView?.();
 
     void this.getAuthSummary().then((summary) => {
       this.authSummary = summary;

@@ -77,6 +77,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const gitFilterStore = new GitFilterStore(stateStore);
   const gitService = new GitService(logger);
   const gitWatchService = new GitWatchService(projectsStore, gitCommitCacheStore, logger);
+  await layoutStore.syncConfiguration();
   const layoutMode = layoutStore.getMode();
   void vscode.commands.executeCommand('setContext', 'forgeflow.layout', layoutMode);
   context.globalState.setKeysForSync(GLOBAL_STATE_SYNC_KEYS);
@@ -188,6 +189,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     tagFilterStore,
     runHistoryStore
   );
+  const initialProjectsRefresh = createInitialProjectsRefreshScheduler(projectsProvider);
   const dashboardService = new DashboardService(projectsStore, logger, tokenStore, tagsStore);
   const dashboardProvider = new DashboardViewProvider(
     dashboardService,
@@ -196,10 +198,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     dashboardFilterStore,
     tokenStore,
     dashboardViewStateStore,
-    tagFilterStore
+    tagFilterStore,
+    () => initialProjectsRefresh.request()
   );
   const gitProvider = new GitViewProvider(projectsStore, gitService, gitStore, gitFilterStore, logger);
-  const initialProjectsRefresh = createInitialProjectsRefreshScheduler(projectsProvider);
   const projectsWebviewProvider = new ProjectsWebviewProvider(
     projectsProvider,
     projectsStore,
