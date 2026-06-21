@@ -52,6 +52,7 @@ import { registerFileCommands } from './extension/commands/files';
 import { registerProjectCommands } from './extension/commands/projects';
 import { schedulePowerShellProfileHealthCheck } from './extension/run/health';
 import { registerOpenOnSelection } from './extension/files/openOnSelection';
+import { createInitialProjectsRefreshScheduler } from './extension/projects/initialRefresh';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const logger = new ForgeFlowLogger();
@@ -198,18 +199,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     tagFilterStore
   );
   const gitProvider = new GitViewProvider(projectsStore, gitService, gitStore, gitFilterStore, logger);
-  let requestInitialProjectsRefresh: () => void = () => undefined;
+  const initialProjectsRefresh = createInitialProjectsRefreshScheduler(projectsProvider);
   const projectsWebviewProvider = new ProjectsWebviewProvider(
     projectsProvider,
     projectsStore,
     dashboardProvider,
-    () => requestInitialProjectsRefresh()
+    () => initialProjectsRefresh.request()
   );
   const projectsWebviewPanelProvider = new ProjectsWebviewProvider(
     projectsProvider,
     projectsStore,
     dashboardProvider,
-    () => requestInitialProjectsRefresh()
+    () => initialProjectsRefresh.request()
   );
   const powerForgeViewProvider = new PowerForgeViewProvider(context, projectsStore);
   const powerForgePanelProvider = new PowerForgeViewProvider(context, projectsStore);
@@ -240,29 +241,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const projectsPanelView = vscode.window.createTreeView('forgeflow.projects.panel', { treeDataProvider: projectsProvider });
   const gitView = vscode.window.createTreeView('forgeflow.git', { treeDataProvider: gitProvider });
   const gitPanelView = vscode.window.createTreeView('forgeflow.git.panel', { treeDataProvider: gitProvider });
-  let initialProjectsRefreshInFlight = false;
-  requestInitialProjectsRefresh = (): void => {
-    if (initialProjectsRefreshInFlight) {
-      return;
-    }
-    initialProjectsRefreshInFlight = true;
-    setTimeout(() => {
-      void projectsProvider.refresh().finally(() => {
-        initialProjectsRefreshInFlight = false;
-      });
-    }, 0);
-  };
-  const registerProjectsRefreshOnVisible = (view: vscode.TreeView<unknown>): void => {
-    context.subscriptions.push(
-      view.onDidChangeVisibility((event) => {
-        if (event.visible) {
-          requestInitialProjectsRefresh();
-        }
-      })
-    );
-  };
-  registerProjectsRefreshOnVisible(projectsView);
-  registerProjectsRefreshOnVisible(projectsPanelView);
+  initialProjectsRefresh.registerOnVisible(context, projectsView, projectsPanelView);
 
   registerOpenOnSelection(context, filesView, filesPanelView);
 
@@ -727,7 +706,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     projectsProvider.syncFromStore();
   }
   if (projectsView.visible || projectsPanelView.visible) {
-    requestInitialProjectsRefresh();
+    initialProjectsRefresh.request();
   }
   logger.info('ForgeFlow activated.');
 }
