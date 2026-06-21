@@ -2,7 +2,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import type { Project, ProjectType } from '../models/project';
 import { stableIdFromPath } from '../util/ids';
-import { statPath } from '../util/fs';
+import { readDirectory, statPath } from '../util/fs';
 import { isPreferredSolutionFileName, isSolutionFileName } from '../util/solutionFiles';
 import { walkDirectoriesBreadthFirst } from './walk';
 
@@ -85,13 +85,21 @@ export class ProjectScanner {
     ignoredFolders: ReadonlySet<string>
   ): Promise<Project[]> {
     const projects: Project[] = [];
-    await walkDirectoriesBreadthFirst(root, maxDepth, async ({ dir, entries, enqueue }) => {
+    await walkDirectoriesBreadthFirst(root, maxDepth, async ({ dir, depth, entries, enqueue }) => {
       const marker = await this.detectMarker(dir, entries);
       if (marker) {
-        const project = await this.createProject(dir, marker, existingByPath);
-        projects.push(project);
+        const directChildProjects = marker.type === 'git' && depth === 0
+          ? await this.findDirectChildProjects(dir, entries, ignoredFolders)
+          : [];
+        if (!isProjectContainerRoot(marker, depth, directChildProjects.length)) {
+          const project = await this.createProject(dir, marker, existingByPath);
+          projects.push(project);
+        }
         if (marker.type === 'git') {
           enqueueKnownWorktreeContainers(entries, ignoredFolders, enqueue);
+          for (const name of directChildProjects) {
+            enqueue(name);
+          }
         }
         return;
       }
@@ -115,6 +123,25 @@ export class ProjectScanner {
     });
 
     return projects;
+  }
+
+  private async findDirectChildProjects(
+    root: string,
+    entries: [string, vscode.FileType][],
+    ignoredFolders: ReadonlySet<string>
+  ): Promise<string[]> {
+    const projectNames: string[] = [];
+    for (const [name, type] of entries) {
+      if (!shouldProbeChildProject(name, type, ignoredFolders)) {
+        continue;
+      }
+      const childEntries = await readDirectory(path.join(root, name));
+      const marker = await this.detectMarker(path.join(root, name), childEntries);
+      if (marker) {
+        projectNames.push(name);
+      }
+    }
+    return projectNames;
   }
 
   private async detectMarker(dir: string, entries: [string, vscode.FileType][]): Promise<MarkerMatch | undefined> {
@@ -189,6 +216,28 @@ function enqueueKnownWorktreeContainers(
     }
     enqueue(name);
   }
+}
+
+function isProjectContainerRoot(marker: MarkerMatch, depth: number, directChildProjectCount: number): boolean {
+  return marker.type === 'git' && depth === 0 && directChildProjectCount >= 3;
+}
+
+function shouldProbeChildProject(
+  name: string,
+  type: vscode.FileType,
+  ignoredFolders: ReadonlySet<string>
+): boolean {
+  if (type !== vscode.FileType.Directory) {
+    return false;
+  }
+  const nameLower = name.toLowerCase();
+  if (nameLower === 'node_modules') {
+    return false;
+  }
+  if (name.startsWith('.') && !allowedHiddenScanFolders.has(nameLower)) {
+    return false;
+  }
+  return !ignoredFolders.has(nameLower);
 }
 
 function chooseMarker(current: MarkerMatch | undefined, next: MarkerMatch): MarkerMatch {

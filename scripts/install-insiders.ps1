@@ -6,6 +6,7 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')
 $packagePath = Join-Path $repoRoot 'package.json'
+$extensionsRoot = Join-Path $env:USERPROFILE '.vscode-insiders\extensions'
 if (-not (Test-Path -LiteralPath $packagePath)) {
     throw "package.json not found at $packagePath"
 }
@@ -37,6 +38,12 @@ try {
         throw "VSCE not found in node_modules. Run npm install."
     }
 
+    $package = Get-Content -LiteralPath $packagePath -Raw | ConvertFrom-Json
+    $extensionId = "$($package.publisher).$($package.name)"
+    $legacyExtensionIds = @(
+        'evotec-services.forgeflow'
+    ) | Where-Object { $_ -ne $extensionId }
+
     Write-Host "Building ForgeFlow VSIX..." -ForegroundColor Cyan
     npm run compile
     if (Test-Path -LiteralPath $vsceBin) {
@@ -45,11 +52,22 @@ try {
         & $nodeExe $vsceMain package --allow-missing-repository
     }
 
-    $package = Get-Content -LiteralPath $packagePath -Raw | ConvertFrom-Json
     $vsixName = "{0}-{1}.vsix" -f $package.name, $package.version
     $vsixPath = Join-Path $repoRoot $vsixName
     if (-not (Test-Path -LiteralPath $vsixPath)) {
         throw "VSIX not found at $vsixPath"
+    }
+
+    if ($Force) {
+        foreach ($legacyExtensionId in $legacyExtensionIds) {
+            Write-Host "Removing legacy ForgeFlow extension id $legacyExtensionId if present..." -ForegroundColor DarkCyan
+            & code-insiders --uninstall-extension $legacyExtensionId
+            if (Test-Path -LiteralPath $extensionsRoot) {
+                Get-ChildItem -LiteralPath $extensionsRoot -Filter "$legacyExtensionId*" | ForEach-Object {
+                    Remove-Item -LiteralPath $_.FullName -Recurse -Force
+                }
+            }
+        }
     }
 
     $forceFlag = if ($Force) { "--force" } else { "" }

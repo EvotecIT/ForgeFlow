@@ -3767,7 +3767,7 @@
             "roots",
             "all"
           ],
-          "default": "all"
+          "default": "roots"
         },
         "forgeflow.views.files.enabled": {
           "type": "boolean",

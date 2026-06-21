@@ -103,3 +103,12 @@ if (errors.length > 0) {
   console.error(errors.join('\n'));
   process.exit(1);
 }
+
+const bundlePath = path.join(__dirname, '..', 'out', 'extension.js');
+if (fs.existsSync(bundlePath)) {
+  const bundle = fs.readFileSync(bundlePath, 'utf8');
+  if (bundle.includes('node_modules/jsonc-parser/lib/umd/main.js')) {
+    console.error('Bundled extension uses jsonc-parser UMD output. Use the ESM entry so internal jsonc-parser modules are bundled.');
+    process.exit(1);
+  }
+}

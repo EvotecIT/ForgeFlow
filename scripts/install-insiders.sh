@@ -11,6 +11,7 @@ fi
 
 NAME=$(node -p "require('./package.json').name")
 VERSION=$(node -p "require('./package.json').version")
+PUBLISHER=$(node -p "require('./package.json').publisher")
 VSIX="$ROOT/${NAME}-${VERSION}.vsix"
 
 VSCE_BIN="$ROOT/node_modules/.bin/vsce"
@@ -40,6 +41,13 @@ if ! command -v wslpath >/dev/null 2>&1; then
 fi
 
 WIN_VSIX="$(wslpath -w "$VSIX")"
+
+for legacy_id in evotec-services.forgeflow; do
+  if [[ "$legacy_id" != "$PUBLISHER.$NAME" ]]; then
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "code-insiders --uninstall-extension '$legacy_id'"
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "\$root = Join-Path \$env:USERPROFILE '.vscode-insiders/extensions'; if (Test-Path -LiteralPath \$root) { Get-ChildItem -LiteralPath \$root -Filter '$legacy_id*' | Remove-Item -Recurse -Force }"
+  fi
+done
 
 echo "Installing into VS Code Insiders (Windows)..."
 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "code-insiders --install-extension \"$WIN_VSIX\" --force"

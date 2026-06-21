@@ -22,6 +22,9 @@ if (-not $publisher -or -not $name -or -not $version) {
 
 $extId = "$publisher.$name"
 $extFolderName = "$extId-$version"
+$legacyExtensionIds = @(
+    'evotec-services.forgeflow'
+) | Where-Object { $_ -ne $extId }
 
 $useInsiders = $Insiders -or (-not $Stable)
 $extensionsRoot = if (-not $useInsiders) {
@@ -41,6 +44,14 @@ Get-ChildItem -LiteralPath $extensionsRoot -Filter "$extId*" | ForEach-Object {
         Write-Host "Existing extension found: $($_.FullName)" -ForegroundColor Yellow
         Write-Host "Re-run with -Force to replace it." -ForegroundColor Yellow
         exit 1
+    }
+}
+
+if ($Force) {
+    foreach ($legacyExtensionId in $legacyExtensionIds) {
+        Get-ChildItem -LiteralPath $extensionsRoot -Filter "$legacyExtensionId*" | ForEach-Object {
+            Remove-Item -LiteralPath $_.FullName -Recurse -Force
+        }
     }
 }
 
