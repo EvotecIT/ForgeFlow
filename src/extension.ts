@@ -202,6 +202,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     () => initialProjectsRefresh.request()
   );
   const gitProvider = new GitViewProvider(projectsStore, gitService, gitStore, gitFilterStore, logger);
+  const ensureInitialProjectsReady = async (): Promise<void> => {
+    if (projectsStore.list().length === 0) {
+      await initialProjectsRefresh.request();
+    }
+  };
   const projectsWebviewProvider = new ProjectsWebviewProvider(
     projectsProvider,
     projectsStore,
@@ -243,7 +248,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const projectsPanelView = vscode.window.createTreeView('forgeflow.projects.panel', { treeDataProvider: projectsProvider });
   const gitView = vscode.window.createTreeView('forgeflow.git', { treeDataProvider: gitProvider });
   const gitPanelView = vscode.window.createTreeView('forgeflow.git.panel', { treeDataProvider: gitProvider });
-  initialProjectsRefresh.registerOnVisible(context, projectsView, projectsPanelView);
+  initialProjectsRefresh.registerOnVisible(context, projectsView, projectsPanelView, gitView, gitPanelView);
 
   registerOpenOnSelection(context, filesView, filesPanelView);
 
@@ -619,7 +624,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     tagsStore,
     tagFilterStore,
     filterPresetStore,
-    dashboardProvider
+    dashboardProvider,
+    ensureProjectsReady: ensureInitialProjectsReady
   });
 
   registerRunCommands({
@@ -707,8 +713,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   if (cachedProjects.length > 0) {
     projectsProvider.syncFromStore();
   }
-  if (projectsView.visible || projectsPanelView.visible) {
-    initialProjectsRefresh.request();
+  if (projectsView.visible || projectsPanelView.visible || gitView.visible || gitPanelView.visible) {
+    void initialProjectsRefresh.request();
   }
   logger.info('ForgeFlow activated.');
 }

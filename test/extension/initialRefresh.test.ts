@@ -16,19 +16,22 @@ describe('InitialProjectsRefreshScheduler', () => {
     } as unknown as ProjectsViewProvider;
 
     const scheduler = createInitialProjectsRefreshScheduler(projectsProvider);
-    scheduler.request();
+    const first = scheduler.request();
     await waitForTimers();
-    scheduler.request();
+    const second = scheduler.request();
     await waitForTimers();
 
     assert.equal(refreshCalls, 1);
+    assert.equal(second, first);
     completeRefresh?.();
+    await first;
     await waitForTimers();
-    scheduler.request();
+    const third = scheduler.request();
     await waitForTimers();
 
     assert.equal(refreshCalls, 2);
     completeRefresh?.();
+    await third;
   });
 });
 

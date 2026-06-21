@@ -2,24 +2,25 @@ import type * as vscode from 'vscode';
 import type { ProjectsViewProvider } from '../../views/projectsView';
 
 export interface InitialProjectsRefreshScheduler {
-  request(): void;
+  request(): Promise<void>;
   registerOnVisible(context: vscode.ExtensionContext, ...views: Array<vscode.TreeView<unknown>>): void;
 }
 
 export function createInitialProjectsRefreshScheduler(
   projectsProvider: ProjectsViewProvider
 ): InitialProjectsRefreshScheduler {
-  let inFlight = false;
-  const request = (): void => {
-    if (inFlight) {
-      return;
+  let inFlight: Promise<void> | undefined;
+  const request = (): Promise<void> => {
+    if (!inFlight) {
+      inFlight = new Promise<void>((resolve) => {
+        setTimeout(resolve, 0);
+      })
+        .then(() => projectsProvider.refresh())
+        .finally(() => {
+          inFlight = undefined;
+        });
     }
-    inFlight = true;
-    setTimeout(() => {
-      void projectsProvider.refresh().finally(() => {
-        inFlight = false;
-      });
-    }, 0);
+    return inFlight;
   };
 
   return {
@@ -29,7 +30,7 @@ export function createInitialProjectsRefreshScheduler(
         context.subscriptions.push(
           view.onDidChangeVisibility((event) => {
             if (event.visible) {
-              request();
+              void request();
             }
           })
         );

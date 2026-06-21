@@ -18,7 +18,8 @@ export class LayoutStore {
   }
 
   public async setMode(mode: LayoutMode): Promise<void> {
-    await vscode.workspace.getConfiguration('forgeflow').update(CONFIG_KEY, mode, vscode.ConfigurationTarget.Global);
+    const config = vscode.workspace.getConfiguration('forgeflow');
+    await config.update(CONFIG_KEY, mode, getUpdateTarget(config));
     await this.state.setGlobal(LAYOUT_KEY, mode);
   }
 
@@ -43,4 +44,12 @@ function getConfiguredMode(config: vscode.WorkspaceConfiguration): LayoutMode | 
   const inspected = config.inspect<LayoutMode>(CONFIG_KEY);
   const configured = inspected?.workspaceFolderValue ?? inspected?.workspaceValue ?? inspected?.globalValue;
   return isLayoutMode(configured) ? configured : undefined;
+}
+
+function getUpdateTarget(config: vscode.WorkspaceConfiguration): vscode.ConfigurationTarget {
+  const inspected = config.inspect<LayoutMode>(CONFIG_KEY);
+  if (inspected?.workspaceFolderValue !== undefined || inspected?.workspaceValue !== undefined) {
+    return vscode.ConfigurationTarget.Workspace;
+  }
+  return vscode.ConfigurationTarget.Global;
 }

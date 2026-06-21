@@ -37,7 +37,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     private readonly tokenStore: DashboardTokenStore,
     private readonly viewStateStore: DashboardViewStateStore,
     private readonly tagFilterStore: TagFilterStore,
-    private readonly onDidResolveView?: () => void
+    private readonly onDidResolveView?: () => Promise<void>
   ) {}
 
   public resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -46,7 +46,7 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
     webviewView.webview.options = {
       enableScripts: true
     };
-    this.onDidResolveView?.();
+    const initialRefresh = this.onDidResolveView?.() ?? Promise.resolve();
 
     void this.getAuthSummary().then((summary) => {
       this.authSummary = summary;
@@ -198,7 +198,12 @@ export class DashboardViewProvider implements vscode.WebviewViewProvider {
         ? true
         : cacheAgeMs > autoRefreshMinutes * 60_000;
     if (shouldAutoRefresh && settings.dashboardAutoRefreshOnOpen) {
-      void this.refresh();
+      void initialRefresh
+        .catch((error) => {
+          const message = error instanceof Error ? error.message : String(error);
+          this.logger.error(`Dashboard initial project refresh failed: ${message}`);
+        })
+        .then(() => this.refresh());
     }
   }
 

@@ -2,7 +2,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import type { Project, ProjectType } from '../models/project';
 import { stableIdFromPath } from '../util/ids';
-import { readDirectory, statPath } from '../util/fs';
+import { isDirectory, statPath } from '../util/fs';
 import { isPreferredSolutionFileName, isSolutionFileName } from '../util/solutionFiles';
 import { walkDirectoriesBreadthFirst } from './walk';
 
@@ -138,9 +138,11 @@ export class ProjectScanner {
       if (!shouldProbeChildProject(name, type, ignoredFolders)) {
         continue;
       }
-      const childEntries = await readDirectory(path.join(root, name));
-      if (hasDirectGitDirectory(childEntries)) {
+      if (await hasDirectGitDirectory(path.join(root, name))) {
         projectNames.push(name);
+        if (projectNames.length >= 3) {
+          return projectNames;
+        }
       }
     }
     return projectNames;
@@ -224,8 +226,8 @@ function isProjectContainerRoot(marker: MarkerMatch, depth: number, directChildP
   return marker.type === 'git' && depth === 0 && directChildProjectCount >= 3;
 }
 
-function hasDirectGitDirectory(entries: [string, vscode.FileType][]): boolean {
-  return entries.some(([name, type]) => name.toLowerCase() === '.git' && type === vscode.FileType.Directory);
+async function hasDirectGitDirectory(root: string): Promise<boolean> {
+  return isDirectory(await statPath(path.join(root, '.git')));
 }
 
 function shouldProbeChildProject(
