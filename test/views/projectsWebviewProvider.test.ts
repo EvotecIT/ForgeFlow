@@ -3,10 +3,40 @@ import * as vscode from 'vscode';
 import type { Project } from '../../src/models/project';
 import type { ProjectsStore } from '../../src/store/projectsStore';
 import type { DashboardViewProvider } from '../../src/views/dashboardView';
-import type { ProjectsViewProvider } from '../../src/views/projectsView';
+import type { ProjectsViewProvider, ProjectsWebviewSnapshot } from '../../src/views/projectsView';
 import { ProjectsWebviewProvider } from '../../src/views/projectsWebview';
 
 describe('ProjectsWebviewProvider', () => {
+  it('requests an initial project refresh when the webview resolves', () => {
+    let refreshRequests = 0;
+    const projectsProvider = {
+      getWebviewSnapshot: () => emptySnapshot()
+    } as unknown as ProjectsViewProvider;
+    const projectsStore = {
+      list: () => []
+    } as unknown as ProjectsStore;
+    const provider = new ProjectsWebviewProvider(
+      projectsProvider,
+      projectsStore,
+      {} as DashboardViewProvider,
+      () => {
+        refreshRequests += 1;
+      }
+    );
+
+    provider.resolveWebviewView({
+      title: '',
+      webview: {
+        cspSource: 'vscode-resource:',
+        options: {},
+        html: '',
+        onDidReceiveMessage: () => ({ dispose: () => undefined })
+      }
+    } as never);
+
+    assert.equal(refreshRequests, 1);
+  });
+
   it('loads project details on demand before running preset actions', async () => {
     const project: Project = {
       id: 'proj-1',
@@ -75,3 +105,26 @@ describe('ProjectsWebviewProvider', () => {
     }
   });
 });
+
+function emptySnapshot(): ProjectsWebviewSnapshot {
+  return {
+    updatedAt: Date.now(),
+    filterText: '',
+    tagFilter: [],
+    favoritesOnly: false,
+    filterMinChars: 2,
+    filterMatchMode: 'substring',
+    sortDescription: 'No projects',
+    showSummary: false,
+    pageSize: 200,
+    visibleCount: 200,
+    gitCommitLoading: false,
+    gitCommitProgress: 0,
+    gitCommitTotal: 0,
+    modifiedLoading: false,
+    modifiedProgress: 0,
+    modifiedTotal: 0,
+    projects: [],
+    tagCounts: []
+  };
+}

@@ -198,8 +198,19 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     tagFilterStore
   );
   const gitProvider = new GitViewProvider(projectsStore, gitService, gitStore, gitFilterStore, logger);
-  const projectsWebviewProvider = new ProjectsWebviewProvider(projectsProvider, projectsStore, dashboardProvider);
-  const projectsWebviewPanelProvider = new ProjectsWebviewProvider(projectsProvider, projectsStore, dashboardProvider);
+  let requestInitialProjectsRefresh: () => void = () => undefined;
+  const projectsWebviewProvider = new ProjectsWebviewProvider(
+    projectsProvider,
+    projectsStore,
+    dashboardProvider,
+    () => requestInitialProjectsRefresh()
+  );
+  const projectsWebviewPanelProvider = new ProjectsWebviewProvider(
+    projectsProvider,
+    projectsStore,
+    dashboardProvider,
+    () => requestInitialProjectsRefresh()
+  );
   const powerForgeViewProvider = new PowerForgeViewProvider(context, projectsStore);
   const powerForgePanelProvider = new PowerForgeViewProvider(context, projectsStore);
   let worktreeRefreshTimer: NodeJS.Timeout | undefined;
@@ -230,7 +241,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const gitView = vscode.window.createTreeView('forgeflow.git', { treeDataProvider: gitProvider });
   const gitPanelView = vscode.window.createTreeView('forgeflow.git.panel', { treeDataProvider: gitProvider });
   let initialProjectsRefreshInFlight = false;
-  const requestInitialProjectsRefresh = (): void => {
+  requestInitialProjectsRefresh = (): void => {
     if (initialProjectsRefreshInFlight) {
       return;
     }

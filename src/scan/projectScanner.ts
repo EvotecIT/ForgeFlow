@@ -88,17 +88,20 @@ export class ProjectScanner {
     await walkDirectoriesBreadthFirst(root, maxDepth, async ({ dir, depth, entries, enqueue }) => {
       const marker = await this.detectMarker(dir, entries);
       if (marker) {
-        const directChildProjects = marker.type === 'git' && depth === 0
-          ? await this.findDirectChildProjects(dir, entries, ignoredFolders)
+        const directChildGitProjects = marker.type === 'git' && depth === 0
+          ? await this.findDirectChildGitProjects(dir, entries, ignoredFolders)
           : [];
-        if (!isProjectContainerRoot(marker, depth, directChildProjects.length)) {
+        const isContainerRoot = isProjectContainerRoot(marker, depth, directChildGitProjects.length);
+        if (!isContainerRoot) {
           const project = await this.createProject(dir, marker, existingByPath);
           projects.push(project);
         }
         if (marker.type === 'git') {
           enqueueKnownWorktreeContainers(entries, ignoredFolders, enqueue);
-          for (const name of directChildProjects) {
-            enqueue(name);
+          if (isContainerRoot) {
+            for (const name of directChildGitProjects) {
+              enqueue(name);
+            }
           }
         }
         return;
@@ -125,7 +128,7 @@ export class ProjectScanner {
     return projects;
   }
 
-  private async findDirectChildProjects(
+  private async findDirectChildGitProjects(
     root: string,
     entries: [string, vscode.FileType][],
     ignoredFolders: ReadonlySet<string>
@@ -137,7 +140,7 @@ export class ProjectScanner {
       }
       const childEntries = await readDirectory(path.join(root, name));
       const marker = await this.detectMarker(path.join(root, name), childEntries);
-      if (marker) {
+      if (marker?.type === 'git') {
         projectNames.push(name);
       }
     }
