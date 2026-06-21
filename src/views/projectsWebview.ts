@@ -24,7 +24,8 @@ export class ProjectsWebviewProvider implements vscode.WebviewViewProvider {
   public constructor(
     private readonly projectsProvider: ProjectsViewProvider,
     private readonly projectsStore: ProjectsStore,
-    private readonly dashboardProvider: DashboardViewProvider
+    private readonly dashboardProvider: DashboardViewProvider,
+    private readonly onDidResolveView?: () => void
   ) {}
 
   public resolveWebviewView(webviewView: vscode.WebviewView): void {
@@ -40,6 +41,7 @@ export class ProjectsWebviewProvider implements vscode.WebviewViewProvider {
     });
 
     void this.refresh();
+    this.onDidResolveView?.();
 
     if (this.pendingFocusFilter) {
       this.pendingFocusFilter = false;

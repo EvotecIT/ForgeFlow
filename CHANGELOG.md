@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.2
+- Fixed project discovery when a git-backed scan root contains many child repositories.
+- Reduced activation and initial scan work so ForgeFlow loads on demand and coalesces startup scans.
+- Preserved layout view placement without requiring startup activation.
+
 ## 0.1.1
 - Published the first public Marketplace release.
 

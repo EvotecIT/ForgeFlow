@@ -189,7 +189,7 @@ export function getForgeFlowSettings(): ForgeFlowSettings {
     defaultProfileId: config.get<string>('powershell.defaultProfileId'),
     filesFavoritesViewMode: config.get<'workspace' | 'all' | 'pinned'>('files.favorites.viewMode', 'workspace'),
     filesOpenOnSelection: config.get<boolean>('files.openOnSelection', true),
-    filesWatchMode: config.get<'off' | 'roots' | 'all'>('files.watchMode', 'all'),
+    filesWatchMode: config.get<'off' | 'roots' | 'all'>('files.watchMode', 'roots'),
     runDefaultTarget: config.get<RunTarget>('run.defaultTarget', 'integrated'),
     runIntegratedReuseTerminal: config.get<boolean>('run.integrated.reuseTerminal', true),
     runIntegratedReuseScope: config.get<'profile' | 'shared'>('run.integrated.reuseScope', 'profile'),

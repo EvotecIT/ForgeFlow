@@ -2,7 +2,7 @@
   "name": "forgeflow",
   "displayName": "ForgeFlow",
   "description": "ForgeFlow: Explorer replacement, Projects manager, PowerShell execution control plane, and Dashboard.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "publisher": "EvotecServices",
   "author": "Evotec Services sp. z o.o.",
   "license": "MIT",
@@ -24,9 +24,6 @@
   "engines": {
     "vscode": "^1.107.0"
   },
-  "activationEvents": [
-    "onStartupFinished"
-  ],
   "categories": [
     "Other",
     "SCM Providers"
@@ -103,33 +100,33 @@
           "id": "forgeflow.files",
           "name": "Files — ForgeFlow",
           "icon": "resources/forgeflow-files.svg",
-          "when": "forgeflow.layout != expanded && config.forgeflow.views.files.enabled"
+          "when": "config.forgeflow.layout.mode != expanded && config.forgeflow.views.files.enabled"
         },
         {
           "id": "forgeflow.powerforge",
           "name": "PowerForge — Manager",
           "type": "webview",
           "icon": "resources/forgeflow-dashboard.svg",
-          "when": "forgeflow.layout != expanded && config.forgeflow.views.powerforge.enabled"
+          "when": "config.forgeflow.layout.mode != expanded && config.forgeflow.views.powerforge.enabled"
         },
         {
           "id": "forgeflow.projects",
           "name": "Projects — ForgeFlow",
           "icon": "resources/forgeflow-projects.svg",
-          "when": "forgeflow.layout != expanded && config.forgeflow.views.projects.enabled"
+          "when": "config.forgeflow.layout.mode != expanded && config.forgeflow.views.projects.enabled"
         },
         {
           "id": "forgeflow.projects.web",
           "name": "Projects Web — ForgeFlow",
           "type": "webview",
           "icon": "resources/forgeflow-projects-web.svg",
-          "when": "forgeflow.layout != expanded && config.forgeflow.views.projectsWeb.enabled"
+          "when": "config.forgeflow.layout.mode != expanded && config.forgeflow.views.projectsWeb.enabled"
         },
         {
           "id": "forgeflow.git",
           "name": "Git — ForgeFlow",
           "icon": "resources/forgeflow-git.svg",
-          "when": "forgeflow.layout != expanded && config.forgeflow.views.git.enabled"
+          "when": "config.forgeflow.layout.mode != expanded && config.forgeflow.views.git.enabled"
         }
       ],
       "forgeflow-panel": [
@@ -146,7 +143,7 @@
           "id": "forgeflow.files.panel",
           "name": "Files — ForgeFlow (Panel)",
           "icon": "resources/forgeflow-files.svg",
-          "when": "forgeflow.layout == expanded && config.forgeflow.views.files.enabled"
+          "when": "config.forgeflow.layout.mode == expanded && config.forgeflow.views.files.enabled"
         }
       ],
       "forgeflow-projects-panel": [
@@ -154,7 +151,7 @@
           "id": "forgeflow.projects.panel",
           "name": "Projects — ForgeFlow (Panel)",
           "icon": "resources/forgeflow-projects.svg",
-          "when": "forgeflow.layout == expanded && config.forgeflow.views.projects.enabled"
+          "when": "config.forgeflow.layout.mode == expanded && config.forgeflow.views.projects.enabled"
         }
       ],
       "forgeflow-projects-web-panel": [
@@ -163,7 +160,7 @@
           "name": "Projects Web — ForgeFlow (Panel)",
           "type": "webview",
           "icon": "resources/forgeflow-projects-web.svg",
-          "when": "forgeflow.layout == expanded && config.forgeflow.views.projectsWeb.enabled"
+          "when": "config.forgeflow.layout.mode == expanded && config.forgeflow.views.projectsWeb.enabled"
         }
       ],
       "forgeflow-git-panel": [
@@ -171,7 +168,7 @@
           "id": "forgeflow.git.panel",
           "name": "Git — ForgeFlow (Panel)",
           "icon": "resources/forgeflow-git.svg",
-          "when": "forgeflow.layout == expanded && config.forgeflow.views.git.enabled"
+          "when": "config.forgeflow.layout.mode == expanded && config.forgeflow.views.git.enabled"
         }
       ],
       "forgeflow-powerforge-panel": [
@@ -180,7 +177,7 @@
           "name": "PowerForge — Manager (Panel)",
           "type": "webview",
           "icon": "resources/forgeflow-dashboard.svg",
-          "when": "forgeflow.layout == expanded && config.forgeflow.views.powerforge.enabled"
+          "when": "config.forgeflow.layout.mode == expanded && config.forgeflow.views.powerforge.enabled"
         }
       ]
     },
@@ -3767,7 +3764,16 @@
             "roots",
             "all"
           ],
-          "default": "all"
+          "default": "roots"
+        },
+        "forgeflow.layout.mode": {
+          "type": "string",
+          "description": "Where ForgeFlow views are shown.",
+          "enum": [
+            "compact",
+            "expanded"
+          ],
+          "default": "compact"
         },
         "forgeflow.views.files.enabled": {
           "type": "boolean",

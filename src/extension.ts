@@ -52,6 +52,7 @@ import { registerFileCommands } from './extension/commands/files';
 import { registerProjectCommands } from './extension/commands/projects';
 import { schedulePowerShellProfileHealthCheck } from './extension/run/health';
 import { registerOpenOnSelection } from './extension/files/openOnSelection';
+import { createInitialProjectsRefreshScheduler } from './extension/projects/initialRefresh';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   const logger = new ForgeFlowLogger();
@@ -76,6 +77,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const gitFilterStore = new GitFilterStore(stateStore);
   const gitService = new GitService(logger);
   const gitWatchService = new GitWatchService(projectsStore, gitCommitCacheStore, logger);
+  await layoutStore.syncConfiguration();
   const layoutMode = layoutStore.getMode();
   void vscode.commands.executeCommand('setContext', 'forgeflow.layout', layoutMode);
   context.globalState.setKeysForSync(GLOBAL_STATE_SYNC_KEYS);
@@ -187,6 +189,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     tagFilterStore,
     runHistoryStore
   );
+  const initialProjectsRefresh = createInitialProjectsRefreshScheduler(projectsProvider);
   const dashboardService = new DashboardService(projectsStore, logger, tokenStore, tagsStore);
   const dashboardProvider = new DashboardViewProvider(
     dashboardService,
@@ -195,11 +198,27 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     dashboardFilterStore,
     tokenStore,
     dashboardViewStateStore,
-    tagFilterStore
+    tagFilterStore,
+    () => initialProjectsRefresh.request()
   );
   const gitProvider = new GitViewProvider(projectsStore, gitService, gitStore, gitFilterStore, logger);
-  const projectsWebviewProvider = new ProjectsWebviewProvider(projectsProvider, projectsStore, dashboardProvider);
-  const projectsWebviewPanelProvider = new ProjectsWebviewProvider(projectsProvider, projectsStore, dashboardProvider);
+  const ensureInitialProjectsReady = async (): Promise<void> => {
+    if (projectsStore.list().length === 0) {
+      await initialProjectsRefresh.request();
+    }
+  };
+  const projectsWebviewProvider = new ProjectsWebviewProvider(
+    projectsProvider,
+    projectsStore,
+    dashboardProvider,
+    () => initialProjectsRefresh.request()
+  );
+  const projectsWebviewPanelProvider = new ProjectsWebviewProvider(
+    projectsProvider,
+    projectsStore,
+    dashboardProvider,
+    () => initialProjectsRefresh.request()
+  );
   const powerForgeViewProvider = new PowerForgeViewProvider(context, projectsStore);
   const powerForgePanelProvider = new PowerForgeViewProvider(context, projectsStore);
   let worktreeRefreshTimer: NodeJS.Timeout | undefined;
@@ -229,6 +248,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const projectsPanelView = vscode.window.createTreeView('forgeflow.projects.panel', { treeDataProvider: projectsProvider });
   const gitView = vscode.window.createTreeView('forgeflow.git', { treeDataProvider: gitProvider });
   const gitPanelView = vscode.window.createTreeView('forgeflow.git.panel', { treeDataProvider: gitProvider });
+  initialProjectsRefresh.registerOnVisible(context, projectsView, projectsPanelView, gitView, gitPanelView);
 
   registerOpenOnSelection(context, filesView, filesPanelView);
 
@@ -604,7 +624,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     tagsStore,
     tagFilterStore,
     filterPresetStore,
-    dashboardProvider
+    dashboardProvider,
+    ensureProjectsReady: ensureInitialProjectsReady
   });
 
   registerRunCommands({
@@ -691,11 +712,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const cachedProjects = projectsStore.list();
   if (cachedProjects.length > 0) {
     projectsProvider.syncFromStore();
-    setTimeout(() => {
-      void projectsProvider.refresh();
-    }, 1500);
-  } else {
-    await projectsProvider.refresh();
+  }
+  if (projectsView.visible || projectsPanelView.visible || gitView.visible || gitPanelView.visible) {
+    void initialProjectsRefresh.request();
   }
   logger.info('ForgeFlow activated.');
 }

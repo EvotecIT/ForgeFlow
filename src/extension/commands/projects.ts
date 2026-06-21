@@ -60,6 +60,7 @@ export interface ProjectCommandDeps {
   tagFilterStore: TagFilterStore;
   filterPresetStore: FilterPresetStore;
   dashboardProvider: DashboardViewProvider;
+  ensureProjectsReady?: () => Promise<void>;
 }
 
 export function registerProjectCommands(deps: ProjectCommandDeps): void {
@@ -75,7 +76,8 @@ export function registerProjectCommands(deps: ProjectCommandDeps): void {
     tagsStore,
     tagFilterStore,
     filterPresetStore,
-    dashboardProvider
+    dashboardProvider,
+    ensureProjectsReady = async () => undefined
   } = deps;
 
   const resolveSelectedProject = (target?: unknown): Project | undefined => {
@@ -152,6 +154,7 @@ export function registerProjectCommands(deps: ProjectCommandDeps): void {
       await addProjectToWorkspace(project, projectsStore);
     }),
     vscode.commands.registerCommand('forgeflow.projects.addManyToWorkspace', async () => {
+      await ensureProjectsReady();
       await addProjectsToWorkspace(projectsStore);
     }),
     vscode.commands.registerCommand('forgeflow.projects.openInTerminal', async (target?: unknown) => {
@@ -212,6 +215,7 @@ export function registerProjectCommands(deps: ProjectCommandDeps): void {
       await refreshProjectViews();
     }),
     vscode.commands.registerCommand('forgeflow.projects.switch', async () => {
+      await ensureProjectsReady();
       await switchProject(projectsStore, tagsStore);
     }),
     vscode.commands.registerCommand('forgeflow.projects.refresh', async () => {
@@ -251,6 +255,7 @@ export function registerProjectCommands(deps: ProjectCommandDeps): void {
       await configureProjectFilter(projectsProvider);
     }),
     vscode.commands.registerCommand('forgeflow.projects.search', async () => {
+      await ensureProjectsReady();
       await searchProjectsQuickPick(projectsStore, tagsStore);
     }),
     vscode.commands.registerCommand('forgeflow.projects.focusFilter', async () => {

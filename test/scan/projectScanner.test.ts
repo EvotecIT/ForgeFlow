@@ -6,6 +6,111 @@ import type { Project } from '../../src/models/project';
 import { ProjectScanner } from '../../src/scan/projectScanner';
 
 describe('ProjectScanner', () => {
+  it('treats a git-backed scan root with several direct child repositories as a project container', async () => {
+    const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'forgeflow-scan-'));
+    try {
+      await fs.promises.mkdir(path.join(tempRoot, '.git'), { recursive: true });
+      const firstRepo = path.join(tempRoot, 'OfficeIMO');
+      const secondRepo = path.join(tempRoot, 'PSPublishModule');
+      const thirdRepo = path.join(tempRoot, 'TestimoX');
+      await fs.promises.mkdir(path.join(firstRepo, '.git'), { recursive: true });
+      await fs.promises.mkdir(path.join(secondRepo, '.git'), { recursive: true });
+      await fs.promises.mkdir(path.join(thirdRepo, '.git'), { recursive: true });
+
+      const scanner = new ProjectScanner();
+      const projects = await scanner.scan([tempRoot], 2, [] as Project[]);
+      const discoveredPaths = projects.map((project) => project.path);
+
+      assert.equal(discoveredPaths.includes(tempRoot), false);
+      assert.equal(discoveredPaths.includes(firstRepo), true);
+      assert.equal(discoveredPaths.includes(secondRepo), true);
+      assert.equal(discoveredPaths.includes(thirdRepo), true);
+    } finally {
+      await fs.promises.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('does not split a normal git repository into nested source projects', async () => {
+    const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'forgeflow-scan-'));
+    try {
+      await fs.promises.mkdir(path.join(tempRoot, '.git'), { recursive: true });
+      const nestedProject = path.join(tempRoot, 'src', 'ForgeFlow.Core');
+      await fs.promises.mkdir(nestedProject, { recursive: true });
+      await fs.promises.writeFile(path.join(nestedProject, 'ForgeFlow.Core.csproj'), '<Project />');
+
+      const scanner = new ProjectScanner();
+      const projects = await scanner.scan([tempRoot], 4, [] as Project[]);
+
+      assert.equal(projects.length, 1);
+      assert.equal(projects[0]?.path, tempRoot);
+      assert.equal(projects[0]?.type, 'git');
+    } finally {
+      await fs.promises.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('does not treat direct child project folders as a repository container', async () => {
+    const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'forgeflow-scan-'));
+    try {
+      await fs.promises.mkdir(path.join(tempRoot, '.git'), { recursive: true });
+      for (const name of ['Core', 'Service', 'Tests']) {
+        const child = path.join(tempRoot, name);
+        await fs.promises.mkdir(child, { recursive: true });
+        await fs.promises.writeFile(path.join(child, `${name}.csproj`), '<Project />');
+      }
+
+      const scanner = new ProjectScanner();
+      const projects = await scanner.scan([tempRoot], 2, [] as Project[]);
+
+      assert.equal(projects.length, 1);
+      assert.equal(projects[0]?.path, tempRoot);
+      assert.equal(projects[0]?.type, 'git');
+    } finally {
+      await fs.promises.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('does not split a git repository for only one or two direct child git repositories', async () => {
+    const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'forgeflow-scan-'));
+    try {
+      await fs.promises.mkdir(path.join(tempRoot, '.git'), { recursive: true });
+      const firstRepo = path.join(tempRoot, 'package-a');
+      const secondRepo = path.join(tempRoot, 'package-b');
+      await fs.promises.mkdir(path.join(firstRepo, '.git'), { recursive: true });
+      await fs.promises.mkdir(path.join(secondRepo, '.git'), { recursive: true });
+
+      const scanner = new ProjectScanner();
+      const projects = await scanner.scan([tempRoot], 2, [] as Project[]);
+
+      assert.equal(projects.length, 1);
+      assert.equal(projects[0]?.path, tempRoot);
+      assert.equal(projects[0]?.type, 'git');
+    } finally {
+      await fs.promises.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('does not treat direct child submodules as a repository container', async () => {
+    const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'forgeflow-scan-'));
+    try {
+      await fs.promises.mkdir(path.join(tempRoot, '.git'), { recursive: true });
+      for (const name of ['submodule-a', 'submodule-b', 'submodule-c']) {
+        const child = path.join(tempRoot, name);
+        await fs.promises.mkdir(child, { recursive: true });
+        await fs.promises.writeFile(path.join(child, '.git'), 'gitdir: ../.git/modules/' + name);
+      }
+
+      const scanner = new ProjectScanner();
+      const projects = await scanner.scan([tempRoot], 2, [] as Project[]);
+
+      assert.equal(projects.length, 1);
+      assert.equal(projects[0]?.path, tempRoot);
+      assert.equal(projects[0]?.type, 'git');
+    } finally {
+      await fs.promises.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it('deduplicates identical project paths discovered from overlapping scan roots', async () => {
     const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'forgeflow-scan-'));
     try {

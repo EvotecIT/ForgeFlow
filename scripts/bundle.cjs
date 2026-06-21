@@ -14,6 +14,7 @@ const buildOptions = {
   platform: 'node',
   format: 'cjs',
   target: 'node20',
+  mainFields: ['module', 'main'],
   sourcemap: true,
   external: ['vscode'],
   logLevel: 'info'
