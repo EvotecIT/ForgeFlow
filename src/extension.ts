@@ -540,6 +540,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     gitWatchService.setProjects(projects, projectsStore.getFavoriteIds());
     void projectsWebviewProvider.refresh();
     void projectsWebviewPanelProvider.refresh();
+    gitProvider.refreshView();
   });
   dashboardProvider.onDidChangeTagFilter(async (tags) => {
     await projectsProvider.setTagFilter(tags, false);
@@ -649,7 +650,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     gitProvider,
     projectsProvider,
     filterPresetStore,
-    logger
+    logger,
+    ensureProjectsReady: ensureInitialProjectsReady
   });
   registerDashboardCommands({
     context,
@@ -657,7 +659,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     dashboardProvider,
     dashboardFilterStore,
     filterPresetStore,
-    tokenStore
+    tokenStore,
+    ensureProjectsReady: ensureInitialProjectsReady
   });
   registerBrowserCommands(context);
   registerMiscCommands({

@@ -40,6 +40,7 @@ interface GitCommandContext {
   projectsProvider: ProjectsViewProvider;
   filterPresetStore: FilterPresetStore;
   logger: ForgeFlowLogger;
+  ensureProjectsReady?: () => Promise<void>;
 }
 
 export function registerGitCommands({
@@ -50,7 +51,8 @@ export function registerGitCommands({
   gitProvider,
   projectsProvider,
   filterPresetStore,
-  logger
+  logger,
+  ensureProjectsReady = async () => undefined
 }: GitCommandContext): void {
   const openGitFilterInput = async (): Promise<void> => {
     await openLiveFilterInput({
@@ -183,6 +185,7 @@ export function registerGitCommands({
       gitProvider.setFilter('');
     }),
     vscode.commands.registerCommand('forgeflow.git.selectProject', async () => {
+      await ensureProjectsReady();
       await selectGitProject(projectsStore, gitProvider);
     }),
     vscode.commands.registerCommand('forgeflow.git.setBranchSortMode', async () => {
@@ -195,10 +198,12 @@ export function registerGitCommands({
       await configureAndRefreshGit(configureGitBranchFilter);
     }),
     vscode.commands.registerCommand('forgeflow.git.refreshSummaries', async () => {
+      await ensureProjectsReady();
       await refreshGitSummaries(projectsStore, gitService, gitStore);
       await projectsProvider.refresh();
     }),
     vscode.commands.registerCommand('forgeflow.git.configureProject', async (target?: unknown) => {
+      await ensureProjectsReady();
       await configureGitProjectSettings(projectsStore, gitStore, gitProvider, target);
       await gitProvider.refresh();
       await projectsProvider.refresh();
@@ -221,21 +226,26 @@ export function registerGitCommands({
       await projectsProvider.refresh();
     }),
     vscode.commands.registerCommand('forgeflow.git.bulkPruneRemotes', async () => {
+      await ensureProjectsReady();
       await bulkPruneRemotes(projectsStore, gitService, gitStore);
       await projectsProvider.refresh();
     }),
     vscode.commands.registerCommand('forgeflow.git.bulkDeleteMerged', async () => {
+      await ensureProjectsReady();
       await bulkDeleteMergedBranches(projectsStore, gitService, gitStore);
       await projectsProvider.refresh();
     }),
     vscode.commands.registerCommand('forgeflow.git.previewCleanAll', async () => {
+      await ensureProjectsReady();
       await previewCleanAllProjects(projectsStore, gitService, gitStore, logger);
     }),
     vscode.commands.registerCommand('forgeflow.git.cleanAll', async () => {
+      await ensureProjectsReady();
       await cleanAllProjects(projectsStore, gitService, gitStore, logger);
       await projectsProvider.refresh();
     }),
     vscode.commands.registerCommand('forgeflow.git.bulkDeleteGone', async () => {
+      await ensureProjectsReady();
       await bulkDeleteGoneBranches(projectsStore, gitService, gitStore);
       await projectsProvider.refresh();
     }),
