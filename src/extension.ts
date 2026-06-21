@@ -540,7 +540,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     gitWatchService.setProjects(projects, projectsStore.getFavoriteIds());
     void projectsWebviewProvider.refresh();
     void projectsWebviewPanelProvider.refresh();
-    gitProvider.refreshView();
+    void gitProvider.refresh();
   });
   dashboardProvider.onDidChangeTagFilter(async (tags) => {
     await projectsProvider.setTagFilter(tags, false);
