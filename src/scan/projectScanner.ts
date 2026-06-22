@@ -140,9 +140,6 @@ export class ProjectScanner {
       }
       if (await hasDirectGitDirectory(path.join(root, name))) {
         projectNames.push(name);
-        if (projectNames.length >= 3) {
-          return projectNames;
-        }
       }
     }
     return projectNames;

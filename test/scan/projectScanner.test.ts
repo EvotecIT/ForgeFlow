@@ -30,6 +30,29 @@ describe('ProjectScanner', () => {
     }
   });
 
+  it('enqueues every direct child repository when a scan root is a project container', async () => {
+    const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'forgeflow-scan-'));
+    try {
+      await fs.promises.mkdir(path.join(tempRoot, '.git'), { recursive: true });
+      const repoNames = ['OfficeIMO', 'PSPublishModule', 'TestimoX', 'DomainDetective', 'Mailozaurr'];
+      for (const name of repoNames) {
+        await fs.promises.mkdir(path.join(tempRoot, name, '.git'), { recursive: true });
+      }
+
+      const scanner = new ProjectScanner();
+      const projects = await scanner.scan([tempRoot], 2, [] as Project[]);
+      const discoveredPaths = projects.map((project) => project.path).sort();
+
+      assert.equal(discoveredPaths.includes(tempRoot), false);
+      assert.deepEqual(
+        discoveredPaths,
+        repoNames.map((name) => path.join(tempRoot, name)).sort()
+      );
+    } finally {
+      await fs.promises.rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it('does not split a normal git repository into nested source projects', async () => {
     const tempRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'forgeflow-scan-'));
     try {

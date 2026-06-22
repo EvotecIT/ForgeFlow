@@ -15,6 +15,7 @@ interface DashboardCommandContext {
   dashboardFilterStore: DashboardFilterStore;
   filterPresetStore: FilterPresetStore;
   tokenStore: DashboardTokenStore;
+  ensureProjectsReady?: () => Promise<void>;
 }
 
 export function registerDashboardCommands({
@@ -23,7 +24,8 @@ export function registerDashboardCommands({
   dashboardProvider,
   dashboardFilterStore,
   filterPresetStore,
-  tokenStore
+  tokenStore,
+  ensureProjectsReady = async () => undefined
 }: DashboardCommandContext): void {
   context.subscriptions.push(
     vscode.commands.registerCommand('forgeflow.dashboard.open', async () => {
@@ -54,6 +56,7 @@ export function registerDashboardCommands({
       await dashboardProvider.refresh();
     }),
     vscode.commands.registerCommand('forgeflow.dashboard.configureIdentity', async () => {
+      await ensureProjectsReady();
       await configureProjectIdentity(projectsStore, dashboardProvider);
     }),
     vscode.commands.registerCommand('forgeflow.dashboard.toggleActionsColumn', async () => {
