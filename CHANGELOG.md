@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.3
+- Fixed repository-container scans so every direct child repository is discovered.
+- Refreshed Git status after project-list updates to avoid stale branch data under a fallback project.
+- Started initial project discovery before Git and Dashboard project pickers read the project store.
+
 ## 0.1.2
 - Fixed project discovery when a git-backed scan root contains many child repositories.
 - Reduced activation and initial scan work so ForgeFlow loads on demand and coalesces startup scans.
