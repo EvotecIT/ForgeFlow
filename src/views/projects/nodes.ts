@@ -351,7 +351,7 @@ export class ProjectItemNode implements ProjectNode, ProjectNodeWithProject {
     item.resourceUri = vscode.Uri.file(this.project.path);
     item.contextValue = this.isFavorite ? 'forgeflowProjectFavorite' : 'forgeflowProject';
     item.description = formatProjectDescription(this.project.type, this.duplicateInfo, this.summary, this.showSummary, this.tags);
-    let tooltip = '';
+    let tooltip: string;
     if (this.duplicateInfo) {
       if (isGitCommonDuplicate(this.duplicateInfo)) {
         const worktreeCount = Math.max(0, this.duplicateInfo.total - 1);
