@@ -88,7 +88,6 @@ export class DashboardService {
     report();
 
     await runWithConcurrency(projects, concurrency, async (project) => {
-      let didComplete = false;
       report(`${project.name} • identity`);
       if (signal?.aborted) {
         throw new Error('AbortError');
@@ -242,11 +241,8 @@ export class DashboardService {
         const message = error instanceof Error ? error.message : String(error);
         this.logger.error(`Dashboard data failed for ${project.name}: ${message}`);
       } finally {
-        if (!didComplete) {
-          completed += 1;
-          report(`${project.name} • done`);
-          didComplete = true;
-        }
+        completed += 1;
+        report(`${project.name} • done`);
       }
     });
 

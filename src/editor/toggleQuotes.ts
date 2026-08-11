@@ -28,7 +28,7 @@ function toggleQuotes(): void {
     return;
   }
 
-  let chars: QuotePair[] = [];
+  let chars: QuotePair[];
   try {
     chars = getChars(editor);
   } catch (error) {

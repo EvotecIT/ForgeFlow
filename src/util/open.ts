@@ -153,7 +153,7 @@ function resolveVisualStudioCandidates(): VisualStudioCandidate[] {
   if (result.status !== 0 || !result.stdout) {
     return [];
   }
-  let instances: VisualStudioInstance[] = [];
+  let instances: VisualStudioInstance[];
   try {
     instances = JSON.parse(result.stdout) as VisualStudioInstance[];
   } catch {
