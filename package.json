@@ -4592,7 +4592,7 @@
     "lodash": "^4.17.22",
     "markdown-it": "14.2.0",
     "mocha": {
-      "serialize-javascript": "7.0.5"
+      "serialize-javascript": "7.1.4"
     },
     "underscore": "1.13.8"
   },
